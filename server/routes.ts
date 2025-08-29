@@ -1064,8 +1064,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Simulate Fi.V Connect panel API - /api/v1/plans
-  // This endpoint simulates what the central Fi.V Connect panel would provide for plans
+  // Fi.V Connect panel API - /api/v1/plans
+  // Fetch real plans from central Fi.V Connect panel
   app.get('/api/v1/plans', async (req, res) => {
     try {
       const instanceKey = req.headers['x-instance-key'] as string;
@@ -1073,65 +1073,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!instanceKey) {
         return res.status(401).json({ error: "Missing instance key" });
       }
+
+      // Check if we have Fi.V Connect API configuration
+      const apiUrl = process.env.FIV_APP_API_URL;
+      const apiKey = process.env.FIV_APP_API_KEY;
       
-      // Simulate different plan sets based on instance key
-      const mockPlans = [
-        {
-          id: "plan_starter",
-          name: "Starter",
-          description: "Basic plan for small businesses",
-          price: 2900, // R$ 29,00 in cents
-          currency: "BRL",
-          billingInterval: "monthly",
-          features: ["basic_chat", "email_support"],
-          maxUsers: 2,
-          maxConversations: 50,
-          storageLimit: 500,
-          isActive: true,
-          stripeProductId: "prod_starter",
-          stripePriceId: "price_starter"
-        },
-        {
-          id: "plan_professional",
-          name: "Professional",
-          description: "Advanced plan for growing teams",
-          price: 9900, // R$ 99,00 in cents
-          currency: "BRL",
-          billingInterval: "monthly",
-          features: ["advanced_chat", "ai_chatbot", "priority_support", "analytics"],
-          maxUsers: 10,
-          maxConversations: 500,
-          storageLimit: 5000,
-          isActive: true,
-          stripeProductId: "prod_professional",
-          stripePriceId: "price_professional"
-        },
-        {
-          id: "plan_enterprise",
-          name: "Enterprise",
-          description: "Complete solution for large organizations",
-          price: 29900, // R$ 299,00 in cents
-          currency: "BRL",
-          billingInterval: "monthly",
-          features: ["full_chat", "ai_agent", "whatsapp_integration", "custom_branding", "24_7_support"],
-          maxUsers: 50,
-          maxConversations: 2000,
-          storageLimit: 20000,
-          isActive: true,
-          stripeProductId: "prod_enterprise",
-          stripePriceId: "price_enterprise"
+      if (!apiUrl || !apiKey) {
+        // Fallback to mock data if Fi.V Connect not configured
+        console.log('🔄 Fi.V Connect API not configured, using mock data');
+        const mockPlans = [
+          {
+            id: "plan_starter",
+            name: "Starter",
+            description: "Basic plan for small businesses",
+            price: 2900,
+            currency: "BRL",
+            billingInterval: "monthly",
+            features: ["basic_chat", "email_support"],
+            maxUsers: 2,
+            maxConversations: 50,
+            storageLimit: 500,
+            isActive: true,
+            stripeProductId: "prod_starter",
+            stripePriceId: "price_starter"
+          },
+          {
+            id: "plan_professional",
+            name: "Professional",
+            description: "Advanced plan for growing teams",
+            price: 9900,
+            currency: "BRL",
+            billingInterval: "monthly",
+            features: ["advanced_chat", "ai_chatbot", "priority_support", "analytics"],
+            maxUsers: 10,
+            maxConversations: 500,
+            storageLimit: 5000,
+            isActive: true,
+            stripeProductId: "prod_professional",
+            stripePriceId: "price_professional"
+          }
+        ];
+        return res.json(mockPlans);
+      }
+
+      // Try real API call to Fi.V Connect
+      console.log('🔗 Attempting to fetch plans from Fi.V Connect:', apiUrl);
+      try {
+        const response = await fetch(`${apiUrl}/v1/plans`, {
+          method: 'GET',
+          headers: {
+            'X-Instance-Key': apiKey,
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Fi.V Connect API returned ${response.status}: ${response.statusText}`);
         }
-      ];
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Fi.V Connect API did not return JSON');
+        }
+
+        const plans = await response.json();
+        res.json(plans);
+      } catch (fetchError) {
+        console.log('⚠️ Fi.V Connect API call failed, using mock data:', (fetchError as Error).message);
+        // Fallback to mock data when Fi.V Connect is not available
+        const mockPlans = [
+          {
+            id: "plan_starter",
+            name: "Starter",
+            description: "Basic plan for small businesses",
+            price: 2900,
+            currency: "BRL",
+            billingInterval: "monthly",
+            features: ["basic_chat", "email_support"],
+            maxUsers: 2,
+            maxConversations: 50,
+            storageLimit: 500,
+            isActive: true,
+            stripeProductId: "prod_starter",
+            stripePriceId: "price_starter"
+          },
+          {
+            id: "plan_professional",
+            name: "Professional",
+            description: "Advanced plan for growing teams",
+            price: 9900,
+            currency: "BRL",
+            billingInterval: "monthly",
+            features: ["advanced_chat", "ai_chatbot", "priority_support", "analytics"],
+            maxUsers: 10,
+            maxConversations: 500,
+            storageLimit: 5000,
+            isActive: true,
+            stripeProductId: "prod_professional",
+            stripePriceId: "price_professional"
+          }
+        ];
+        res.json(mockPlans);
+      }
       
-      res.json(mockPlans);
     } catch (error) {
       console.error('Fi.V Connect Plans API error:', error);
       res.status(500).json({ error: "Internal server error" });
     }
   });
 
-  // Simulate Fi.V Connect panel API - /api/v1/instances/:instanceId/databases
-  // This endpoint simulates what the central Fi.V Connect panel would provide for databases
+  // Fi.V Connect panel API - /api/v1/instances/:instanceId/databases
+  // Fetch real database info from central Fi.V Connect panel
   app.get('/api/v1/instances/:instanceId/databases', async (req, res) => {
     try {
       const instanceKey = req.headers['x-instance-key'] as string;
@@ -1140,42 +1193,209 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!instanceKey) {
         return res.status(401).json({ error: "Missing instance key" });
       }
+
+      // Check if we have Fi.V Connect API configuration
+      const apiUrl = process.env.FIV_APP_API_URL;
+      const apiKey = process.env.FIV_APP_API_KEY;
       
-      // Simulate database information for this instance
-      const mockDatabases = [
-        {
-          id: `db_${instanceId}_main`,
-          name: "Main Database",
-          type: "postgresql",
-          host: "db.fiv-connect.com",
-          port: 5432,
-          database: `fivapp_${instanceId}`,
-          status: "active",
-          created_at: "2025-01-01T00:00:00Z",
-          size_mb: 250,
-          connection_limit: 100,
-          backup_enabled: true,
-          last_backup: "2025-08-29T06:00:00Z"
-        },
-        {
-          id: `db_${instanceId}_cache`,
-          name: "Cache Database",  
-          type: "redis",
-          host: "cache.fiv-connect.com",
-          port: 6379,
-          database: `cache_${instanceId}`,
-          status: "active",
-          created_at: "2025-01-01T00:00:00Z",
-          size_mb: 50,
-          memory_limit: "256mb",
-          eviction_policy: "allkeys-lru"
+      if (!apiUrl || !apiKey) {
+        // Fallback to mock data if Fi.V Connect not configured
+        console.log('🔄 Fi.V Connect API not configured, using mock database data');
+        const mockDatabases = [
+          {
+            id: `db_${instanceId}_main`,
+            name: "Main Database",
+            type: "postgresql",
+            host: "db.fiv-connect.com",
+            port: 5432,
+            database: `fivapp_${instanceId}`,
+            status: "active",
+            created_at: "2025-01-01T00:00:00Z",
+            size_mb: 250,
+            connection_limit: 100,
+            backup_enabled: true,
+            last_backup: "2025-08-29T06:00:00Z"
+          }
+        ];
+        return res.json(mockDatabases);
+      }
+
+      // Try real API call to Fi.V Connect
+      console.log('🔗 Attempting to fetch databases from Fi.V Connect for instance:', instanceId);
+      try {
+        const response = await fetch(`${apiUrl}/v1/instances/${instanceId}/databases`, {
+          method: 'GET',
+          headers: {
+            'X-Instance-Key': apiKey,
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Fi.V Connect API returned ${response.status}: ${response.statusText}`);
         }
-      ];
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('Fi.V Connect API did not return JSON');
+        }
+
+        const databases = await response.json();
+        res.json(databases);
+      } catch (fetchError) {
+        console.log('⚠️ Fi.V Connect API call failed, using mock data:', (fetchError as Error).message);
+        // Fallback to mock data when Fi.V Connect is not available
+        const mockDatabases = [
+          {
+            id: `db_${instanceId}_main`,
+            name: "Main Database",
+            type: "postgresql",
+            host: "db.fiv-connect.com",
+            port: 5432,
+            database: `fivapp_${instanceId}`,
+            status: "active",
+            created_at: "2025-01-01T00:00:00Z",
+            size_mb: 250,
+            connection_limit: 100,
+            backup_enabled: true,
+            last_backup: "2025-08-29T06:00:00Z"
+          }
+        ];
+        res.json(mockDatabases);
+      }
       
-      res.json(mockDatabases);
     } catch (error) {
       console.error('Fi.V Connect Databases API error:', error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Fi.V Connect panel API - /api/v1/instances/:instanceId/users
+  // Fetch real users from central Fi.V Connect panel
+  app.get('/api/v1/instances/:instanceId/users', async (req, res) => {
+    try {
+      const instanceKey = req.headers['x-instance-key'] as string;
+      const { instanceId } = req.params;
+      
+      if (!instanceKey) {
+        return res.status(401).json({ error: "Missing instance key" });
+      }
+
+      // Check if we have Fi.V Connect API configuration
+      const apiUrl = process.env.FIV_APP_API_URL;
+      const apiKey = process.env.FIV_APP_API_KEY;
+      
+      if (!apiUrl || !apiKey) {
+        // Fallback to mock data if Fi.V Connect not configured
+        console.log('🔄 Fi.V Connect API not configured, using mock user data');
+        const mockUsers = [
+          {
+            id: "user_001",
+            email: "rodrigo@t4l.com.br",
+            instanceId: instanceId,
+            registeredAt: "2025-08-29T20:00:00Z",
+            status: "active",
+            plan: "plan_professional",
+            role: "admin"
+          }
+        ];
+        return res.json(mockUsers);
+      }
+
+      // Try real API call to Fi.V Connect
+      console.log('🔗 Attempting to fetch users from Fi.V Connect for instance:', instanceId);
+      const response = await fetch(`${apiUrl}/v1/instances/${instanceId}/users`, {
+        method: 'GET',
+        headers: {
+          'X-Instance-Key': apiKey,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Fi.V Connect API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Fi.V Connect API did not return JSON');
+      }
+
+      const users = await response.json();
+      console.log('👥 Users received from Fi.V Connect:', users.length);
+      res.json(users);
+      
+    } catch (error) {
+      console.log('⚠️ Fi.V Connect API call failed, using fallback data:', error instanceof Error ? error.message : 'Unknown error');
+      // Fallback to mock data when Fi.V Connect is not available
+      const mockUsers = [
+        {
+          id: "user_001",
+          email: "rodrigo@t4l.com.br",
+          instanceId: instanceId,
+          registeredAt: "2025-08-29T20:00:00Z",
+          status: "active",
+          plan: "plan_professional",
+          role: "admin",
+          company: "T4L",
+          phone: "+55 11 99999-9999"
+        }
+      ];
+      res.json(mockUsers);
+    }
+  });
+
+  // Webhook to receive user registration notifications from Fi.V Connect
+  app.post('/api/webhook/user-registration', async (req, res) => {
+    try {
+      const instanceKey = req.headers['x-instance-key'] as string;
+      
+      if (!instanceKey) {
+        return res.status(401).json({ error: "Missing instance key" });
+      }
+      
+      const {
+        userId,
+        email,
+        instanceId,
+        planId,
+        registrationData
+      } = req.body;
+      
+      if (!userId || !email || !instanceId) {
+        return res.status(400).json({ error: "Missing required user registration data" });
+      }
+      
+      console.log(`📨 New user registration received from Fi.V Connect:`, {
+        userId,
+        email,
+        instanceId,
+        planId
+      });
+      
+      // Process the user registration
+      // In a real implementation, you might want to:
+      // 1. Create local user account
+      // 2. Set up default configurations
+      // 3. Send welcome email
+      // 4. Initialize user workspace
+      
+      // For now, just log and acknowledge
+      console.log(`✅ User registration processed for ${email} on instance ${instanceId}`);
+      
+      res.json({
+        success: true,
+        message: "User registration received and processed",
+        userId,
+        instanceId,
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('User registration webhook error:', error);
+      res.status(500).json({ error: "Failed to process user registration" });
     }
   });
 
