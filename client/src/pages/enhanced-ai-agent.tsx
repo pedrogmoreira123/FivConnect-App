@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { useT } from '@/hooks/use-translation';
 import { useToast } from '@/hooks/use-toast';
 import PlaceholderHelper from '@/components/chatbot/placeholder-helper';
+import { AIAgentFeatureGate } from '@/components/feature/feature-gate';
 import { 
   Bot, 
   MessageCircle, 
@@ -88,7 +89,8 @@ export default function EnhancedAIAgentPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <AIAgentFeatureGate>
+      <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center space-x-2">
@@ -296,6 +298,7 @@ export default function EnhancedAIAgentPage() {
           <PlaceholderHelper onPlaceholderInsert={insertPlaceholder} />
         </div>
       </div>
-    </div>
+      </div>
+    </AIAgentFeatureGate>
   );
 }

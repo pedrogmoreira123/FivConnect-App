@@ -11,7 +11,9 @@ import {
   insertQueueSchema,
   insertSettingsSchema,
   insertAiAgentConfigSchema,
-  insertFeedbackSchema
+  insertFeedbackSchema,
+  insertInstanceConfigSchema,
+  insertStatusCheckLogSchema
 } from "@shared/schema";
 import { 
   authenticateUser,
@@ -800,6 +802,139 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(updatedFeedback);
     } catch (error) {
       res.status(400).json({ message: "Failed to vote on feedback" });
+    }
+  });
+
+  // Fi.V Connect Integration API endpoints
+  
+  // Simulate Fi.V Connect panel API - /api/v1/instances/status
+  // This endpoint simulates what the central Fi.V Connect panel would provide
+  app.get('/api/v1/instances/status', async (req, res) => {
+    try {
+      const instanceKey = req.headers['x-instance-key'] as string;
+      
+      if (!instanceKey) {
+        return res.status(401).json({ error: "Missing instance key" });
+      }
+      
+      // In a real implementation, this would validate the instanceKey against the central database
+      // For simulation, we'll return a default response based on the key
+      const instanceId = instanceKey.startsWith('dev_') ? 'dev-instance-123' : 'client-abc-123';
+      
+      // Simulate different statuses based on instance key for testing
+      let status = 'active';
+      let billingStatus = 'paid';
+      let enabledFeatures = { chat: true, chatbot: true, ai_agent: false };
+      
+      if (instanceKey.includes('suspended')) {
+        status = 'suspended';
+      } else if (instanceKey.includes('payment')) {
+        status = 'pending_payment';
+        billingStatus = 'overdue';
+      } else if (instanceKey.includes('premium')) {
+        enabledFeatures.ai_agent = true;
+      }
+      
+      const response = {
+        instanceId,
+        status,
+        billingStatus,
+        enabledFeatures
+      };
+      
+      res.json(response);
+    } catch (error) {
+      console.error('Fi.V Connect API error:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Instance configuration management endpoints
+  
+  // Get current instance configuration
+  app.get('/api/instance/config', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const config = await storage.getInstanceConfig();
+      res.json(config);
+    } catch (error) {
+      console.error('Failed to get instance config:', error);
+      res.status(500).json({ message: "Failed to get instance configuration" });
+    }
+  });
+
+  // Create or update instance configuration
+  app.post('/api/instance/config', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const configData = insertInstanceConfigSchema.parse(req.body);
+      const config = await storage.createOrUpdateInstanceConfig(configData);
+      res.json(config);
+    } catch (error) {
+      console.error('Failed to update instance config:', error);
+      res.status(400).json({ message: "Failed to update instance configuration" });
+    }
+  });
+
+  // Manual status check - triggers immediate check with Fi.V Connect
+  app.post('/api/instance/check-status', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const result = await storage.performStatusCheck('manual');
+      res.json(result);
+    } catch (error) {
+      console.error('Manual status check failed:', error);
+      res.status(500).json({ message: "Status check failed" });
+    }
+  });
+
+  // Get status check logs
+  app.get('/api/instance/status-logs', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const logs = await storage.getStatusCheckLogs();
+      res.json(logs);
+    } catch (error) {
+      console.error('Failed to get status logs:', error);
+      res.status(500).json({ message: "Failed to get status logs" });
+    }
+  });
+
+  // Get current instance status (for UI components)
+  app.get('/api/instance/status', async (req, res) => {
+    try {
+      const config = await storage.getInstanceConfig();
+      
+      if (!config) {
+        return res.json({
+          status: 'active',
+          billingStatus: 'paid',
+          enabledFeatures: { chat: true, chatbot: true, ai_agent: false },
+          isLocked: false,
+          needsPaymentNotification: false
+        });
+      }
+
+      res.json({
+        status: config.status,
+        billingStatus: config.billingStatus,
+        enabledFeatures: config.enabledFeatures,
+        isLocked: config.isLocked,
+        needsPaymentNotification: config.status === 'pending_payment' && !config.paymentNotificationShown,
+        lockMessage: config.lockMessage,
+        lastStatusCheck: config.lastStatusCheck,
+        lastSuccessfulCheck: config.lastSuccessfulCheck
+      });
+    } catch (error) {
+      console.error('Failed to get instance status:', error);
+      res.status(500).json({ message: "Failed to get instance status" });
+    }
+  });
+
+  // Mark payment notification as shown
+  app.post('/api/instance/mark-notification-shown', async (req, res) => {
+    try {
+      await storage.markPaymentNotificationShown();
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Failed to mark notification as shown:', error);
+      res.status(500).json({ message: "Failed to update notification status" });
     }
   });
 

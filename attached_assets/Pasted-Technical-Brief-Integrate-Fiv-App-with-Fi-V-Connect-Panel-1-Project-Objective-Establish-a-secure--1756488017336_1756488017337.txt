@@ -1,0 +1,54 @@
+Technical Brief: Integrate Fiv.App with Fi.V Connect Panel
+1. Project Objective
+Establish a secure, one-way communication channel from the Fiv.App client instances to the central Fi.V Connect admin panel. The purpose is to allow each Fiv.App instance to fetch its own status and configuration, enabling centralized control.
+
+2. Implementation Steps
+2.1. STEP 1: Create a Secure API on Fi.V Connect
+Action: Develop a new set of secure, read-only API endpoints on the Fi.V Connect backend.
+
+Authentication:
+
+This API must be protected. Each Fiv.App instance should be issued a unique, long-lived API key (instance_key) for authentication.
+
+Endpoint Definition:
+
+Create an endpoint, for example: GET /api/v1/instances/status
+
+When a Fiv.App instance calls this endpoint with its valid instance_key, the API should return a JSON object containing its status and configuration.
+
+Example JSON Response:
+
+{
+  "instanceId": "client-abc-123",
+  "status": "active", // Possible values: active, suspended, pending_payment
+  "billingStatus": "paid", // Possible values: paid, overdue
+  "enabledFeatures": {
+    "chat": true,
+    "chatbot": true,
+    "ai_agent": false
+  }
+}
+
+2.2. STEP 2: Implement a Status Check Service within Fiv.App
+Action: Inside the Fiv.App backend, create a service that runs periodically (e.g., on startup and then every hour) or on-demand.
+
+Functionality:
+
+This service will make a secure, authenticated call to the GET /api/v1/instances/status endpoint on the Fi.V Connect panel.
+
+It will store its instance_key in its environment variables for the API call.
+
+Logic based on API Response:
+
+If status is "suspended": The Fiv.App instance must immediately lock out all users, preventing login and further use. It should display a clear message like "This account has been suspended. Please contact support."
+
+If status is "pending_payment": The app should remain functional but display a persistent, non-intrusive banner to all users, especially admins, stating "A payment is pending. Please resolve the invoice to ensure continued service."
+
+If status is "active": The application operates normally.
+
+The enabledFeatures object can be used to dynamically enable or disable features in the UI.
+
+3. Security Requirements
+All communication between Fiv.App and Fi.V Connect must be over HTTPS.
+
+The instance_key must be treated as a secret and stored securely within each Fiv.App's environment configuration.
