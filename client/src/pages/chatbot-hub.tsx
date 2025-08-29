@@ -187,243 +187,209 @@ export default function ChatbotHubPage() {
 
         {/* Configuration Sections */}
         {selectedOption === 'chatbot' && (
-          <>
-            {/* Placeholders Information Card */}
-            <Card className="border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2 text-blue-900 dark:text-blue-100">
-                  <Info className="h-5 w-5" />
-                  <span>Placeholders Disponíveis</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                  <div className="p-2 bg-white dark:bg-blue-800 rounded border">
-                    <code className="text-blue-600 dark:text-blue-300">{'{{nome_cliente}}'}</code>
-                    <p className="text-xs text-muted-foreground mt-1">Nome do cliente</p>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <MessageCircle className="h-5 w-5 text-blue-600" />
+                <span>Configuração do Chatbot Tradicional</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-6">
+                {/* Mensagem Bem-Vindo */}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="welcome-message" className="text-base font-medium">Mensagem Bem-Vindo</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Primeira mensagem enviada quando o cliente inicia uma conversa</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
-                  <div className="p-2 bg-white dark:bg-blue-800 rounded border">
-                    <code className="text-blue-600 dark:text-blue-300">{'{{nome_empresa}}'}</code>
-                    <p className="text-xs text-muted-foreground mt-1">Nome da empresa</p>
-                  </div>
-                  <div className="p-2 bg-white dark:bg-blue-800 rounded border">
-                    <code className="text-blue-600 dark:text-blue-300">{'{{protocolo}}'}</code>
-                    <p className="text-xs text-muted-foreground mt-1">Protocolo único</p>
-                  </div>
-                  <div className="p-2 bg-white dark:bg-blue-800 rounded border">
-                    <code className="text-blue-600 dark:text-blue-300">{'{{data_abertura}}'}</code>
-                    <p className="text-xs text-muted-foreground mt-1">Data de abertura</p>
-                  </div>
-                  <div className="p-2 bg-white dark:bg-blue-800 rounded border">
-                    <code className="text-blue-600 dark:text-blue-300">{'{{data_hora}}'}</code>
-                    <p className="text-xs text-muted-foreground mt-1">Data e hora atual</p>
-                  </div>
-                  <div className="p-2 bg-white dark:bg-blue-800 rounded border">
-                    <code className="text-blue-600 dark:text-blue-300">{'{{numero_telefone}}'}</code>
-                    <p className="text-xs text-muted-foreground mt-1">Telefone do cliente</p>
-                  </div>
-                  <div className="p-2 bg-white dark:bg-blue-800 rounded border">
-                    <code className="text-blue-600 dark:text-blue-300">{'{{nome_agente}}'}</code>
-                    <p className="text-xs text-muted-foreground mt-1">Nome do agente</p>
-                  </div>
-                  <div className="p-2 bg-white dark:bg-blue-800 rounded border">
-                    <code className="text-blue-600 dark:text-blue-300">{'{{departamento}}'}</code>
-                    <p className="text-xs text-muted-foreground mt-1">Departamento selecionado</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Messages Configuration */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <MessageCircle className="h-5 w-5 text-blue-600" />
-                  <span>Configuração do Chatbot Tradicional</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-6">
-                  {/* Mensagem Bem-Vindo */}
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-2">
-                      <Label htmlFor="welcome-message" className="text-base font-medium">Mensagem Bem-Vindo</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Primeira mensagem enviada quando o cliente inicia uma conversa</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Textarea
-                      id="welcome-message"
-                      value={chatbotSettings.welcomeMessage}
-                      onChange={(e) => setChatbotSettings(prev => ({ ...prev, welcomeMessage: e.target.value }))}
-                      placeholder="Olá, {{nome_cliente}}, Seja Bem-Vindo(a) à {{nome_empresa}}."
-                      className="min-h-[100px] font-mono text-sm"
-                      data-testid="textarea-welcome-message"
-                    />
-                  </div>
-
-                  <Separator />
-
-                  {/* Mensagem Escolha Departamento */}
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-2">
-                      <Label htmlFor="department-message" className="text-base font-medium">Mensagem Escolha Departamento</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Mensagem para apresentar opções de departamentos disponíveis</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Textarea
-                      id="department-message"
-                      value={chatbotSettings.departmentMessage}
-                      onChange={(e) => setChatbotSettings(prev => ({ ...prev, departmentMessage: e.target.value }))}
-                      placeholder="Escolha uma das opções abaixo:"
-                      className="min-h-[100px] font-mono text-sm"
-                      data-testid="textarea-department-message"
-                    />
-                  </div>
-
-                  <Separator />
-
-                  {/* Mensagem Fila Atendimento */}
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-2">
-                      <Label htmlFor="queue-message" className="text-base font-medium">Mensagem Fila Atendimento</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Mensagem exibida quando o cliente é direcionado para fila de atendimento</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Textarea
-                      id="queue-message"
-                      value={chatbotSettings.queueMessage}
-                      onChange={(e) => setChatbotSettings(prev => ({ ...prev, queueMessage: e.target.value }))}
-                      placeholder="Aguarde, você será atendido em breve."
-                      className="min-h-[100px] font-mono text-sm"
-                      data-testid="textarea-queue-message"
-                    />
-                  </div>
-
-                  <Separator />
-
-                  {/* Mensagem Finalização Chamado */}
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-2">
-                      <Label htmlFor="finalization-message" className="text-base font-medium">Mensagem Finalização Chamado</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Mensagem de agradecimento enviada ao finalizar o atendimento</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Textarea
-                      id="finalization-message"
-                      value={chatbotSettings.finalizationMessage}
-                      onChange={(e) => setChatbotSettings(prev => ({ ...prev, finalizationMessage: e.target.value }))}
-                      placeholder="Agradecemos o seu contato!"
-                      className="min-h-[100px] font-mono text-sm"
-                      data-testid="textarea-finalization-message"
-                    />
-                  </div>
-
-                  <Separator />
-
-                  {/* Mensagem Fora Horário Operação */}
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-2">
-                      <Label htmlFor="offline-message" className="text-base font-medium">Mensagem Fora Horário Operação</Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Mensagem exibida quando o atendimento está fora do horário comercial</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Textarea
-                      id="offline-message"
-                      value={chatbotSettings.offlineMessage}
-                      onChange={(e) => setChatbotSettings(prev => ({ ...prev, offlineMessage: e.target.value }))}
-                      placeholder="Não estamos online no momento."
-                      className="min-h-[100px] font-mono text-sm"
-                      data-testid="textarea-offline-message"
-                    />
-                  </div>
-
-                  <Separator />
-
-                  {/* Configuration Options */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-medium">Resposta Automática</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Enviar respostas automáticas para mensagens comuns
-                        </p>
-                      </div>
-                      <Switch
-                        checked={chatbotSettings.autoReply}
-                        onCheckedChange={(value) => setChatbotSettings(prev => ({ ...prev, autoReply: value }))}
-                        data-testid="switch-auto-reply"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-medium">Horário Comercial</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Aplicar regras de horário de funcionamento
-                        </p>
-                      </div>
-                      <Switch
-                        checked={chatbotSettings.workingHours}
-                        onCheckedChange={(value) => setChatbotSettings(prev => ({ ...prev, workingHours: value }))}
-                        data-testid="switch-working-hours"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-medium">Transferir para Agente</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Permitir transferência para atendimento humano
-                        </p>
-                      </div>
-                      <Switch
-                        checked={chatbotSettings.transferToAgent}
-                        onCheckedChange={(value) => setChatbotSettings(prev => ({ ...prev, transferToAgent: value }))}
-                        data-testid="switch-transfer-agent"
-                      />
-                    </div>
-                  </div>
+                  <Textarea
+                    id="welcome-message"
+                    value={chatbotSettings.welcomeMessage}
+                    onChange={(e) => setChatbotSettings(prev => ({ ...prev, welcomeMessage: e.target.value }))}
+                    placeholder="Olá, {{nome_cliente}}, Seja Bem-Vindo(a) à {{nome_empresa}}."
+                    className="min-h-[100px] font-mono text-sm"
+                    data-testid="textarea-welcome-message"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Placeholders disponíveis: <code>{'{{nome_cliente}}'}</code>, <code>{'{{nome_empresa}}'}</code>, <code>{'{{protocolo}}'}</code>, <code>{'{{data_abertura}}'}</code>
+                  </p>
                 </div>
 
-                <div className="flex justify-end">
-                  <Button onClick={handleSave} className="bg-green-600 hover:bg-green-700" data-testid="button-save-chatbot">
-                    <Save className="h-4 w-4 mr-2" />
-                    Salvar
-                  </Button>
+                <Separator />
+
+                {/* Mensagem Escolha Departamento */}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="department-message" className="text-base font-medium">Mensagem Escolha Departamento</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Mensagem para apresentar opções de departamentos disponíveis</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Textarea
+                    id="department-message"
+                    value={chatbotSettings.departmentMessage}
+                    onChange={(e) => setChatbotSettings(prev => ({ ...prev, departmentMessage: e.target.value }))}
+                    placeholder="Escolha uma das opções abaixo:"
+                    className="min-h-[100px] font-mono text-sm"
+                    data-testid="textarea-department-message"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Placeholders disponíveis: <code>{'{{nome_empresa}}'}</code>, <code>{'{{departamento}}'}</code>
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
-          </>
+
+                <Separator />
+
+                {/* Mensagem Fila Atendimento */}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="queue-message" className="text-base font-medium">Mensagem Fila Atendimento</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Mensagem exibida quando o cliente é direcionado para fila de atendimento</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Textarea
+                    id="queue-message"
+                    value={chatbotSettings.queueMessage}
+                    onChange={(e) => setChatbotSettings(prev => ({ ...prev, queueMessage: e.target.value }))}
+                    placeholder="Aguarde, você será atendido em breve."
+                    className="min-h-[100px] font-mono text-sm"
+                    data-testid="textarea-queue-message"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Placeholders disponíveis: <code>{'{{nome_empresa}}'}</code>, <code>{'{{nome_agente}}'}</code>
+                  </p>
+                </div>
+
+                <Separator />
+
+                {/* Mensagem Finalização Chamado */}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="finalization-message" className="text-base font-medium">Mensagem Finalização Chamado</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Mensagem de agradecimento enviada ao finalizar o atendimento</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Textarea
+                    id="finalization-message"
+                    value={chatbotSettings.finalizationMessage}
+                    onChange={(e) => setChatbotSettings(prev => ({ ...prev, finalizationMessage: e.target.value }))}
+                    placeholder="Agradecemos o seu contato!"
+                    className="min-h-[100px] font-mono text-sm"
+                    data-testid="textarea-finalization-message"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Placeholders disponíveis: <code>{'{{nome_cliente}}'}</code>, <code>{'{{protocolo}}'}</code>
+                  </p>
+                </div>
+
+                <Separator />
+
+                {/* Mensagem Fora Horário Operação */}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="offline-message" className="text-base font-medium">Mensagem Fora Horário Operação</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Mensagem exibida quando o atendimento está fora do horário comercial</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <Textarea
+                    id="offline-message"
+                    value={chatbotSettings.offlineMessage}
+                    onChange={(e) => setChatbotSettings(prev => ({ ...prev, offlineMessage: e.target.value }))}
+                    placeholder="Não estamos online no momento."
+                    className="min-h-[100px] font-mono text-sm"
+                    data-testid="textarea-offline-message"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Placeholders disponíveis: <code>{'{{data_hora}}'}</code>, <code>{'{{nome_empresa}}'}</code>
+                  </p>
+                </div>
+
+                <Separator />
+
+                {/* Configuration Options */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Resposta Automática</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Enviar respostas automáticas para mensagens comuns
+                      </p>
+                    </div>
+                    <Switch
+                      checked={chatbotSettings.autoReply}
+                      onCheckedChange={(value) => setChatbotSettings(prev => ({ ...prev, autoReply: value }))}
+                      data-testid="switch-auto-reply"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Horário Comercial</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Aplicar regras de horário de funcionamento
+                      </p>
+                    </div>
+                    <Switch
+                      checked={chatbotSettings.workingHours}
+                      onCheckedChange={(value) => setChatbotSettings(prev => ({ ...prev, workingHours: value }))}
+                      data-testid="switch-working-hours"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Transferir para Agente</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Permitir transferência para atendimento humano
+                      </p>
+                    </div>
+                    <Switch
+                      checked={chatbotSettings.transferToAgent}
+                      onCheckedChange={(value) => setChatbotSettings(prev => ({ ...prev, transferToAgent: value }))}
+                      data-testid="switch-transfer-agent"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Button onClick={handleSave} className="bg-green-600 hover:bg-green-700" data-testid="button-save-chatbot">
+                  <Save className="h-4 w-4 mr-2" />
+                  Salvar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {selectedOption === 'ai-agents' && (
@@ -514,9 +480,9 @@ export default function ChatbotHubPage() {
               </div>
 
               <div className="flex justify-end">
-                <Button onClick={handleSave} data-testid="button-save-ai-agents">
+                <Button onClick={handleSave} className="bg-green-600 hover:bg-green-700" data-testid="button-save-ai-agents">
                   <Save className="h-4 w-4 mr-2" />
-                  Salvar Configurações
+                  Salvar
                 </Button>
               </div>
             </CardContent>
