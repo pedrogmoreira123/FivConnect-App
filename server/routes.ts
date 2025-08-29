@@ -1185,6 +1185,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Route to set up production data (creates clean production environment)
+  app.post('/api/environment/setup-production', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const { companyName, adminEmail, adminPassword } = req.body;
+      
+      if (!companyName || !adminEmail || !adminPassword) {
+        return res.status(400).json({ 
+          message: "Company name, admin email, and admin password are required" 
+        });
+      }
+      
+      // Create production admin user
+      const hashedPassword = await bcrypt.hash(adminPassword, 10);
+      
+      try {
+        await storage.createUser({
+          name: "System Administrator",
+          email: adminEmail,
+          password: hashedPassword,
+          role: "admin",
+          isOnline: true
+        });
+      } catch (error) {
+        // User might already exist, update instead
+        const existingUser = await storage.getUserByEmail(adminEmail);
+        if (existingUser) {
+          await storage.updateUser(existingUser.id, {
+            password: hashedPassword
+          });
+        }
+      }
+      
+      // Create production queues if they don't exist
+      const existingQueues = await storage.getAllQueues();
+      if (existingQueues.length === 0) {
+        await storage.createQueue({
+          name: "Technical Support",
+          description: "Help with technical issues",
+          workingHours: { days: "Mon-Fri", hours: "9:00-18:00" },
+          messageInsideHours: "Welcome to Technical Support. An agent will be with you shortly.",
+          messageOutsideHours: "We are currently closed. Please leave a message and we will get back to you.",
+          isActive: true
+        });
+        
+        await storage.createQueue({
+          name: "Sales", 
+          description: "Sales inquiries and quotes",
+          workingHours: { days: "Mon-Sat", hours: "8:00-20:00" },
+          messageInsideHours: "Welcome to Sales! How can we help you today?",
+          messageOutsideHours: "Our sales team is currently unavailable. Please leave a message.",
+          isActive: true
+        });
+      }
+      
+      // Update company name setting
+      await storage.updateSetting("companyName", companyName);
+      
+      res.json({ 
+        message: "Production environment setup completed",
+        environment: storage.getCurrentEnvironment(),
+        companyName,
+        adminEmail
+      });
+      
+    } catch (error) {
+      console.error('Setup production error:', error);
+      res.status(500).json({ message: "Failed to setup production environment" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

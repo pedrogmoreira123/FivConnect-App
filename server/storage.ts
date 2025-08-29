@@ -187,6 +187,7 @@ export class DatabaseStorage implements IStorage {
   constructor() {
     // Determine current environment: development when NODE_ENV is development, otherwise production
     this.currentEnvironment = process.env.NODE_ENV === 'development' ? 'development' : 'production';
+    console.log(`🌍 Database Environment: ${this.currentEnvironment} (NODE_ENV: ${process.env.NODE_ENV})`);
     this.initializeDefaultData();
   }
 
@@ -221,6 +222,11 @@ export class DatabaseStorage implements IStorage {
       console.error('❌ Error cleaning test data:', error);
       return false;
     }
+  }
+
+  // Method to ensure production environment shows only production data
+  private getEnvironmentFilter() {
+    return this.getCurrentEnvironment() as "development" | "production";
   }
 
   private async initializeDefaultData() {
@@ -310,7 +316,7 @@ export class DatabaseStorage implements IStorage {
     // Tag new users with current environment
     const userWithEnv = {
       ...insertUser,
-      environment: this.getCurrentEnvironment() as "development" | "production"
+      environment: this.getEnvironmentFilter()
     };
     const [user] = await db.insert(users).values(userWithEnv).returning();
     return user;
@@ -328,12 +334,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllUsers(): Promise<User[]> {
-    // In production, show all users. In development, only show current environment
-    if (this.getCurrentEnvironment() === 'production') {
-      return await db.select().from(users);
-    } else {
-      return await db.select().from(users).where(eq(users.environment, this.getCurrentEnvironment() as "development" | "production"));
-    }
+    // Filter by current environment
+    return await db.select().from(users).where(eq(users.environment, this.getEnvironmentFilter()));
   }
   
   // Authentication operations
@@ -403,7 +405,7 @@ export class DatabaseStorage implements IStorage {
     // Tag new clients with current environment
     const clientWithEnv = {
       ...insertClient,
-      environment: this.getCurrentEnvironment() as "development" | "production"
+      environment: this.getEnvironmentFilter()
     };
     const [client] = await db.insert(clients).values(clientWithEnv).returning();
     return client;
@@ -421,14 +423,10 @@ export class DatabaseStorage implements IStorage {
   }
   
   async getAllClients(): Promise<Client[]> {
-    // In production, show all clients. In development, only show current environment
-    if (this.getCurrentEnvironment() === 'production') {
-      return await db.select().from(clients).orderBy(desc(clients.createdAt));
-    } else {
-      return await db.select().from(clients)
-        .where(eq(clients.environment, this.getCurrentEnvironment() as "development" | "production"))
-        .orderBy(desc(clients.createdAt));
-    }
+    // Filter by current environment
+    return await db.select().from(clients)
+      .where(eq(clients.environment, this.getEnvironmentFilter()))
+      .orderBy(desc(clients.createdAt));
   }
   
   // Announcement operations
@@ -473,7 +471,7 @@ export class DatabaseStorage implements IStorage {
     // Tag new conversations with current environment
     const conversationWithEnv = {
       ...insertConversation,
-      environment: this.getCurrentEnvironment() as "development" | "production"
+      environment: this.getEnvironmentFilter()
     };
     const [conversation] = await db.insert(conversations).values(conversationWithEnv).returning();
     return conversation;
@@ -499,13 +497,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllConversations(): Promise<Conversation[]> {
-    // In production, show all conversations. In development, only show current environment
-    if (this.getCurrentEnvironment() === 'production') {
-      return await db.select().from(conversations);
-    } else {
-      return await db.select().from(conversations)
-        .where(eq(conversations.environment, this.getCurrentEnvironment() as "development" | "production"));
-    }
+    // Filter by current environment
+    return await db.select().from(conversations)
+      .where(eq(conversations.environment, this.getEnvironmentFilter()));
   }
 
   // Message operations
@@ -518,7 +512,7 @@ export class DatabaseStorage implements IStorage {
     // Tag new messages with current environment
     const messageWithEnv = {
       ...insertMessage,
-      environment: this.getCurrentEnvironment() as "development" | "production"
+      environment: this.getEnvironmentFilter()
     };
     const [message] = await db.insert(messages).values(messageWithEnv).returning();
     return message;
@@ -545,7 +539,7 @@ export class DatabaseStorage implements IStorage {
     // Tag new queues with current environment
     const queueWithEnv = {
       ...insertQueue,
-      environment: this.getCurrentEnvironment() as "development" | "production"
+      environment: this.getEnvironmentFilter()
     };
     const [queue] = await db.insert(queues).values(queueWithEnv).returning();
     return queue;
@@ -563,13 +557,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllQueues(): Promise<Queue[]> {
-    // In production, show all queues. In development, only show current environment
-    if (this.getCurrentEnvironment() === 'production') {
-      return await db.select().from(queues);
-    } else {
-      return await db.select().from(queues)
-        .where(eq(queues.environment, this.getCurrentEnvironment() as "development" | "production"));
-    }
+    // Filter by current environment
+    return await db.select().from(queues)
+      .where(eq(queues.environment, this.getEnvironmentFilter()));
   }
 
   // Settings operations
