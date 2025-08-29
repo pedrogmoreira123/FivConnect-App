@@ -131,6 +131,8 @@ export default function EnhancedReportsPage() {
           </CardContent>
         </Card>
       </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Main Reports Tabs */}
       <Tabs defaultValue="conversations" className="space-y-6">
