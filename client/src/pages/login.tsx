@@ -1,0 +1,101 @@
+import { useState } from 'react';
+import { useLocation } from 'wouter';
+import { useAuth } from '@/hooks/use-auth';
+import { useSettings } from '@/contexts/settings-context';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
+import { useToast } from '@/hooks/use-toast';
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const { login } = useAuth();
+  const { settings } = useSettings();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      const success = await login(email, password);
+      if (success) {
+        setLocation('/');
+        toast({
+          title: "Welcome back!",
+          description: "You have successfully logged in.",
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Login failed",
+          description: "Invalid email or password.",
+        });
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An error occurred during login.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-accent/5">
+      <Card className="w-full max-w-md mx-4">
+        <CardContent className="p-8">
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-bold text-foreground mb-2" data-testid="text-company-name">
+              {settings.companyName}
+            </h1>
+            <p className="text-muted-foreground">WhatsApp Customer Service Platform</p>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                data-testid="input-email"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                data-testid="input-password"
+              />
+            </div>
+            
+            <Button 
+              type="submit" 
+              className="w-full" 
+              disabled={isLoading}
+              data-testid="button-signin"
+            >
+              {isLoading ? "Signing In..." : "Sign In"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
