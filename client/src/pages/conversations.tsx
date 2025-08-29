@@ -6,8 +6,6 @@ import { useMobile } from '@/hooks/use-mobile';
 import { 
   MessageCircle, 
   Search, 
-  Phone, 
-  Video, 
   MoreVertical,
   Send,
   Paperclip,
@@ -251,12 +249,6 @@ export default function ConversationsPage() {
                 </div>
               </div>
               <div className="flex items-center space-x-2">
-                <Button variant="ghost" size="sm" data-testid="button-voice-call">
-                  <Phone className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="sm" data-testid="button-video-call">
-                  <Video className="h-4 w-4" />
-                </Button>
                 <Button variant="ghost" size="sm" data-testid="button-more-options">
                   <MoreVertical className="h-4 w-4" />
                 </Button>

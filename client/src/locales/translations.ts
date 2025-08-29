@@ -54,12 +54,12 @@ export const ptBRTranslations = {
     main: "Principal",
     management: "Gerenciamento",
     dashboard: "Dashboard",
-    conversations: "CHAT",
+    conversations: "Chat",
     tickets: "Atendimentos",
     clients: "Clientes",
     queues: "Filas",
     users: "Usuários",
-    aiAgent: "Agente I.A.",
+    chatBot: "ChatBot",
     reports: "Relatórios",
     settings: "Configurações",
     customerService: "Atendimento ao Cliente"
@@ -152,15 +152,15 @@ export const ptBRTranslations = {
     userError: "Erro na operação",
     userErrorDesc: "Não foi possível completar a operação. Tente novamente."
   },
-  aiAgent: {
-    title: "Agente I.A.",
-    configuration: "Configuração do Agente Virtual",
-    enableAgent: "Habilitar Agente I.A.",
+  chatBot: {
+    title: "ChatBot",
+    configuration: "Configuração do ChatBot",
+    enableAgent: "Habilitar ChatBot",
     welcomeMessage: "Mensagem de Boas-vindas",
     responseDelay: "Atraso da Resposta (segundos)",
     welcomePlaceholder: "Digite a mensagem de boas-vindas...",
     configurationSaved: "Configuração salva!",
-    configurationSavedDesc: "As configurações do agente I.A. foram atualizadas.",
+    configurationSavedDesc: "As configurações do ChatBot foram atualizadas.",
     configurationError: "Erro ao salvar",
     configurationErrorDesc: "Não foi possível salvar as configurações. Tente novamente."
   },

@@ -1,10 +1,11 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { UserRole } from '@/types';
+import { apiRequest } from '@/lib/queryClient';
 
 interface AuthContextType {
   user: UserRole | null;
   login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -17,27 +18,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    // Mock authentication - in real app, this would call API
-    if (email && password) {
-      const mockUser: UserRole = {
-        id: "1",
-        name: "John Doe",
-        email: email,
-        role: "admin",
-        isOnline: true,
-        initials: "JD"
-      };
+    try {
+      const response = await apiRequest('POST', '/api/auth/login', { email, password });
+      const data = await response.json();
       
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
-      return true;
+      if (data.user && data.token) {
+        const { user, token } = data;
+        
+        // Create user object with initials
+        const userWithInitials: UserRole = {
+          ...user,
+          initials: user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+        };
+        
+        setUser(userWithInitials);
+        
+        // Store both user and token
+        localStorage.setItem('user', JSON.stringify(userWithInitials));
+        localStorage.setItem('authToken', token);
+        
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Login error:', error);
+      return false;
     }
-    return false;
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
+  const logout = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        // Call logout API to invalidate session
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setUser(null);
+      localStorage.removeItem('user');
+      localStorage.removeItem('authToken');
+      // Also clear theme customization cache
+      localStorage.removeItem('fiv-theme-customization');
+    }
   };
 
   return (

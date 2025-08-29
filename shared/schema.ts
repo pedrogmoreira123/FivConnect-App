@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, json, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, json, integer, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -7,9 +7,11 @@ export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  password: text("password").notNull(),
+  password: text("password").notNull(), // Will store hashed passwords
   role: text("role", { enum: ["admin", "supervisor", "agent"] }).notNull().default("agent"),
   isOnline: boolean("is_online").default(false),
+  // Theme customization fields
+  customTheme: json("custom_theme"), // Store user's custom theme colors
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -17,19 +19,26 @@ export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   contactName: text("contact_name").notNull(),
   contactPhone: text("contact_phone").notNull(),
-  status: text("status", { enum: ["in_progress", "waiting", "completed"] }).notNull().default("waiting"),
+  clientId: varchar("client_id").references(() => clients.id), // Link to clients table
+  status: text("status", { enum: ["in_progress", "waiting", "completed", "closed"] }).notNull().default("waiting"),
   assignedAgentId: varchar("assigned_agent_id").references(() => users.id),
   queueId: varchar("queue_id").references(() => queues.id),
+  priority: text("priority", { enum: ["low", "medium", "high", "urgent"] }).default("medium"),
+  tags: json("tags"), // Store conversation tags as JSON array
   lastMessageAt: timestamp("last_message_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const messages = pgTable("messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   conversationId: varchar("conversation_id").notNull().references(() => conversations.id),
+  senderId: varchar("sender_id").references(() => users.id), // For outgoing messages from agents
   content: text("content").notNull(),
   messageType: text("message_type", { enum: ["text", "image", "audio", "video", "document"] }).default("text"),
   direction: text("direction", { enum: ["incoming", "outgoing"] }).notNull(),
+  mediaUrl: text("media_url"), // For media messages
+  isRead: boolean("is_read").default(false),
   sentAt: timestamp("sent_at").defaultNow(),
 });
 
@@ -51,11 +60,51 @@ export const settings = pgTable("settings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Client/Contact information table
+export const clients = pgTable("clients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  phone: text("phone").notNull().unique(),
+  email: text("email"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Session management table
+export const sessions = pgTable("sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  token: text("token").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Announcements table
+export const announcements = pgTable("announcements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  authorId: varchar("author_id").notNull().references(() => users.id),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Enhanced AI/ChatBot configuration table (extends existing ai_agent_config)
 export const aiAgentConfig = pgTable("ai_agent_config", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  mode: text("mode", { enum: ["chatbot", "ai_agent"] }).default("chatbot"),
   isEnabled: boolean("is_enabled").default(false),
+  // AI Agent specific fields
+  geminiApiKey: text("gemini_api_key"), // Will be encrypted
+  agentPrompt: text("agent_prompt"),
+  // ChatBot specific fields
   welcomeMessage: text("welcome_message"),
   responseDelay: integer("response_delay").default(3),
+  // General settings
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
@@ -65,9 +114,27 @@ export const insertUserSchema = createInsertSchema(users).omit({
   createdAt: true,
 });
 
+export const insertClientSchema = createInsertSchema(clients).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSessionSchema = createInsertSchema(sessions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAnnouncementSchema = createInsertSchema(announcements).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertConversationSchema = createInsertSchema(conversations).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
   lastMessageAt: true,
 });
 
@@ -94,6 +161,12 @@ export const insertAiAgentConfigSchema = createInsertSchema(aiAgentConfig).omit(
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type Client = typeof clients.$inferSelect;
+export type InsertClient = z.infer<typeof insertClientSchema>;
+export type Session = typeof sessions.$inferSelect;
+export type InsertSession = z.infer<typeof insertSessionSchema>;
+export type Announcement = typeof announcements.$inferSelect;
+export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
 export type Conversation = typeof conversations.$inferSelect;
 export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type Message = typeof messages.$inferSelect;
@@ -108,12 +181,37 @@ export type InsertAiAgentConfig = z.infer<typeof insertAiAgentConfigSchema>;
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   assignedConversations: many(conversations),
+  sessions: many(sessions),
+  announcements: many(announcements),
+  sentMessages: many(messages),
+}));
+
+export const clientsRelations = relations(clients, ({ many }) => ({
+  conversations: many(conversations),
+}));
+
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id],
+  }),
+}));
+
+export const announcementsRelations = relations(announcements, ({ one }) => ({
+  author: one(users, {
+    fields: [announcements.authorId],
+    references: [users.id],
+  }),
 }));
 
 export const conversationsRelations = relations(conversations, ({ one, many }) => ({
   assignedAgent: one(users, {
     fields: [conversations.assignedAgentId],
     references: [users.id],
+  }),
+  client: one(clients, {
+    fields: [conversations.clientId],
+    references: [clients.id],
   }),
   queue: one(queues, {
     fields: [conversations.queueId],
@@ -126,6 +224,10 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   conversation: one(conversations, {
     fields: [messages.conversationId],
     references: [conversations.id],
+  }),
+  sender: one(users, {
+    fields: [messages.senderId],
+    references: [users.id],
   }),
 }));
 

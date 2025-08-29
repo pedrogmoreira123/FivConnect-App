@@ -1,14 +1,25 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import "./types"; // Import type extensions
 import { storage } from "./storage";
 import { 
   insertUserSchema,
+  insertClientSchema,
+  insertAnnouncementSchema,
   insertConversationSchema,
   insertMessageSchema,
   insertQueueSchema,
   insertSettingsSchema,
   insertAiAgentConfigSchema
 } from "@shared/schema";
+import { 
+  authenticateUser,
+  logoutUser,
+  requireAuth,
+  requireRole,
+  encryptData,
+  decryptData
+} from "./auth";
 import { z } from "zod";
 
 const loginSchema = z.object({
@@ -22,67 +33,134 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, password } = loginSchema.parse(req.body);
       
-      const user = await storage.getUserByEmail(email);
-      if (!user || user.password !== password) {
-        return res.status(401).json({ message: "Invalid credentials" });
+      const result = await authenticateUser(
+        email, 
+        password, 
+        req.ip,
+        req.get('User-Agent')
+      );
+      
+      if (!result) {
+        return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      // Update user online status
-      await storage.updateUser(user.id, { isOnline: true });
-      
-      res.json({ 
-        user: { 
-          id: user.id, 
-          name: user.name, 
-          email: user.email, 
-          role: user.role,
-          isOnline: true
-        } 
+      res.json({
+        message: "Login successful",
+        user: result.user,
+        token: result.token,
+        expiresAt: result.expiresAt
       });
     } catch (error) {
-      res.status(400).json({ message: "Invalid request" });
+      console.error('Login error:', error);
+      res.status(500).json({ message: "Login failed" });
     }
   });
 
-  app.post('/api/auth/logout', async (req, res) => {
-    // In a real app, this would handle session management
-    res.json({ message: "Logged out successfully" });
+  app.post('/api/auth/logout', requireAuth, async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      const token = authHeader?.substring(7); // Remove 'Bearer ' prefix
+      
+      if (token) {
+        await logoutUser(token);
+        // Update user offline status
+        await storage.updateUser(req.user.id, { isOnline: false });
+      }
+      
+      res.json({ message: "Logged out successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Logout failed" });
+    }
+  });
+  
+  // Get current user profile
+  app.get('/api/auth/me', requireAuth, async (req, res) => {
+    res.json({ user: req.user });
+  });
+  
+  // Change password
+  app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Current and new passwords are required" });
+      }
+      
+      // Verify current password
+      const user = await storage.authenticateUser(req.user.email, currentPassword);
+      if (!user) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+      
+      // Change password
+      const success = await storage.changePassword(req.user.id, newPassword);
+      if (success) {
+        res.json({ message: "Password changed successfully" });
+      } else {
+        res.status(500).json({ message: "Failed to change password" });
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Password change failed" });
+    }
   });
 
-  // User management routes
-  app.get('/api/users', async (req, res) => {
+  // User management routes (protected)
+  app.get('/api/users', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
     try {
       const users = await storage.getAllUsers();
-      res.json(users);
+      // Remove passwords from response
+      const safeUsers = users.map(({ password, ...user }) => user);
+      res.json(safeUsers);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch users" });
     }
   });
 
-  app.post('/api/users', async (req, res) => {
+  app.post('/api/users', requireAuth, requireRole(['admin']), async (req, res) => {
     try {
       const userData = insertUserSchema.parse(req.body);
-      const user = await storage.createUser(userData);
-      res.status(201).json(user);
+      // Hash password before creating user
+      const hashedPassword = await require('bcryptjs').hash(userData.password, 10);
+      const userWithHashedPassword = { ...userData, password: hashedPassword };
+      
+      const user = await storage.createUser(userWithHashedPassword);
+      // Remove password from response
+      const { password, ...safeUser } = user;
+      res.status(201).json(safeUser);
     } catch (error) {
       res.status(400).json({ message: "Invalid user data" });
     }
   });
 
-  app.put('/api/users/:id', async (req, res) => {
+  app.put('/api/users/:id', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
     try {
       const { id } = req.params;
       const userData = insertUserSchema.partial().parse(req.body);
+      
+      // If password is being updated, hash it
+      if (userData.password) {
+        userData.password = await require('bcryptjs').hash(userData.password, 10);
+      }
+      
       const user = await storage.updateUser(id, userData);
-      res.json(user);
+      // Remove password from response
+      const { password, ...safeUser } = user;
+      res.json(safeUser);
     } catch (error) {
       res.status(400).json({ message: "Failed to update user" });
     }
   });
 
-  app.delete('/api/users/:id', async (req, res) => {
+  app.delete('/api/users/:id', requireAuth, requireRole(['admin']), async (req, res) => {
     try {
       const { id } = req.params;
+      
+      // Prevent deleting self
+      if (id === req.user.id) {
+        return res.status(400).json({ message: "Cannot delete your own account" });
+      }
+      
       const success = await storage.deleteUser(id);
       if (success) {
         res.json({ message: "User deleted successfully" });
@@ -93,9 +171,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to delete user" });
     }
   });
+  
+  // Client management routes
+  app.get('/api/clients', requireAuth, async (req, res) => {
+    try {
+      const clients = await storage.getAllClients();
+      res.json(clients);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch clients" });
+    }
+  });
 
-  // Conversation routes
-  app.get('/api/conversations', async (req, res) => {
+  app.post('/api/clients', requireAuth, async (req, res) => {
+    try {
+      const clientData = insertClientSchema.parse(req.body);
+      const client = await storage.createClient(clientData);
+      res.status(201).json(client);
+    } catch (error) {
+      res.status(400).json({ message: "Invalid client data" });
+    }
+  });
+
+  app.put('/api/clients/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const clientData = insertClientSchema.partial().parse(req.body);
+      const client = await storage.updateClient(id, clientData);
+      res.json(client);
+    } catch (error) {
+      res.status(400).json({ message: "Failed to update client" });
+    }
+  });
+
+  app.delete('/api/clients/:id', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteClient(id);
+      if (success) {
+        res.json({ message: "Client deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Client not found" });
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete client" });
+    }
+  });
+  
+  // Announcement routes
+  app.get('/api/announcements', requireAuth, async (req, res) => {
+    try {
+      const announcements = await storage.getAllAnnouncements();
+      res.json(announcements);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch announcements" });
+    }
+  });
+
+  app.get('/api/announcements/active', requireAuth, async (req, res) => {
+    try {
+      const announcements = await storage.getActiveAnnouncements();
+      res.json(announcements);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch active announcements" });
+    }
+  });
+
+  app.post('/api/announcements', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const announcementData = insertAnnouncementSchema.parse({
+        ...req.body,
+        authorId: req.user.id
+      });
+      const announcement = await storage.createAnnouncement(announcementData);
+      res.status(201).json(announcement);
+    } catch (error) {
+      res.status(400).json({ message: "Invalid announcement data" });
+    }
+  });
+
+  app.put('/api/announcements/:id', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const announcementData = insertAnnouncementSchema.partial().parse(req.body);
+      const announcement = await storage.updateAnnouncement(id, announcementData);
+      res.json(announcement);
+    } catch (error) {
+      res.status(400).json({ message: "Failed to update announcement" });
+    }
+  });
+
+  app.delete('/api/announcements/:id', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteAnnouncement(id);
+      if (success) {
+        res.json({ message: "Announcement deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Announcement not found" });
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete announcement" });
+    }
+  });
+
+  // Conversation routes (protected)
+  app.get('/api/conversations', requireAuth, async (req, res) => {
     try {
       const { status, agentId } = req.query;
       
@@ -105,7 +285,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else if (agentId) {
         conversations = await storage.getConversationsByAgent(agentId as string);
       } else {
-        conversations = await storage.getAllConversations();
+        // Agents can only see their own conversations unless they're admin/supervisor
+        if (req.user.role === 'agent') {
+          conversations = await storage.getConversationsByAgent(req.user.id);
+        } else {
+          conversations = await storage.getAllConversations();
+        }
       }
       
       res.json(conversations);
@@ -114,7 +299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/conversations', async (req, res) => {
+  app.post('/api/conversations', requireAuth, async (req, res) => {
     try {
       const conversationData = insertConversationSchema.parse(req.body);
       const conversation = await storage.createConversation(conversationData);
@@ -124,7 +309,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/conversations/:id', async (req, res) => {
+  app.put('/api/conversations/:id', requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const conversationData = insertConversationSchema.partial().parse(req.body);
@@ -135,8 +320,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Message routes
-  app.get('/api/conversations/:conversationId/messages', async (req, res) => {
+  // Message routes (protected)
+  app.get('/api/conversations/:conversationId/messages', requireAuth, async (req, res) => {
     try {
       const { conversationId } = req.params;
       const messages = await storage.getMessagesByConversation(conversationId);
@@ -146,12 +331,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/conversations/:conversationId/messages', async (req, res) => {
+  app.post('/api/conversations/:conversationId/messages', requireAuth, async (req, res) => {
     try {
       const { conversationId } = req.params;
       const messageData = insertMessageSchema.parse({
         ...req.body,
-        conversationId
+        conversationId,
+        senderId: req.user.id,
+        direction: 'outgoing'
       });
       const message = await storage.createMessage(messageData);
       res.status(201).json(message);
@@ -159,9 +346,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ message: "Invalid message data" });
     }
   });
+  
+  // Inbound message webhook (for WhatsApp API integration)
+  app.post('/api/webhook/inbound-message', async (req, res) => {
+    try {
+      const { 
+        phone, 
+        content, 
+        messageType = 'text', 
+        mediaUrl,
+        contactName 
+      } = req.body;
+      
+      if (!phone || !content) {
+        return res.status(400).json({ message: "Phone and content are required" });
+      }
+      
+      // Find or create client
+      let client = await storage.getClientByPhone(phone);
+      if (!client) {
+        client = await storage.createClient({
+          name: contactName || `Contact ${phone}`,
+          phone: phone,
+          notes: 'Created from inbound message'
+        });
+      }
+      
+      // Find or create conversation
+      const conversations = await storage.getAllConversations();
+      let conversation = conversations.find(c => c.contactPhone === phone && c.status !== 'completed');
+      
+      if (!conversation) {
+        conversation = await storage.createConversation({
+          contactName: client.name,
+          contactPhone: phone,
+          clientId: client.id,
+          status: 'waiting'
+        });
+      }
+      
+      // Create the message
+      const message = await storage.createMessage({
+        conversationId: conversation.id,
+        content,
+        messageType: messageType as any,
+        direction: 'incoming',
+        mediaUrl,
+        isRead: false
+      });
+      
+      // Update conversation last message time
+      await storage.updateConversation(conversation.id, {
+        status: conversation.status // Keep the same status for now
+      });
+      
+      res.status(201).json({
+        message: 'Message received successfully',
+        conversationId: conversation.id,
+        messageId: message.id
+      });
+      
+    } catch (error) {
+      console.error('Webhook error:', error);
+      res.status(500).json({ message: "Failed to process inbound message" });
+    }
+  });
 
-  // Queue routes
-  app.get('/api/queues', async (req, res) => {
+  // Queue routes (protected)
+  app.get('/api/queues', requireAuth, async (req, res) => {
     try {
       const queues = await storage.getAllQueues();
       res.json(queues);
@@ -170,7 +422,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/queues', async (req, res) => {
+  app.post('/api/queues', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
     try {
       const queueData = insertQueueSchema.parse(req.body);
       const queue = await storage.createQueue(queueData);
@@ -180,7 +432,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/queues/:id', async (req, res) => {
+  app.put('/api/queues/:id', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
     try {
       const { id } = req.params;
       const queueData = insertQueueSchema.partial().parse(req.body);
@@ -191,7 +443,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/queues/:id', async (req, res) => {
+  app.delete('/api/queues/:id', requireAuth, requireRole(['admin']), async (req, res) => {
     try {
       const { id } = req.params;
       const success = await storage.deleteQueue(id);
@@ -205,8 +457,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Settings routes
-  app.get('/api/settings', async (req, res) => {
+  // Settings routes (protected)
+  app.get('/api/settings', requireAuth, async (req, res) => {
     try {
       const settings = await storage.getAllSettings();
       const settingsObject = settings.reduce((acc, setting) => {
@@ -219,12 +471,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/settings/:key', async (req, res) => {
+  app.put('/api/settings/:key', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
     try {
       const { key } = req.params;
       const { value } = req.body;
       
-      if (!value) {
+      if (!value && value !== '') {
         return res.status(400).json({ message: "Value is required" });
       }
       
@@ -234,29 +486,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ message: "Failed to update setting" });
     }
   });
+  
+  // User theme settings
+  app.get('/api/settings/theme/:userId', requireAuth, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      
+      // Users can only access their own theme or admins can access any
+      if (req.user.id !== userId && req.user.role !== 'admin') {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({ customTheme: user.customTheme });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch user theme" });
+    }
+  });
+  
+  app.put('/api/settings/theme/:userId', requireAuth, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { customTheme } = req.body;
+      
+      // Users can only update their own theme
+      if (req.user.id !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const user = await storage.updateUser(userId, { customTheme });
+      res.json({ customTheme: user.customTheme });
+    } catch (error) {
+      res.status(400).json({ message: "Failed to update user theme" });
+    }
+  });
 
-  // AI Agent routes
-  app.get('/api/ai-agent/config', async (req, res) => {
+  // AI Agent routes (protected)
+  app.get('/api/ai-agent/config', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
     try {
       const config = await storage.getAiAgentConfig();
-      res.json(config || { isEnabled: false, welcomeMessage: "", responseDelay: 3 });
+      if (config && config.geminiApiKey) {
+        // Don't expose the encrypted API key in responses
+        const { geminiApiKey, ...safeConfig } = config;
+        res.json({ ...safeConfig, hasApiKey: !!geminiApiKey });
+      } else {
+        res.json(config || { mode: 'chatbot', isEnabled: false, welcomeMessage: "", responseDelay: 3, hasApiKey: false });
+      }
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch AI agent config" });
     }
   });
 
-  app.put('/api/ai-agent/config', async (req, res) => {
+  app.put('/api/ai-agent/config', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
     try {
       const configData = insertAiAgentConfigSchema.parse(req.body);
+      
+      // Encrypt API key if provided
+      if (configData.geminiApiKey) {
+        configData.geminiApiKey = encryptData(configData.geminiApiKey);
+      }
+      
       const config = await storage.updateAiAgentConfig(configData);
-      res.json(config);
+      
+      // Don't expose the encrypted API key in response
+      const { geminiApiKey, ...safeConfig } = config;
+      res.json({ ...safeConfig, hasApiKey: !!geminiApiKey });
     } catch (error) {
       res.status(400).json({ message: "Invalid AI agent config" });
     }
   });
 
-  // Dashboard/Analytics routes
-  app.get('/api/analytics/kpi', async (req, res) => {
+  // Dashboard/Analytics routes (protected)
+  app.get('/api/analytics/kpi', requireAuth, async (req, res) => {
     try {
       const allConversations = await storage.getAllConversations();
       const allUsers = await storage.getAllUsers();
@@ -280,7 +585,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/analytics/queue-volume', async (req, res) => {
+  app.get('/api/analytics/queue-volume', requireAuth, async (req, res) => {
     try {
       const queues = await storage.getAllQueues();
       const conversations = await storage.getAllConversations();
@@ -299,7 +604,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/analytics/weekly-performance', async (req, res) => {
+  app.get('/api/analytics/weekly-performance', requireAuth, async (req, res) => {
     try {
       // Mock weekly performance data
       res.json({

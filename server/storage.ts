@@ -1,6 +1,12 @@
 import { 
   type User, 
   type InsertUser,
+  type Client,
+  type InsertClient,
+  type Session,
+  type InsertSession,
+  type Announcement,
+  type InsertAnnouncement,
   type Conversation,
   type InsertConversation,
   type Message,
@@ -12,6 +18,9 @@ import {
   type AiAgentConfig,
   type InsertAiAgentConfig,
   users,
+  clients,
+  sessions,
+  announcements,
   conversations,
   messages,
   queues,
@@ -19,8 +28,11 @@ import {
   aiAgentConfig
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import crypto from "crypto-js";
 import { db } from "./db";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, desc } from "drizzle-orm";
 
 export interface IStorage {
   // User operations
@@ -30,6 +42,32 @@ export interface IStorage {
   updateUser(id: string, user: Partial<InsertUser>): Promise<User>;
   deleteUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
+  
+  // Authentication operations
+  authenticateUser(email: string, password: string): Promise<User | null>;
+  changePassword(userId: string, newPassword: string): Promise<boolean>;
+  
+  // Session operations
+  createSession(session: InsertSession): Promise<Session>;
+  getSession(token: string): Promise<Session | undefined>;
+  deleteSession(token: string): Promise<boolean>;
+  deleteUserSessions(userId: string): Promise<boolean>;
+  
+  // Client operations
+  getClient(id: string): Promise<Client | undefined>;
+  getClientByPhone(phone: string): Promise<Client | undefined>;
+  createClient(client: InsertClient): Promise<Client>;
+  updateClient(id: string, client: Partial<InsertClient>): Promise<Client>;
+  deleteClient(id: string): Promise<boolean>;
+  getAllClients(): Promise<Client[]>;
+  
+  // Announcement operations
+  getAnnouncement(id: string): Promise<Announcement | undefined>;
+  createAnnouncement(announcement: InsertAnnouncement): Promise<Announcement>;
+  updateAnnouncement(id: string, announcement: Partial<InsertAnnouncement>): Promise<Announcement>;
+  deleteAnnouncement(id: string): Promise<boolean>;
+  getAllAnnouncements(): Promise<Announcement[]>;
+  getActiveAnnouncements(): Promise<Announcement[]>;
 
   // Conversation operations
   getConversation(id: string): Promise<Conversation | undefined>;
@@ -75,11 +113,12 @@ export class DatabaseStorage implements IStorage {
       const existingUsers = await db.select().from(users).limit(1);
       if (existingUsers.length > 0) return;
 
-      // Create default admin user
+      // Create default admin user with hashed password
+      const hashedPassword = await bcrypt.hash("admin123", 10);
       await db.insert(users).values({
-        name: "John Doe",
+        name: "System Administrator",
         email: "admin@company.com",
-        password: "password",
+        password: hashedPassword,
         role: "admin",
         isOnline: true
       });
@@ -117,10 +156,15 @@ export class DatabaseStorage implements IStorage {
 
       // Create default AI agent config
       await db.insert(aiAgentConfig).values({
+        mode: "chatbot",
         isEnabled: true,
         welcomeMessage: "Hello! I'm your virtual assistant. How can I help you today?",
         responseDelay: 3
       });
+      
+      console.log("✅ Default data initialized successfully");
+      console.log("📧 Default admin email: admin@company.com");
+      console.log("🔑 Default admin password: admin123");
     } catch (error) {
       // Ignore errors during initialization (table might not exist yet)
       console.warn("Could not initialize default data:", error);
@@ -156,6 +200,121 @@ export class DatabaseStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return await db.select().from(users);
+  }
+  
+  // Authentication operations
+  async authenticateUser(email: string, password: string): Promise<User | null> {
+    const user = await this.getUserByEmail(email);
+    if (!user) return null;
+    
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) return null;
+    
+    // Update online status
+    await this.updateUser(user.id, { isOnline: true });
+    return user;
+  }
+  
+  async changePassword(userId: string, newPassword: string): Promise<boolean> {
+    try {
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await this.updateUser(userId, { password: hashedPassword });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+  
+  // Session operations
+  async createSession(insertSession: InsertSession): Promise<Session> {
+    const [session] = await db.insert(sessions).values(insertSession).returning();
+    return session;
+  }
+  
+  async getSession(token: string): Promise<Session | undefined> {
+    const [session] = await db.select().from(sessions).where(eq(sessions.token, token));
+    if (!session) return undefined;
+    
+    // Check if session is expired
+    if (new Date() > session.expiresAt) {
+      await this.deleteSession(token);
+      return undefined;
+    }
+    
+    return session;
+  }
+  
+  async deleteSession(token: string): Promise<boolean> {
+    const result = await db.delete(sessions).where(eq(sessions.token, token));
+    return (result.rowCount ?? 0) > 0;
+  }
+  
+  async deleteUserSessions(userId: string): Promise<boolean> {
+    const result = await db.delete(sessions).where(eq(sessions.userId, userId));
+    return (result.rowCount ?? 0) > 0;
+  }
+  
+  // Client operations
+  async getClient(id: string): Promise<Client | undefined> {
+    const [client] = await db.select().from(clients).where(eq(clients.id, id));
+    return client || undefined;
+  }
+  
+  async getClientByPhone(phone: string): Promise<Client | undefined> {
+    const [client] = await db.select().from(clients).where(eq(clients.phone, phone));
+    return client || undefined;
+  }
+  
+  async createClient(insertClient: InsertClient): Promise<Client> {
+    const [client] = await db.insert(clients).values(insertClient).returning();
+    return client;
+  }
+  
+  async updateClient(id: string, updates: Partial<InsertClient>): Promise<Client> {
+    const [client] = await db.update(clients).set(updates).where(eq(clients.id, id)).returning();
+    if (!client) throw new Error("Client not found");
+    return client;
+  }
+  
+  async deleteClient(id: string): Promise<boolean> {
+    const result = await db.delete(clients).where(eq(clients.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+  
+  async getAllClients(): Promise<Client[]> {
+    return await db.select().from(clients).orderBy(desc(clients.createdAt));
+  }
+  
+  // Announcement operations
+  async getAnnouncement(id: string): Promise<Announcement | undefined> {
+    const [announcement] = await db.select().from(announcements).where(eq(announcements.id, id));
+    return announcement || undefined;
+  }
+  
+  async createAnnouncement(insertAnnouncement: InsertAnnouncement): Promise<Announcement> {
+    const [announcement] = await db.insert(announcements).values(insertAnnouncement).returning();
+    return announcement;
+  }
+  
+  async updateAnnouncement(id: string, updates: Partial<InsertAnnouncement>): Promise<Announcement> {
+    const [announcement] = await db.update(announcements).set(updates).where(eq(announcements.id, id)).returning();
+    if (!announcement) throw new Error("Announcement not found");
+    return announcement;
+  }
+  
+  async deleteAnnouncement(id: string): Promise<boolean> {
+    const result = await db.delete(announcements).where(eq(announcements.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+  
+  async getAllAnnouncements(): Promise<Announcement[]> {
+    return await db.select().from(announcements).orderBy(desc(announcements.createdAt));
+  }
+  
+  async getActiveAnnouncements(): Promise<Announcement[]> {
+    return await db.select().from(announcements)
+      .where(eq(announcements.isActive, true))
+      .orderBy(desc(announcements.createdAt));
   }
 
   // Conversation operations

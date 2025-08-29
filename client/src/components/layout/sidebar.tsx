@@ -32,7 +32,7 @@ const getNavigationItems = (userRole: string) => [
     sectionKey: 'navigation.management',
     items: [
       { nameKey: 'navigation.users', href: '/users', icon: Users },
-      { nameKey: 'navigation.aiAgent', href: '/ai-agent', icon: Bot },
+      { nameKey: 'navigation.chatBot', href: '/ai-agent', icon: Bot },
       { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
       { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
     ]

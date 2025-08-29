@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useAuth } from './auth-context';
+import { apiRequest } from '@/lib/queryClient';
 
 export interface ThemeColors {
   primary: string;
@@ -28,6 +30,8 @@ interface ThemeCustomizationContextType {
   resetToDefault: () => void;
   previewMode: boolean;
   setPreviewMode: (enabled: boolean) => void;
+  saveToDatabase: () => Promise<boolean>;
+  isLoading: boolean;
 }
 
 const defaultTheme: ThemeColors = {
@@ -54,20 +58,58 @@ const ThemeCustomizationContext = createContext<ThemeCustomizationContextType | 
 export function ThemeCustomizationProvider({ children }: { children: React.ReactNode }) {
   const [branding, setBranding] = useState<BrandingConfig>(defaultBranding);
   const [previewMode, setPreviewMode] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const { user, isAuthenticated } = useAuth();
 
-  // Load saved theme from localStorage
+  // Load user's theme from database or fallback to localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('fiv-theme-customization');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setBranding(parsed);
-        applyThemeToDocument(parsed.colors);
-      } catch (error) {
-        console.error('Failed to load saved theme:', error);
+    const loadUserTheme = async () => {
+      if (isAuthenticated && user) {
+        setIsLoading(true);
+        try {
+          const token = localStorage.getItem('authToken');
+          if (token) {
+            const response = await fetch(`/api/settings/theme/${user.id}`, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+              },
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              if (data.customTheme) {
+                const customBranding = {
+                  ...defaultBranding,
+                  colors: data.customTheme
+                };
+                setBranding(customBranding);
+                applyThemeToDocument(data.customTheme);
+                return;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load user theme from database:', error);
+        } finally {
+          setIsLoading(false);
+        }
       }
-    }
-  }, []);
+      
+      // Fallback to localStorage for backwards compatibility or unauthenticated users
+      const saved = localStorage.getItem('fiv-theme-customization');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setBranding(parsed);
+          applyThemeToDocument(parsed.colors);
+        } catch (error) {
+          console.error('Failed to load saved theme from localStorage:', error);
+        }
+      }
+    };
+    
+    loadUserTheme();
+  }, [isAuthenticated, user]);
 
   // Apply theme colors to CSS variables
   const applyThemeToDocument = (colors: ThemeColors) => {
@@ -94,7 +136,13 @@ export function ThemeCustomizationProvider({ children }: { children: React.React
     applyThemeToDocument(updatedColors);
     
     if (!previewMode) {
-      localStorage.setItem('fiv-theme-customization', JSON.stringify(updatedBranding));
+      // Auto-save to database if user is authenticated
+      if (isAuthenticated && user) {
+        saveToDatabase(updatedColors);
+      } else {
+        // Fallback to localStorage for unauthenticated users
+        localStorage.setItem('fiv-theme-customization', JSON.stringify(updatedBranding));
+      }
     }
   };
 
@@ -103,7 +151,13 @@ export function ThemeCustomizationProvider({ children }: { children: React.React
     setBranding(updatedBranding);
     
     if (!previewMode) {
-      localStorage.setItem('fiv-theme-customization', JSON.stringify(updatedBranding));
+      // Auto-save to database if user is authenticated
+      if (isAuthenticated && user) {
+        saveToDatabase(branding.colors);
+      } else {
+        // Fallback to localStorage for unauthenticated users
+        localStorage.setItem('fiv-theme-customization', JSON.stringify(updatedBranding));
+      }
     }
   };
 
@@ -112,14 +166,56 @@ export function ThemeCustomizationProvider({ children }: { children: React.React
     setBranding(updatedBranding);
     
     if (!previewMode) {
-      localStorage.setItem('fiv-theme-customization', JSON.stringify(updatedBranding));
+      // Auto-save to database if user is authenticated
+      if (isAuthenticated && user) {
+        saveToDatabase(branding.colors);
+      } else {
+        // Fallback to localStorage for unauthenticated users
+        localStorage.setItem('fiv-theme-customization', JSON.stringify(updatedBranding));
+      }
     }
   };
 
-  const resetToDefault = () => {
+  const resetToDefault = async () => {
     setBranding(defaultBranding);
     applyThemeToDocument(defaultTheme);
+    
+    // Clear from both database and localStorage
+    if (isAuthenticated && user) {
+      await saveToDatabase(null); // Save null to reset to default
+    }
     localStorage.removeItem('fiv-theme-customization');
+  };
+  
+  const saveToDatabase = async (customTheme?: ThemeColors | null): Promise<boolean> => {
+    if (!isAuthenticated || !user) return false;
+    
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) return false;
+      
+      const themeToSave = customTheme !== undefined ? customTheme : branding.colors;
+      
+      const response = await fetch(`/api/settings/theme/${user.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ customTheme: themeToSave }),
+      });
+      
+      if (response.ok) {
+        console.log('Theme saved to database successfully');
+        return true;
+      } else {
+        console.error('Failed to save theme to database');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error saving theme to database:', error);
+      return false;
+    }
   };
 
   return (
@@ -131,7 +227,9 @@ export function ThemeCustomizationProvider({ children }: { children: React.React
         updateCompanyName,
         resetToDefault,
         previewMode,
-        setPreviewMode
+        setPreviewMode,
+        saveToDatabase,
+        isLoading
       }}
     >
       {children}
