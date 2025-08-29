@@ -693,7 +693,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put('/api/feedbacks/:id', requireAuth, async (req, res) => {
     try {
       const { id } = req.params;
-      const feedbackData = insertFeedbackSchema.partial().parse(req.body);
+      let feedbackData = insertFeedbackSchema.partial().parse(req.body);
       
       const existingFeedback = await storage.getFeedback(id);
       if (!existingFeedback) {
