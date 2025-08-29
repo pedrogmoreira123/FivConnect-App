@@ -226,7 +226,7 @@ export default function ConversationsPage() {
         <div className="w-full md:w-80 border-r border-border flex flex-col bg-background">
           {/* Header */}
           <div className="p-3 sm:p-4 border-b border-border">
-            <h1 className="text-lg sm:text-xl font-semibold text-foreground mb-3">Chat</h1>
+            <h1 className="text-base sm:text-lg font-semibold text-foreground mb-3">Chat</h1>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
@@ -242,30 +242,30 @@ export default function ConversationsPage() {
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-3 bg-muted/20 h-auto">
-              <TabsTrigger value="conversations" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground p-2 sm:p-3">
-                <MessageCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                <span className="hidden sm:inline">CONVERSAS</span>
-                <span className="sm:hidden">CONV</span>
+              <TabsTrigger value="conversations" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground p-1.5 sm:p-2">
+                <MessageCircle className="h-3 w-3 mr-1" />
+                <span className="hidden sm:inline text-xs">CONVERSAS</span>
+                <span className="sm:hidden text-xs">CONV</span>
                 {mockConversations.length > 0 && (
                   <Badge variant="secondary" className="ml-1 text-xs">
                     {mockConversations.length}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="waiting" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground p-2 sm:p-3">
-                <Clock className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                <span className="hidden sm:inline">ESPERA</span>
-                <span className="sm:hidden">ESP</span>
+              <TabsTrigger value="waiting" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground p-1.5 sm:p-2">
+                <Clock className="h-3 w-3 mr-1" />
+                <span className="hidden sm:inline text-xs">ESPERA</span>
+                <span className="sm:hidden text-xs">ESP</span>
                 {mockWaitingConversations.length > 0 && (
                   <Badge variant="destructive" className="ml-1 text-xs">
                     {mockWaitingConversations.length}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="contacts" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground p-2 sm:p-3">
-                <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                <span className="hidden sm:inline">CONTATOS</span>
-                <span className="sm:hidden">CONT</span>
+              <TabsTrigger value="contacts" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground p-1.5 sm:p-2">
+                <Users className="h-3 w-3 mr-1" />
+                <span className="hidden sm:inline text-xs">CONTATOS</span>
+                <span className="sm:hidden text-xs">CONT</span>
                 {mockContacts.length > 0 && (
                   <Badge variant="outline" className="ml-1 text-xs">
                     {mockContacts.length}
@@ -286,20 +286,20 @@ export default function ConversationsPage() {
                   <div
                     key={conversation.id}
                     onClick={() => handleSelectConversation(conversation)}
-                    className={`p-4 border-b border-border cursor-pointer hover:bg-accent transition-colors ${
+                    className={`p-3 border-b border-border cursor-pointer hover:bg-accent transition-colors ${
                       selectedConversation.id === conversation.id ? 'bg-accent' : ''
                     }`}
                     data-testid={`conversation-${conversation.id}`}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className={`w-12 h-12 ${conversation.bgColor} rounded-full flex items-center justify-center flex-shrink-0`}>
-                        <span className="text-white font-semibold text-sm">
+                      <div className={`w-10 h-10 ${conversation.bgColor} rounded-full flex items-center justify-center flex-shrink-0`}>
+                        <span className="text-white font-medium text-xs">
                           {conversation.initials}
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
-                          <h3 className="font-semibold text-foreground truncate">
+                          <h3 className="font-medium text-sm text-foreground truncate">
                             {conversation.contactName}
                           </h3>
                           <span className="text-xs text-muted-foreground flex-shrink-0">
@@ -307,17 +307,17 @@ export default function ConversationsPage() {
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <p className="text-sm text-muted-foreground truncate">
+                          <p className="text-xs text-muted-foreground truncate">
                             {conversation.lastMessage || 'Sem mensagens'}
                           </p>
                           {conversation.unreadCount > 0 && (
-                            <div className="bg-primary text-primary-foreground rounded-full px-2 py-1 text-xs font-medium">
+                            <div className="bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs font-medium">
                               {conversation.unreadCount}
                             </div>
                           )}
                         </div>
                         <div className="mt-1">
-                          <Badge variant={conversation.status === 'Atendendo' ? 'default' : 'secondary'} className="text-xs">
+                          <Badge variant={conversation.status === 'Atendendo' ? 'default' : 'secondary'} className="text-xs px-2 py-0.5">
                             {conversation.status}
                           </Badge>
                         </div>
@@ -339,23 +339,23 @@ export default function ConversationsPage() {
                   <div
                     key={conversation.id}
                     onClick={() => handleSelectConversation(conversation)}
-                    className={`p-4 border-b border-border cursor-pointer hover:bg-accent transition-colors ${
+                    className={`p-3 border-b border-border cursor-pointer hover:bg-accent transition-colors ${
                       selectedConversation.id === conversation.id ? 'bg-accent' : ''
                     }`}
                     data-testid={`waiting-${conversation.id}`}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className={`w-12 h-12 ${conversation.bgColor} rounded-full flex items-center justify-center flex-shrink-0 relative`}>
-                        <span className="text-white font-semibold text-sm">
+                      <div className={`w-10 h-10 ${conversation.bgColor} rounded-full flex items-center justify-center flex-shrink-0 relative`}>
+                        <span className="text-white font-medium text-xs">
                           {conversation.initials}
                         </span>
-                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center">
+                        <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full flex items-center justify-center">
                           <Clock className="h-2 w-2 text-white" />
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
-                          <h3 className="font-semibold text-foreground truncate">
+                          <h3 className="font-medium text-sm text-foreground truncate">
                             {conversation.contactName}
                           </h3>
                           <span className="text-xs text-muted-foreground flex-shrink-0">
@@ -363,17 +363,17 @@ export default function ConversationsPage() {
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <p className="text-sm text-muted-foreground truncate">
+                          <p className="text-xs text-muted-foreground truncate">
                             {conversation.lastMessage}
                           </p>
                           {conversation.unreadCount > 0 && (
-                            <div className="bg-amber-500 text-white rounded-full px-2 py-1 text-xs font-medium">
+                            <div className="bg-amber-500 text-white rounded-full px-2 py-0.5 text-xs font-medium">
                               {conversation.unreadCount}
                             </div>
                           )}
                         </div>
                         <div className="mt-1">
-                          <Badge variant="outline" className="text-xs border-amber-500 text-amber-600">
+                          <Badge variant="outline" className="text-xs border-amber-500 text-amber-600 px-2 py-0.5">
                             {conversation.status}
                           </Badge>
                         </div>
@@ -400,23 +400,23 @@ export default function ConversationsPage() {
                 filteredData.map((contact) => (
                   <div
                     key={contact.id}
-                    className="p-4 border-b border-border hover:bg-accent transition-colors cursor-pointer"
+                    className="p-3 border-b border-border hover:bg-accent transition-colors cursor-pointer"
                     data-testid={`contact-${contact.id}`}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className={`w-12 h-12 ${contact.bgColor} rounded-full flex items-center justify-center flex-shrink-0`}>
-                        <span className="text-white font-semibold text-sm">
+                      <div className={`w-10 h-10 ${contact.bgColor} rounded-full flex items-center justify-center flex-shrink-0`}>
+                        <span className="text-white font-medium text-xs">
                           {contact.initials}
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-foreground truncate">
+                        <h3 className="font-medium text-sm text-foreground truncate">
                           {contact.contactName}
                         </h3>
-                        <p className="text-sm text-muted-foreground truncate">
+                        <p className="text-xs text-muted-foreground truncate">
                           {contact.contactPhone}
                         </p>
-                        <Badge variant="outline" className="text-xs mt-1">
+                        <Badge variant="outline" className="text-xs mt-1 px-2 py-0.5">
                           {contact.status}
                         </Badge>
                       </div>

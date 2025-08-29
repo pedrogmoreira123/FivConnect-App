@@ -15,7 +15,7 @@ import ClientsPage from "@/pages/clients";
 import QueuesPage from "@/pages/queues";
 import UsersPage from "@/pages/users";
 import AIAgentPage from "@/pages/ai-agent";
-import EnhancedAIAgentPage from "@/pages/enhanced-ai-agent";
+import ChatbotHubPage from "@/pages/chatbot-hub";
 import ReportsPage from "@/pages/reports";
 import EnhancedReportsPage from "@/pages/enhanced-reports";
 import SettingsPage from "@/pages/settings";
@@ -117,7 +117,7 @@ function Router() {
       </Route>
       <Route path="/ai-agent">
         <ProtectedRoute>
-          <EnhancedAIAgentPage />
+          <ChatbotHubPage />
         </ProtectedRoute>
       </Route>
       <Route path="/reports">

@@ -234,7 +234,9 @@ export default function ClientsPage() {
     status: 'active' as 'active' | 'inactive'
   });
 
-  const filteredClients = mockClients.filter(client =>
+  const [clients, setClients] = useState<Client[]>(mockClients);
+
+  const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     client.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
     client.phone.includes(searchQuery) ||
@@ -246,8 +248,18 @@ export default function ClientsPage() {
   };
 
   const handleToggleWebApp = (clientId: string, enabled: boolean) => {
-    // Handle web app permission toggle
-    console.log(`Toggle web app for ${clientId}: ${enabled}`);
+    setClients(prev => prev.map(client => 
+      client.id === clientId ? { ...client, allowWebApp: enabled } : client
+    ));
+    
+    if (selectedClient?.id === clientId) {
+      setSelectedClient(prev => prev ? { ...prev, allowWebApp: enabled } : null);
+    }
+    
+    toast({
+      title: "Permissões atualizadas",
+      description: `App Web ${enabled ? 'habilitado' : 'desabilitado'} para o cliente.`,
+    });
   };
 
   const handleCreateClient = () => {
@@ -264,18 +276,22 @@ export default function ClientsPage() {
     const colors = ['bg-pink-500', 'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-red-500'];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
     
-    console.log('Criando novo cliente:', {
+    const newClientData: Client = {
       id: clientId,
       name: newClient.name,
       company: newClient.company || 'Empresa não informada',
       phone: newClient.phone,
       email: newClient.email || '',
       address: newClient.address || '',
-      observations: newClient.observations || '',
       status: newClient.status,
+      lastActivity: new Date().toLocaleDateString('pt-BR'),
+      totalTickets: 0,
+      avatar: clientId,
       bgColor: randomColor,
-      avatar: clientId
-    });
+      allowWebApp: false
+    };
+
+    setClients(prev => [...prev, newClientData]);
 
     toast({
       title: "Cliente criado!",
@@ -295,6 +311,120 @@ export default function ClientsPage() {
     setShowNewClientModal(false);
   };
 
+  const handleExportExcel = async () => {
+    try {
+      const { utils, writeFile } = await import('xlsx');
+      
+      const exportData = clients.map(client => ({
+        'Nome': client.name,
+        'Empresa': client.company,
+        'Telefone': client.phone,
+        'Email': client.email,
+        'Endereço': client.address,
+        'Status': client.status === 'active' ? 'Ativo' : 'Inativo',
+        'Última Atividade': client.lastActivity,
+        'Total de Tickets': client.totalTickets,
+        'App Permitido': client.allowWebApp ? 'Sim' : 'Não'
+      }));
+
+      const worksheet = utils.json_to_sheet(exportData);
+      const workbook = utils.book_new();
+      utils.book_append_sheet(workbook, worksheet, 'Clientes');
+      
+      const filename = `clientes_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`;
+      writeFile(workbook, filename);
+      
+      toast({
+        title: "Exportação concluída!",
+        description: `Arquivo ${filename} foi baixado com sucesso.`,
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro na exportação",
+        description: "Não foi possível exportar os dados.",
+      });
+    }
+  };
+
+  const handleImportExcel = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const { read, utils } = await import('xlsx');
+      
+      const data = await file.arrayBuffer();
+      const workbook = read(data);
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const jsonData = utils.sheet_to_json(worksheet);
+      
+      const importedClients: Client[] = jsonData.map((row: any, index: number) => {
+        const colors = ['bg-pink-500', 'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-red-500'];
+        const randomColor = colors[Math.floor(Math.random() * colors.length)];
+        const clientId = (row.Nome || `Cliente${index}`).split(' ').map((n: string) => n[0]).join('').toUpperCase();
+        
+        return {
+          id: clientId + index,
+          name: row.Nome || `Cliente ${index + 1}`,
+          company: row.Empresa || 'Empresa não informada',
+          phone: row.Telefone || '',
+          email: row.Email || '',
+          address: row.Endereço || '',
+          status: (row.Status === 'Ativo' ? 'active' : 'inactive') as 'active' | 'inactive',
+          lastActivity: row['Última Atividade'] || new Date().toLocaleDateString('pt-BR'),
+          totalTickets: Number(row['Total de Tickets']) || 0,
+          avatar: clientId,
+          bgColor: randomColor,
+          allowWebApp: row['App Permitido'] === 'Sim'
+        };
+      });
+      
+      setClients(prev => [...prev, ...importedClients]);
+      
+      toast({
+        title: "Importação concluída!",
+        description: `${importedClients.length} cliente(s) foram importados com sucesso.`,
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro na importação",
+        description: "Não foi possível importar os dados. Verifique o formato do arquivo.",
+      });
+    }
+    
+    // Reset input
+    event.target.value = '';
+  };
+
+  const handleEditClient = (client: Client) => {
+    // Implement edit functionality
+    toast({
+      title: "Função em desenvolvimento",
+      description: "A edição de clientes estará disponível em breve.",
+    });
+  };
+
+  const handleChatWithClient = (client: Client) => {
+    // Implement chat functionality
+    toast({
+      title: "Iniciar conversa",
+      description: `Redirecionando para o chat com ${client.name}...`,
+    });
+  };
+
+  const handleDeleteClient = (client: Client) => {
+    if (window.confirm(`Tem certeza que deseja excluir o cliente ${client.name}?`)) {
+      setClients(prev => prev.filter(c => c.id !== client.id));
+      setSelectedClient(null);
+      toast({
+        title: "Cliente excluído",
+        description: `${client.name} foi removido com sucesso.`,
+      });
+    }
+  };
+
   return (
     <div className="h-full flex bg-background">
       {/* Client List - Left Panel */}
@@ -304,9 +434,24 @@ export default function ClientsPage() {
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-lg sm:text-xl font-semibold text-foreground">Clientes</h1>
             <div className="flex items-center space-x-1 sm:space-x-2 flex-wrap">
-              <Button variant="outline" size="sm">
-                <Upload className="h-4 w-4 mr-2" />
-                Importar
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleImportExcel}
+                className="hidden"
+                id="import-excel"
+              />
+              <label htmlFor="import-excel">
+                <Button variant="outline" size="sm" asChild data-testid="button-import-excel">
+                  <span className="cursor-pointer">
+                    <Upload className="h-4 w-4 mr-2" />
+                    Importar
+                  </span>
+                </Button>
+              </label>
+              <Button variant="outline" size="sm" onClick={handleExportExcel} data-testid="button-export-excel">
+                <Download className="h-4 w-4 mr-2" />
+                Exportar
               </Button>
               <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
                 <Filter className="h-4 w-4 mr-2" />
@@ -510,11 +655,11 @@ export default function ClientsPage() {
                 </div>
               </div>
               <div className="flex items-center space-x-2">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={() => handleEditClient(selectedClient)} data-testid="button-edit-client">
                   <Edit className="h-4 w-4 mr-2" />
                   Editar
                 </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={() => handleChatWithClient(selectedClient)} data-testid="button-chat-client">
                   <MessageCircle className="h-4 w-4 mr-2" />
                   Chat
                 </Button>
@@ -625,9 +770,14 @@ export default function ClientsPage() {
 
             {/* Action Buttons */}
             <div className="flex justify-end space-x-2 pt-4">
-              <Button variant="outline" className="text-red-600 border-red-600 hover:bg-red-50">
+              <Button 
+                variant="outline" 
+                className="text-red-600 border-red-600 hover:bg-red-50"
+                onClick={() => handleDeleteClient(selectedClient)}
+                data-testid="button-delete-client"
+              >
                 <Trash2 className="h-4 w-4 mr-2" />
-                Alterar
+                Excluir
               </Button>
             </div>
           </div>

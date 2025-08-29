@@ -462,84 +462,105 @@ export default function SettingsPage() {
 
         {/* APIs Externas Tab */}
         <TabsContent value="apis" className="space-y-6">
-          {/* WhatsApp Business API */}
+          {/* Fi.V App Integration */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <MessageSquare className="h-5 w-5" />
-                <span>WhatsApp Business API</span>
+                <Link className="h-5 w-5" />
+                <span>Integração com Fi.V App</span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="whatsapp-token">Token de Acesso</Label>
-                <div className="flex items-center space-x-2">
-                  <Input
-                    id="whatsapp-token"
-                    type={showApiTokens.whatsapp ? "text" : "password"}
-                    value={localSettings.apis.whatsappToken}
-                    onChange={(e) => setLocalSettings(prev => ({
-                      ...prev,
-                      apis: { ...prev.apis, whatsappToken: e.target.value }
-                    }))}
-                    placeholder="Insira o token do WhatsApp Business API"
-                    data-testid="input-whatsapp-token"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleApiToken('whatsapp')}
-                  >
-                    {showApiTokens.whatsapp ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </Button>
+            <CardContent className="space-y-6">
+              {/* Explanation Section */}
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="flex items-start space-x-3">
+                  <MessageSquare className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-blue-900 dark:text-blue-100">
+                      Como o Fi.V App funciona
+                    </h3>
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      O Fi.V App atua como uma ponte inteligente entre seus sistemas e as mensagens do WhatsApp. 
+                      Para funcionar corretamente, ele precisa saber onde enviar as mensagens recebidas.
+                    </p>
+                    <div className="space-y-2 text-sm text-blue-800 dark:text-blue-200">
+                      <div className="flex items-start space-x-2">
+                        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                        <span><strong>Recebimento:</strong> O Fi.V App captura todas as mensagens do WhatsApp</span>
+                      </div>
+                      <div className="flex items-start space-x-2">
+                        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                        <span><strong>Processamento:</strong> Aplica filtros, automações e regras configuradas</span>
+                      </div>
+                      <div className="flex items-start space-x-2">
+                        <div className="w-1.5 h-1.5 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                        <span><strong>Entrega:</strong> Envia para sua plataforma através do webhook configurado</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Obtenha seu token em: <a href="https://developers.facebook.com/docs/whatsapp" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">Facebook Developers</a>
-                </p>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="webhook-url">URL do Webhook</Label>
-                <div className="flex items-center space-x-2">
-                  <Input
-                    id="webhook-url"
-                    value={localSettings.apis.webhookUrl}
-                    onChange={(e) => setLocalSettings(prev => ({
-                      ...prev,
-                      apis: { ...prev.apis, webhookUrl: e.target.value }
-                    }))}
-                    placeholder="https://sua-api.com/webhook"
-                    data-testid="input-webhook-url"
-                  />
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={testWebhook}
-                    data-testid="button-test-webhook"
-                  >
-                    <Wrench className="h-4 w-4" />
-                  </Button>
+              {/* Webhook Configuration */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="webhook-url" className="text-base font-medium">URL do Webhook</Label>
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      id="webhook-url"
+                      value={localSettings.apis.webhookUrl}
+                      onChange={(e) => setLocalSettings(prev => ({
+                        ...prev,
+                        apis: { ...prev.apis, webhookUrl: e.target.value }
+                      }))}
+                      placeholder="https://sua-plataforma.com/webhook/messages"
+                      className="text-sm"
+                      data-testid="input-webhook-url"
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={testWebhook}
+                      data-testid="button-test-webhook"
+                    >
+                      <Wrench className="h-4 w-4 mr-1" />
+                      Testar
+                    </Button>
+                  </div>
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <p>
+                      <strong>Esta URL deve:</strong> Estar acessível publicamente e aceitar requisições POST com dados JSON
+                    </p>
+                    <p>
+                      <strong>Exemplo de payload:</strong> {`{ "from": "+5511999999999", "message": "Olá!", "timestamp": "2024-01-01T12:00:00Z" }`}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  URL para recebimento de mensagens e eventos do WhatsApp
-                </p>
-              </div>
 
-              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                <div>
-                  <h4 className="font-medium">Conexão Automática</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Conectar automaticamente na inicialização
-                  </p>
+                {/* Webhook Status */}
+                <div className="p-3 border rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-3 h-3 rounded-full ${localSettings.apis.webhookUrl ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                      <div>
+                        <p className="font-medium text-sm">
+                          {localSettings.apis.webhookUrl ? 'Webhook Configurado' : 'Webhook Não Configurado'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {localSettings.apis.webhookUrl 
+                            ? 'Pronto para receber mensagens do Fi.V App' 
+                            : 'Configure a URL do webhook para começar a receber mensagens'
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    {localSettings.apis.webhookUrl && (
+                      <Badge variant="secondary" className="text-xs">
+                        Ativo
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-                <Switch
-                  checked={localSettings.apis.autoConnect}
-                  onCheckedChange={(value) => setLocalSettings(prev => ({
-                    ...prev,
-                    apis: { ...prev.apis, autoConnect: value }
-                  }))}
-                />
               </div>
             </CardContent>
           </Card>

@@ -151,7 +151,7 @@ export default function Financeiro() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="overview" className="flex items-center space-x-2" data-testid="tab-overview">
             <TrendingUp className="h-4 w-4" />
             <span>Visão Geral</span>
@@ -163,10 +163,6 @@ export default function Financeiro() {
           <TabsTrigger value="invoices" className="flex items-center space-x-2" data-testid="tab-invoices">
             <FileText className="h-4 w-4" />
             <span>Faturas</span>
-          </TabsTrigger>
-          <TabsTrigger value="payments" className="flex items-center space-x-2" data-testid="tab-payments">
-            <CreditCard className="h-4 w-4" />
-            <span>Pagamentos</span>
           </TabsTrigger>
         </TabsList>
 
@@ -484,40 +480,6 @@ export default function Financeiro() {
           </Card>
         </TabsContent>
 
-        {/* Payments Tab */}
-        <TabsContent value="payments" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Gerenciamento de Pagamentos</CardTitle>
-              <CardDescription>
-                Configure métodos de pagamento e visualize o histórico
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-12">
-                <CreditCard className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">Gerenciamento de Pagamentos</h3>
-                <p className="text-muted-foreground mb-4">
-                  Esta seção estará disponível em breve com integração completa do Stripe.
-                </p>
-                <div className="space-y-2 text-sm text-muted-foreground">
-                  <div className="flex items-center justify-center space-x-2">
-                    <Clock className="h-4 w-4" />
-                    <span>Métodos de pagamento</span>
-                  </div>
-                  <div className="flex items-center justify-center space-x-2">
-                    <Clock className="h-4 w-4" />
-                    <span>Histórico de transações</span>
-                  </div>
-                  <div className="flex items-center justify-center space-x-2">
-                    <Clock className="h-4 w-4" />
-                    <span>Cobrança automática</span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
     </div>
   );

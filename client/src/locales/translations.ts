@@ -63,6 +63,7 @@ export const ptBRTranslations = {
     aiAgent: "Agente de I.A",
     reports: "Relatórios",
     feedback: "Feedback",
+    financeiro: "Financeiro",
     settings: "Configurações",
     customerService: "Atendimento ao Cliente"
   },
