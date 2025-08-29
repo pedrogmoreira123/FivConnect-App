@@ -145,6 +145,7 @@ export interface IStorage {
 
   // Financial operations - Plans
   getPlan(id: string): Promise<Plan | undefined>;
+  getPlanById(id: string): Promise<Plan | undefined>;
   createPlan(plan: InsertPlan): Promise<Plan>;
   updatePlan(id: string, plan: Partial<InsertPlan>): Promise<Plan>;
   deletePlan(id: string): Promise<boolean>;
@@ -835,6 +836,10 @@ export class DatabaseStorage implements IStorage {
   async getPlan(id: string): Promise<Plan | undefined> {
     const [plan] = await db.select().from(plans).where(eq(plans.id, id));
     return plan || undefined;
+  }
+
+  async getPlanById(id: string): Promise<Plan | undefined> {
+    return this.getPlan(id);
   }
 
   async createPlan(insertPlan: InsertPlan): Promise<Plan> {

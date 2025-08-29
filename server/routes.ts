@@ -28,6 +28,7 @@ import {
   decryptData
 } from "./auth";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -768,8 +769,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const feedback = await storage.updateFeedback(id, {
         response,
-        respondedById: req.user.id,
-        respondedAt: new Date(),
+        respondedById: req.user!.id,
         status: 'resolved'
       });
       
@@ -811,6 +811,403 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Fi.V Connect Integration API endpoints
   
+  // Endpoint to fetch plans from Fi.V Connect
+  app.get('/api/fiv-connect/plans', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const config = await storage.getInstanceConfig();
+      
+      if (!config) {
+        return res.status(400).json({ 
+          message: "Instance not configured for Fi.V Connect integration" 
+        });
+      }
+      
+      // Make request to Fi.V Connect API for plans
+      const apiUrl = process.env.FIV_APP_API_URL || config.connectApiUrl;
+      const apiKey = process.env.FIV_APP_API_KEY || config.instanceKey;
+      
+      const response = await fetch(`${apiUrl}/api/v1/plans`, {
+        method: 'GET',
+        headers: {
+          'X-Instance-Key': apiKey,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Fi.V Connect API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const plans = await response.json();
+      
+      res.json({
+        success: true,
+        plans: plans,
+        source: 'fiv_connect',
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('Failed to fetch plans from Fi.V Connect:', error);
+      res.status(500).json({ 
+        message: "Failed to fetch plans from Fi.V Connect",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Endpoint to fetch database instances from Fi.V Connect
+  app.get('/api/fiv-connect/databases', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const config = await storage.getInstanceConfig();
+      
+      if (!config) {
+        return res.status(400).json({ 
+          message: "Instance not configured for Fi.V Connect integration" 
+        });
+      }
+      
+      // Make request to Fi.V Connect API for databases
+      const apiUrl = process.env.FIV_APP_API_URL || config.connectApiUrl;
+      const apiKey = process.env.FIV_APP_API_KEY || config.instanceKey;
+      
+      const response = await fetch(`${apiUrl}/api/v1/instances/${config.instanceId}/databases`, {
+        method: 'GET',
+        headers: {
+          'X-Instance-Key': apiKey,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Fi.V Connect API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const databases = await response.json();
+      
+      res.json({
+        success: true,
+        databases: databases,
+        instanceId: config.instanceId,
+        source: 'fiv_connect',
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('Failed to fetch databases from Fi.V Connect:', error);
+      res.status(500).json({ 
+        message: "Failed to fetch databases from Fi.V Connect",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Endpoint to synchronize local plans with Fi.V Connect plans
+  app.post('/api/fiv-connect/sync-plans', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const config = await storage.getInstanceConfig();
+      
+      if (!config) {
+        return res.status(400).json({ 
+          message: "Instance not configured for Fi.V Connect integration" 
+        });
+      }
+      
+      // Fetch plans from Fi.V Connect
+      const apiUrl = process.env.FIV_APP_API_URL || config.connectApiUrl;
+      const apiKey = process.env.FIV_APP_API_KEY || config.instanceKey;
+      
+      const response = await fetch(`${apiUrl}/api/v1/plans`, {
+        method: 'GET',
+        headers: {
+          'X-Instance-Key': apiKey,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Fi.V Connect API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const externalPlans = await response.json();
+      
+      // Sync plans to local database
+      const syncResults = [];
+      for (const plan of externalPlans) {
+        try {
+          const existingPlan = await storage.getPlanById(plan.id);
+          
+          if (existingPlan) {
+            // Update existing plan
+            await storage.updatePlan(plan.id, {
+              name: plan.name,
+              description: plan.description,
+              price: plan.price,
+              currency: plan.currency,
+              billingInterval: plan.billingInterval,
+              features: plan.features,
+              maxUsers: plan.maxUsers,
+              maxConversations: plan.maxConversations,
+              storageLimit: plan.storageLimit,
+              isActive: plan.isActive,
+              stripeProductId: plan.stripeProductId,
+              stripePriceId: plan.stripePriceId
+            });
+            syncResults.push({ action: 'updated', planId: plan.id, name: plan.name });
+          } else {
+            // Create new plan
+            await storage.createPlan({
+              name: plan.name,
+              description: plan.description,
+              price: plan.price,
+              currency: plan.currency,
+              billingInterval: plan.billingInterval,
+              features: plan.features,
+              maxUsers: plan.maxUsers,
+              maxConversations: plan.maxConversations,
+              storageLimit: plan.storageLimit,
+              isActive: plan.isActive,
+              stripeProductId: plan.stripeProductId,
+              stripePriceId: plan.stripePriceId
+            });
+            syncResults.push({ action: 'created', planId: plan.id, name: plan.name });
+          }
+        } catch (error) {
+          console.error(`Failed to sync plan ${plan.id}:`, error);
+          syncResults.push({ action: 'error', planId: plan.id, name: plan.name, error: error.message });
+        }
+      }
+      
+      res.json({
+        success: true,
+        message: "Plans synchronized successfully",
+        results: syncResults,
+        totalProcessed: externalPlans.length,
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('Failed to sync plans:', error);
+      res.status(500).json({ 
+        message: "Failed to synchronize plans with Fi.V Connect",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Endpoint to report instance data back to Fi.V Connect
+  app.post('/api/fiv-connect/report-usage', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const config = await storage.getInstanceConfig();
+      
+      if (!config) {
+        return res.status(400).json({ 
+          message: "Instance not configured for Fi.V Connect integration" 
+        });
+      }
+      
+      // Gather instance usage data
+      const users = await storage.getAllUsers();
+      const conversations = await storage.getAllConversations();
+      const clients = await storage.getAllClients();
+      const queues = await storage.getAllQueues();
+      
+      const usageData = {
+        instanceId: config.instanceId,
+        totalUsers: users.length,
+        totalConversations: conversations.length,
+        totalClients: clients.length,
+        totalQueues: queues.length,
+        activeConversations: conversations.filter(c => c.status === 'in_progress').length,
+        environment: storage.getCurrentEnvironment(),
+        lastActivity: new Date().toISOString(),
+        features: config.enabledFeatures
+      };
+      
+      // Send usage data to Fi.V Connect
+      const apiUrl = process.env.FIV_APP_API_URL || config.connectApiUrl;
+      const apiKey = process.env.FIV_APP_API_KEY || config.instanceKey;
+      
+      const response = await fetch(`${apiUrl}/api/v1/instances/${config.instanceId}/usage`, {
+        method: 'POST',
+        headers: {
+          'X-Instance-Key': apiKey,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(usageData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Fi.V Connect API returned ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      res.json({
+        success: true,
+        message: "Usage data reported to Fi.V Connect successfully",
+        usageData,
+        response: result,
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('Failed to report usage to Fi.V Connect:', error);
+      res.status(500).json({ 
+        message: "Failed to report usage to Fi.V Connect",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Simulate Fi.V Connect panel API - /api/v1/plans
+  // This endpoint simulates what the central Fi.V Connect panel would provide for plans
+  app.get('/api/v1/plans', async (req, res) => {
+    try {
+      const instanceKey = req.headers['x-instance-key'] as string;
+      
+      if (!instanceKey) {
+        return res.status(401).json({ error: "Missing instance key" });
+      }
+      
+      // Simulate different plan sets based on instance key
+      const mockPlans = [
+        {
+          id: "plan_starter",
+          name: "Starter",
+          description: "Basic plan for small businesses",
+          price: 2900, // R$ 29,00 in cents
+          currency: "BRL",
+          billingInterval: "monthly",
+          features: ["basic_chat", "email_support"],
+          maxUsers: 2,
+          maxConversations: 50,
+          storageLimit: 500,
+          isActive: true,
+          stripeProductId: "prod_starter",
+          stripePriceId: "price_starter"
+        },
+        {
+          id: "plan_professional",
+          name: "Professional",
+          description: "Advanced plan for growing teams",
+          price: 9900, // R$ 99,00 in cents
+          currency: "BRL",
+          billingInterval: "monthly",
+          features: ["advanced_chat", "ai_chatbot", "priority_support", "analytics"],
+          maxUsers: 10,
+          maxConversations: 500,
+          storageLimit: 5000,
+          isActive: true,
+          stripeProductId: "prod_professional",
+          stripePriceId: "price_professional"
+        },
+        {
+          id: "plan_enterprise",
+          name: "Enterprise",
+          description: "Complete solution for large organizations",
+          price: 29900, // R$ 299,00 in cents
+          currency: "BRL",
+          billingInterval: "monthly",
+          features: ["full_chat", "ai_agent", "whatsapp_integration", "custom_branding", "24_7_support"],
+          maxUsers: 50,
+          maxConversations: 2000,
+          storageLimit: 20000,
+          isActive: true,
+          stripeProductId: "prod_enterprise",
+          stripePriceId: "price_enterprise"
+        }
+      ];
+      
+      res.json(mockPlans);
+    } catch (error) {
+      console.error('Fi.V Connect Plans API error:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Simulate Fi.V Connect panel API - /api/v1/instances/:instanceId/databases
+  // This endpoint simulates what the central Fi.V Connect panel would provide for databases
+  app.get('/api/v1/instances/:instanceId/databases', async (req, res) => {
+    try {
+      const instanceKey = req.headers['x-instance-key'] as string;
+      const { instanceId } = req.params;
+      
+      if (!instanceKey) {
+        return res.status(401).json({ error: "Missing instance key" });
+      }
+      
+      // Simulate database information for this instance
+      const mockDatabases = [
+        {
+          id: `db_${instanceId}_main`,
+          name: "Main Database",
+          type: "postgresql",
+          host: "db.fiv-connect.com",
+          port: 5432,
+          database: `fivapp_${instanceId}`,
+          status: "active",
+          created_at: "2025-01-01T00:00:00Z",
+          size_mb: 250,
+          connection_limit: 100,
+          backup_enabled: true,
+          last_backup: "2025-08-29T06:00:00Z"
+        },
+        {
+          id: `db_${instanceId}_cache`,
+          name: "Cache Database",  
+          type: "redis",
+          host: "cache.fiv-connect.com",
+          port: 6379,
+          database: `cache_${instanceId}`,
+          status: "active",
+          created_at: "2025-01-01T00:00:00Z",
+          size_mb: 50,
+          memory_limit: "256mb",
+          eviction_policy: "allkeys-lru"
+        }
+      ];
+      
+      res.json(mockDatabases);
+    } catch (error) {
+      console.error('Fi.V Connect Databases API error:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Simulate Fi.V Connect panel API - /api/v1/instances/:instanceId/usage (for receiving usage reports)
+  app.post('/api/v1/instances/:instanceId/usage', async (req, res) => {
+    try {
+      const instanceKey = req.headers['x-instance-key'] as string;
+      const { instanceId } = req.params;
+      const usageData = req.body;
+      
+      if (!instanceKey) {
+        return res.status(401).json({ error: "Missing instance key" });
+      }
+      
+      console.log(`📊 Usage data received for instance ${instanceId}:`, usageData);
+      
+      // In a real implementation, this would store the usage data in the central database
+      // For simulation, we just acknowledge receipt
+      res.json({
+        success: true,
+        message: "Usage data received and processed",
+        instanceId,
+        dataReceived: usageData,
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('Fi.V Connect Usage API error:', error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Simulate Fi.V Connect panel API - /api/v1/instances/status
   // This endpoint simulates what the central Fi.V Connect panel would provide
   app.get('/api/v1/instances/status', async (req, res) => {
