@@ -30,12 +30,8 @@ const getNavigationItems = (userRole: string) => [
     items: [
       { nameKey: 'navigation.users', href: '/users', icon: Users },
       { nameKey: 'navigation.aiAgent', href: '/ai-agent', icon: Bot },
-      { nameKey: 'navigation.reports', href: '/reports', icon: FileBarChart },
-      { nameKey: 'navigation.enhancedReports', href: '/enhanced-reports', icon: TrendingUp },
+      { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
       { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
-      ...(userRole === 'admin' ? [
-        { nameKey: 'navigation.backoffice', href: '/backoffice', icon: Building2 }
-      ] : [])
     ]
   }
 ];

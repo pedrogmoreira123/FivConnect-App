@@ -1,0 +1,289 @@
+import { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { useThemeCustomization, type ThemeColors } from '@/contexts/theme-customization-context';
+import { Palette, RotateCcw, Eye, Save, Upload } from 'lucide-react';
+
+const colorPresets = [
+  { 
+    name: 'Azul Corporativo',
+    colors: { primary: '217 91% 60%', accent: '217 91% 95%' }
+  },
+  { 
+    name: 'Verde Natureza',
+    colors: { primary: '142 76% 36%', accent: '142 76% 95%' }
+  },
+  { 
+    name: 'Roxo Moderno',
+    colors: { primary: '262 83% 58%', accent: '262 83% 95%' }
+  },
+  { 
+    name: 'Laranja Vibrante',
+    colors: { primary: '25 95% 53%', accent: '25 95% 95%' }
+  },
+  { 
+    name: 'Rosa Elegante',
+    colors: { primary: '330 81% 60%', accent: '330 81% 95%' }
+  }
+];
+
+interface ColorInputProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  description?: string;
+}
+
+function ColorInput({ label, value, onChange, description }: ColorInputProps) {
+  const [inputValue, setInputValue] = useState(value);
+
+  const handleChange = (newValue: string) => {
+    setInputValue(newValue);
+    onChange(newValue);
+  };
+
+  // Convert HSL to hex for color picker
+  const hslToHex = (hsl: string) => {
+    const [h, s, l] = hsl.split(' ').map(v => parseFloat(v.replace('%', '')));
+    const sNorm = s / 100;
+    const lNorm = l / 100;
+    
+    const c = (1 - Math.abs(2 * lNorm - 1)) * sNorm;
+    const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    const m = lNorm - c / 2;
+    
+    let r, g, b;
+    if (h >= 0 && h < 60) [r, g, b] = [c, x, 0];
+    else if (h >= 60 && h < 120) [r, g, b] = [x, c, 0];
+    else if (h >= 120 && h < 180) [r, g, b] = [0, c, x];
+    else if (h >= 180 && h < 240) [r, g, b] = [0, x, c];
+    else if (h >= 240 && h < 300) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
+    
+    r = Math.round((r + m) * 255);
+    g = Math.round((g + m) * 255);
+    b = Math.round((b + m) * 255);
+    
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={label}>{label}</Label>
+      {description && (
+        <p className="text-xs text-muted-foreground">{description}</p>
+      )}
+      <div className="flex space-x-2">
+        <div className="flex-1">
+          <Input
+            id={label}
+            value={inputValue}
+            onChange={(e) => handleChange(e.target.value)}
+            placeholder="Ex: 217 91% 60%"
+            className="font-mono text-sm"
+          />
+        </div>
+        <div 
+          className="w-10 h-10 rounded border-2 border-border cursor-pointer"
+          style={{ backgroundColor: `hsl(${value})` }}
+          title={`Preview: hsl(${value})`}
+        />
+      </div>
+    </div>
+  );
+}
+
+export default function ColorPicker() {
+  const { branding, updateColors, resetToDefault, previewMode, setPreviewMode } = useThemeCustomization();
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+
+  const handlePresetApply = (preset: typeof colorPresets[0]) => {
+    updateColors(preset.colors);
+  };
+
+  const handleSaveChanges = () => {
+    setPreviewMode(false);
+    // Changes are automatically saved when not in preview mode
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setLogoFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        // In a real implementation, you would upload this to a storage service
+        // For now, we'll use the data URL
+        // updateLogo(result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Color Presets */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Palette className="h-5 w-5" />
+            <span>Temas Predefinidos</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {colorPresets.map((preset) => (
+              <Button
+                key={preset.name}
+                variant="outline"
+                className="h-auto p-3 flex flex-col items-center space-y-2"
+                onClick={() => handlePresetApply(preset)}
+                data-testid={`preset-${preset.name.toLowerCase().replace(/\s+/g, '-')}`}
+              >
+                <div className="flex space-x-1">
+                  <div
+                    className="w-4 h-4 rounded"
+                    style={{ backgroundColor: `hsl(${preset.colors.primary})` }}
+                  />
+                  <div
+                    className="w-4 h-4 rounded"
+                    style={{ backgroundColor: `hsl(${preset.colors.accent})` }}
+                  />
+                </div>
+                <span className="text-xs font-medium">{preset.name}</span>
+              </Button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Custom Colors */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Cores Personalizadas</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <h4 className="font-medium">Cores Principais</h4>
+              <ColorInput
+                label="Cor Primária"
+                value={branding.colors.primary}
+                onChange={(value) => updateColors({ primary: value })}
+                description="Cor principal da interface (botões, links)"
+              />
+              <ColorInput
+                label="Cor Secundária"
+                value={branding.colors.secondary}
+                onChange={(value) => updateColors({ secondary: value })}
+                description="Cor secundária para elementos de destaque"
+              />
+            </div>
+            
+            <div className="space-y-4">
+              <h4 className="font-medium">Cores de Fundo</h4>
+              <ColorInput
+                label="Fundo Principal"
+                value={branding.colors.background}
+                onChange={(value) => updateColors({ background: value })}
+                description="Cor de fundo da aplicação"
+              />
+              <ColorInput
+                label="Fundo Secundário"
+                value={branding.colors.muted}
+                onChange={(value) => updateColors({ muted: value })}
+                description="Cor de fundo para elementos secundários"
+              />
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-between pt-4 border-t">
+            <div className="flex items-center space-x-2">
+              {previewMode && (
+                <Badge variant="secondary" className="flex items-center space-x-1">
+                  <Eye className="h-3 w-3" />
+                  <span>Modo Visualização</span>
+                </Badge>
+              )}
+            </div>
+            
+            <div className="flex space-x-2">
+              <Button variant="outline" onClick={resetToDefault} data-testid="button-reset-theme">
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Restaurar Padrão
+              </Button>
+              
+              {previewMode ? (
+                <Button onClick={handleSaveChanges} data-testid="button-save-theme">
+                  <Save className="h-4 w-4 mr-2" />
+                  Salvar Alterações
+                </Button>
+              ) : (
+                <Button onClick={() => setPreviewMode(true)} variant="outline" data-testid="button-preview-theme">
+                  <Eye className="h-4 w-4 mr-2" />
+                  Modo Visualização
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Logo Upload */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Upload className="h-5 w-5" />
+            <span>Logo Personalizada</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="logo-upload">Upload da Logo</Label>
+            <p className="text-sm text-muted-foreground mb-3">
+              Formatos aceitos: PNG, JPG, SVG. Tamanho recomendado: 200x60px
+            </p>
+            <Input
+              id="logo-upload"
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              data-testid="input-logo-upload"
+            />
+          </div>
+          
+          {branding.logoUrl && (
+            <div className="p-4 border rounded-lg bg-muted/50">
+              <p className="text-sm font-medium mb-2">Logo Atual:</p>
+              <img 
+                src={branding.logoUrl} 
+                alt="Logo atual" 
+                className="max-h-16 object-contain"
+              />
+            </div>
+          )}
+          
+          {logoFile && (
+            <div className="p-4 border rounded-lg bg-blue-50 dark:bg-blue-950">
+              <p className="text-sm font-medium mb-2">Nova Logo (Preview):</p>
+              <p className="text-xs text-muted-foreground">
+                Arquivo: {logoFile.name} ({(logoFile.size / 1024).toFixed(1)} KB)
+              </p>
+              <Button size="sm" className="mt-2" disabled>
+                Salvar Logo
+              </Button>
+              <p className="text-xs text-muted-foreground mt-1">
+                * Funcionalidade de upload será implementada com armazenamento em nuvem
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

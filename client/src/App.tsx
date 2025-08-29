@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { AuthProvider } from "@/contexts/auth-context";
 import { SettingsProvider } from "@/contexts/settings-context";
+import { ThemeCustomizationProvider } from "@/contexts/theme-customization-context";
 import LoginPage from "@/pages/login";
 import DashboardPage from "@/pages/dashboard";
 import ConversationsPage from "@/pages/conversations";
@@ -90,14 +91,16 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <AuthProvider>
-          <SettingsProvider>
-            <TooltipProvider>
-              <Toaster />
-              <Router />
-            </TooltipProvider>
-          </SettingsProvider>
-        </AuthProvider>
+        <ThemeCustomizationProvider>
+          <AuthProvider>
+            <SettingsProvider>
+              <TooltipProvider>
+                <Toaster />
+                <Router />
+              </TooltipProvider>
+            </SettingsProvider>
+          </AuthProvider>
+        </ThemeCustomizationProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

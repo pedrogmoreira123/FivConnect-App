@@ -59,8 +59,6 @@ export const ptBRTranslations = {
     users: "Usuários",
     aiAgent: "Agente I.A.",
     reports: "Relatórios",
-    enhancedReports: "Relatórios Avançados",
-    backoffice: "Backoffice",
     settings: "Configurações",
     customerService: "Atendimento ao Cliente"
   },
@@ -71,12 +69,12 @@ export const ptBRTranslations = {
     avgWaitingTime: "Tempo Médio de Espera",
     completedToday: "Finalizadas Hoje",
     recentActivity: "Atividade Recente",
-    queueVolume: "Volume por Fila",
+    queueVolume: "Volume por Fila (Últimas 24h)",
     weeklyPerformance: "Performance Semanal",
     activity: {
-      handled: "manipulou a conversa com",
-      completed: "finalizou o atendimento com",
-      assigned: "foi designado para atender"
+      handled: "Agente {agentName} atendeu cliente {clientName}",
+      completed: "Conversa finalizada por {agentName}",
+      assigned: "Nova conversa atribuída a {agentName}"
     }
   },
   conversations: {
