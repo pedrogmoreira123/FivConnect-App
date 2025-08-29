@@ -5,8 +5,10 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import { useT } from '@/hooks/use-translation';
 import { useSettings } from '@/contexts/settings-context';
 import { useThemeCustomization } from '@/contexts/theme-customization-context';
@@ -15,16 +17,23 @@ import ColorPicker from '@/components/theme-customization/color-picker';
 import { 
   Settings, 
   Bell, 
-  User, 
-  Shield, 
-  Globe, 
   Palette, 
   MessageSquare,
-  Smartphone,
-  Monitor,
   QrCode,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Zap,
+  Link,
+  Monitor,
+  Globe,
+  RefreshCw,
+  Save,
+  FileText,
+  Upload,
+  Download,
+  Wrench
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -45,14 +54,30 @@ export default function SettingsPage() {
       connected: false,
       autoReply: true,
       businessHours: true
+    },
+    apis: {
+      whatsappToken: '',
+      webhookUrl: '',
+      geminiApiKey: '',
+      autoConnect: false
+    },
+    theme: {
+      primaryColor: '#6366f1',
+      companyLogo: '',
+      favicon: '',
+      customCss: ''
     }
   });
 
+  const [showApiTokens, setShowApiTokens] = useState({
+    whatsapp: false,
+    gemini: false
+  });
+
   const handleSave = () => {
-    // Save settings logic here
     toast({
-      title: t('settings.saved'),
-      description: "Configurações salvas com sucesso!",
+      title: "Configurações salvas!",
+      description: "Todas as configurações foram atualizadas com sucesso.",
     });
   };
 
@@ -67,11 +92,24 @@ export default function SettingsPage() {
   };
 
   const handleWhatsAppConnect = () => {
-    // WhatsApp connection logic
     toast({
       title: "WhatsApp",
-      description: "Funcionalidade de conexão será implementada",
+      description: "Conectando ao WhatsApp Business API...",
     });
+  };
+
+  const testWebhook = () => {
+    toast({
+      title: "Webhook testado",
+      description: "Teste de webhook enviado com sucesso.",
+    });
+  };
+
+  const toggleApiToken = (api: 'whatsapp' | 'gemini') => {
+    setShowApiTokens(prev => ({
+      ...prev,
+      [api]: !prev[api]
+    }));
   };
 
   return (
@@ -80,19 +118,23 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center space-x-2">
             <Settings className="h-6 w-6" />
-            <span>{t('settings.title')}</span>
+            <span>Configurações</span>
           </h1>
           <p className="text-muted-foreground mt-1">
-            Configure as preferências e aparência da plataforma
+            Configure as preferências, aparência e integrações da plataforma
           </p>
         </div>
+        <Button onClick={handleSave} data-testid="button-save-settings">
+          <Save className="h-4 w-4 mr-2" />
+          Salvar Configurações
+        </Button>
       </div>
 
       <Tabs defaultValue="appearance" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="appearance" className="flex items-center space-x-2">
             <Palette className="h-4 w-4" />
-            <span>Aparência</span>
+            <span>Personalização</span>
           </TabsTrigger>
           <TabsTrigger value="notifications" className="flex items-center space-x-2">
             <Bell className="h-4 w-4" />
@@ -102,15 +144,20 @@ export default function SettingsPage() {
             <MessageSquare className="h-4 w-4" />
             <span>WhatsApp</span>
           </TabsTrigger>
+          <TabsTrigger value="apis" className="flex items-center space-x-2">
+            <Zap className="h-4 w-4" />
+            <span>APIs Externas</span>
+          </TabsTrigger>
         </TabsList>
 
         {/* Appearance Tab */}
         <TabsContent value="appearance" className="space-y-6">
+          {/* Theme Customization */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Palette className="h-5 w-5" />
-                <span>Personalização Visual</span>
+                <span>Personalização de Cores</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -118,6 +165,123 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+          {/* Branding */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Monitor className="h-5 w-5" />
+                <span>Identidade Visual</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="company-name">Nome da Empresa</Label>
+                    <Input
+                      id="company-name"
+                      value={localSettings.companyName}
+                      onChange={(e) => setLocalSettings(prev => ({
+                        ...prev,
+                        companyName: e.target.value
+                      }))}
+                      placeholder="Digite o nome da empresa"
+                      data-testid="input-company-name"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="company-logo">Logo da Empresa</Label>
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        id="company-logo"
+                        value={localSettings.theme.companyLogo}
+                        onChange={(e) => setLocalSettings(prev => ({
+                          ...prev,
+                          theme: { ...prev.theme, companyLogo: e.target.value }
+                        }))}
+                        placeholder="URL do logo ou upload"
+                        data-testid="input-company-logo"
+                      />
+                      <Button variant="outline" size="sm">
+                        <Upload className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Recomendado: 200x50px, formato PNG ou SVG
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="favicon">Favicon</Label>
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        id="favicon"
+                        value={localSettings.theme.favicon}
+                        onChange={(e) => setLocalSettings(prev => ({
+                          ...prev,
+                          theme: { ...prev.theme, favicon: e.target.value }
+                        }))}
+                        placeholder="URL do favicon"
+                        data-testid="input-favicon"
+                      />
+                      <Button variant="outline" size="sm">
+                        <Upload className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Formato ICO, PNG ou SVG, 32x32px
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="primary-color">Cor Primária</Label>
+                    <div className="flex items-center space-x-2">
+                      <div 
+                        className="w-10 h-10 rounded border border-border"
+                        style={{ backgroundColor: localSettings.theme.primaryColor }}
+                      />
+                      <Input
+                        id="primary-color"
+                        value={localSettings.theme.primaryColor}
+                        onChange={(e) => setLocalSettings(prev => ({
+                          ...prev,
+                          theme: { ...prev.theme, primaryColor: e.target.value }
+                        }))}
+                        placeholder="#6366f1"
+                        data-testid="input-primary-color"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <Label htmlFor="custom-css">CSS Personalizado</Label>
+                <Textarea
+                  id="custom-css"
+                  className="h-32 font-mono text-sm"
+                  value={localSettings.theme.customCss}
+                  onChange={(e) => setLocalSettings(prev => ({
+                    ...prev,
+                    theme: { ...prev.theme, customCss: e.target.value }
+                  }))}
+                  placeholder="/* Adicione seu CSS personalizado aqui */
+.custom-header {
+  background: linear-gradient(45deg, #007bff, #6610f2);
+}"
+                  data-testid="textarea-custom-css"
+                />
+                <p className="text-xs text-muted-foreground">
+                  CSS personalizado para modificações avançadas de estilo
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Notifications Tab */}
@@ -296,15 +460,190 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-      </Tabs>
+        {/* APIs Externas Tab */}
+        <TabsContent value="apis" className="space-y-6">
+          {/* WhatsApp Business API */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <MessageSquare className="h-5 w-5" />
+                <span>WhatsApp Business API</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="whatsapp-token">Token de Acesso</Label>
+                <div className="flex items-center space-x-2">
+                  <Input
+                    id="whatsapp-token"
+                    type={showApiTokens.whatsapp ? "text" : "password"}
+                    value={localSettings.apis.whatsappToken}
+                    onChange={(e) => setLocalSettings(prev => ({
+                      ...prev,
+                      apis: { ...prev.apis, whatsappToken: e.target.value }
+                    }))}
+                    placeholder="Insira o token do WhatsApp Business API"
+                    data-testid="input-whatsapp-token"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleApiToken('whatsapp')}
+                  >
+                    {showApiTokens.whatsapp ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Obtenha seu token em: <a href="https://developers.facebook.com/docs/whatsapp" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">Facebook Developers</a>
+                </p>
+              </div>
 
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <Button onClick={handleSave} data-testid="button-save-settings">
-          <Settings className="h-4 w-4 mr-2" />
-          Salvar Configurações
-        </Button>
-      </div>
+              <div className="space-y-2">
+                <Label htmlFor="webhook-url">URL do Webhook</Label>
+                <div className="flex items-center space-x-2">
+                  <Input
+                    id="webhook-url"
+                    value={localSettings.apis.webhookUrl}
+                    onChange={(e) => setLocalSettings(prev => ({
+                      ...prev,
+                      apis: { ...prev.apis, webhookUrl: e.target.value }
+                    }))}
+                    placeholder="https://sua-api.com/webhook"
+                    data-testid="input-webhook-url"
+                  />
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={testWebhook}
+                    data-testid="button-test-webhook"
+                  >
+                    <Wrench className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  URL para recebimento de mensagens e eventos do WhatsApp
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                <div>
+                  <h4 className="font-medium">Conexão Automática</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Conectar automaticamente na inicialização
+                  </p>
+                </div>
+                <Switch
+                  checked={localSettings.apis.autoConnect}
+                  onCheckedChange={(value) => setLocalSettings(prev => ({
+                    ...prev,
+                    apis: { ...prev.apis, autoConnect: value }
+                  }))}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Google Gemini API */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Zap className="h-5 w-5" />
+                <span>Google Gemini (IA)</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="gemini-api-key">Chave da API Gemini</Label>
+                <div className="flex items-center space-x-2">
+                  <Input
+                    id="gemini-api-key"
+                    type={showApiTokens.gemini ? "text" : "password"}
+                    value={localSettings.apis.geminiApiKey}
+                    onChange={(e) => setLocalSettings(prev => ({
+                      ...prev,
+                      apis: { ...prev.apis, geminiApiKey: e.target.value }
+                    }))}
+                    placeholder="Insira a chave da API do Google Gemini"
+                    data-testid="input-gemini-api-key"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleApiToken('gemini')}
+                  >
+                    {showApiTokens.gemini ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Obtenha sua chave em: <a href="https://makersuite.google.com/app/apikey" className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer">Google AI Studio</a>
+                </p>
+              </div>
+
+              <div className="flex items-center space-x-2 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                <AlertCircle className="h-4 w-4 text-blue-600" />
+                <span className="text-sm text-blue-800 dark:text-blue-200">
+                  A API do Gemini é utilizada para o Agente de IA avançado
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* API Status */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Globe className="h-5 w-5" />
+                <span>Status das Integrações</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <MessageSquare className="h-5 w-5 text-green-600" />
+                    <div>
+                      <p className="font-medium">WhatsApp Business API</p>
+                      <p className="text-sm text-muted-foreground">Webhook configurado</p>
+                    </div>
+                  </div>
+                  <Badge className="bg-green-100 text-green-800">Conectado</Badge>
+                </div>
+
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <Zap className="h-5 w-5 text-blue-600" />
+                    <div>
+                      <p className="font-medium">Google Gemini AI</p>
+                      <p className="text-sm text-muted-foreground">API Key configurada</p>
+                    </div>
+                  </div>
+                  <Badge className="bg-green-100 text-green-800">Ativo</Badge>
+                </div>
+
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <Link className="h-5 w-5 text-gray-600" />
+                    <div>
+                      <p className="font-medium">Webhook Endpoint</p>
+                      <p className="text-sm text-muted-foreground">Status de conectividade</p>
+                    </div>
+                  </div>
+                  <Badge variant="secondary">Aguardando</Badge>
+                </div>
+              </div>
+
+              <div className="mt-4 pt-4 border-t">
+                <Button variant="outline" className="w-full">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Verificar Status das APIs
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

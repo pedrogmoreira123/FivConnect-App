@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useT } from '@/hooks/use-translation';
 import { useMobile } from '@/hooks/use-mobile';
 import { 
@@ -10,7 +12,10 @@ import {
   Send,
   Paperclip,
   Smile,
-  ArrowLeft 
+  ArrowLeft,
+  Clock,
+  Users,
+  Plus
 } from 'lucide-react';
 
 // Mock data
@@ -24,7 +29,8 @@ const mockConversations = [
     timestamp: '28/08/2024 13:08',
     status: 'Atendendo',
     unreadCount: 1,
-    bgColor: 'bg-pink-500'
+    bgColor: 'bg-pink-500',
+    type: 'active'
   },
   {
     id: '2',
@@ -35,7 +41,8 @@ const mockConversations = [
     timestamp: '28/08/2024 16:40',
     status: 'Suporte Técnico',
     unreadCount: 0,
-    bgColor: 'bg-blue-500'
+    bgColor: 'bg-blue-500',
+    type: 'active'
   },
   {
     id: '3',
@@ -46,7 +53,8 @@ const mockConversations = [
     timestamp: '28/08/2024 16:44',
     status: 'Atendendo',
     unreadCount: 0,
-    bgColor: 'bg-orange-500'
+    bgColor: 'bg-orange-500',
+    type: 'active'
   },
   {
     id: '4',
@@ -57,7 +65,8 @@ const mockConversations = [
     timestamp: '29/08/2024 16:40',
     status: 'Atendendo',
     unreadCount: 0,
-    bgColor: 'bg-pink-500'
+    bgColor: 'bg-pink-500',
+    type: 'active'
   },
   {
     id: '5',
@@ -68,7 +77,62 @@ const mockConversations = [
     timestamp: '29/08/2024 10:09',
     status: 'Atendendo',
     unreadCount: 0,
-    bgColor: 'bg-pink-500'
+    bgColor: 'bg-pink-500',
+    type: 'active'
+  }
+];
+
+const mockWaitingConversations = [
+  {
+    id: '6',
+    contactName: 'Ana Silva',
+    initials: 'AS',
+    contactPhone: '551187654321',
+    lastMessage: 'Aguardando atendimento...',
+    timestamp: '29/08/2024 15:30',
+    status: 'Em Espera',
+    unreadCount: 2,
+    bgColor: 'bg-amber-500',
+    type: 'waiting'
+  },
+  {
+    id: '7',
+    contactName: 'Carlos Santos',
+    initials: 'CS',
+    contactPhone: '551198765432',
+    lastMessage: 'Preciso de ajuda urgente',
+    timestamp: '29/08/2024 14:45',
+    status: 'Em Espera',
+    unreadCount: 1,
+    bgColor: 'bg-red-500',
+    type: 'waiting'
+  }
+];
+
+const mockContacts = [
+  {
+    id: '8',
+    contactName: 'Maria Oliveira',
+    initials: 'MO',
+    contactPhone: '551123456789',
+    lastMessage: '',
+    timestamp: '',
+    status: 'Inativo',
+    unreadCount: 0,
+    bgColor: 'bg-gray-500',
+    type: 'contact'
+  },
+  {
+    id: '9',
+    contactName: 'João Pereira',
+    initials: 'JP',
+    contactPhone: '551987654321',
+    lastMessage: '',
+    timestamp: '',
+    status: 'Inativo',
+    unreadCount: 0,
+    bgColor: 'bg-gray-500',
+    type: 'contact'
   }
 ];
 
@@ -104,6 +168,7 @@ export default function ConversationsPage() {
   const [newMessage, setNewMessage] = useState('');
   const [showChat, setShowChat] = useState(!isMobile);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('conversations');
 
   const handleSelectConversation = (conversation: typeof mockConversations[0]) => {
     setSelectedConversation(conversation);
@@ -130,10 +195,29 @@ export default function ConversationsPage() {
     }
   };
 
-  const filteredConversations = mockConversations.filter(conv =>
-    conv.contactName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    conv.contactPhone.includes(searchQuery)
-  );
+  const getFilteredData = () => {
+    let data = [];
+    switch (activeTab) {
+      case 'conversations':
+        data = mockConversations;
+        break;
+      case 'waiting':
+        data = mockWaitingConversations;
+        break;
+      case 'contacts':
+        data = mockContacts;
+        break;
+      default:
+        data = mockConversations;
+    }
+    
+    return data.filter(item =>
+      item.contactName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.contactPhone.includes(searchQuery)
+    );
+  };
+  
+  const filteredData = getFilteredData();
 
   return (
     <div className="h-full flex bg-background">
@@ -156,64 +240,189 @@ export default function ConversationsPage() {
           </div>
 
           {/* Tabs */}
-          <div className="flex border-b border-border">
-            <button className="flex-1 px-4 py-3 text-sm font-medium text-primary bg-primary/10 border-b-2 border-primary">
-              <span className="text-primary">● CONVERSAS</span>
-            </button>
-            <button className="flex-1 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground">
-              ESPERA
-            </button>
-            <button className="flex-1 px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground">
-              CONTATOS
-            </button>
-          </div>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-3 bg-muted/20">
+              <TabsTrigger value="conversations" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <MessageCircle className="h-4 w-4 mr-1" />
+                CONVERSAS
+                {mockConversations.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-xs">
+                    {mockConversations.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="waiting" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Clock className="h-4 w-4 mr-1" />
+                ESPERA
+                {mockWaitingConversations.length > 0 && (
+                  <Badge variant="destructive" className="ml-1 text-xs">
+                    {mockWaitingConversations.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="contacts" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                <Users className="h-4 w-4 mr-1" />
+                CONTATOS
+                {mockContacts.length > 0 && (
+                  <Badge variant="outline" className="ml-1 text-xs">
+                    {mockContacts.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Conversation List */}
-          <div className="flex-1 overflow-auto">
-            {filteredConversations.map((conversation) => (
-              <div
-                key={conversation.id}
-                onClick={() => handleSelectConversation(conversation)}
-                className={`p-4 border-b border-border cursor-pointer hover:bg-accent transition-colors ${
-                  selectedConversation.id === conversation.id ? 'bg-accent' : ''
-                }`}
-                data-testid={`conversation-${conversation.id}`}
-              >
-                <div className="flex items-center space-x-3">
-                  <div className={`w-12 h-12 ${conversation.bgColor} rounded-full flex items-center justify-center flex-shrink-0`}>
-                    <span className="text-white font-semibold text-sm">
-                      {conversation.initials}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <h3 className="font-semibold text-foreground truncate">
-                        {conversation.contactName}
-                      </h3>
-                      <span className="text-xs text-muted-foreground flex-shrink-0">
-                        {conversation.timestamp.split(' ')[1]}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-muted-foreground truncate">
-                        {conversation.lastMessage}
-                      </p>
-                      {conversation.unreadCount > 0 && (
-                        <div className="bg-primary text-primary-foreground rounded-full px-2 py-1 text-xs font-medium">
-                          {conversation.unreadCount}
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-1">
-                      <span className="inline-block bg-yellow-500 text-white text-xs px-2 py-1 rounded">
-                        {conversation.status}
-                      </span>
-                    </div>
-                  </div>
+            {/* Content based on active tab */}
+            <TabsContent value="conversations" className="flex-1 overflow-auto mt-0">
+              {filteredData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 text-center">
+                  <MessageCircle className="h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">Nenhuma conversa ativa</p>
                 </div>
+              ) : (
+                filteredData.map((conversation) => (
+                  <div
+                    key={conversation.id}
+                    onClick={() => handleSelectConversation(conversation)}
+                    className={`p-4 border-b border-border cursor-pointer hover:bg-accent transition-colors ${
+                      selectedConversation.id === conversation.id ? 'bg-accent' : ''
+                    }`}
+                    data-testid={`conversation-${conversation.id}`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-12 h-12 ${conversation.bgColor} rounded-full flex items-center justify-center flex-shrink-0`}>
+                        <span className="text-white font-semibold text-sm">
+                          {conversation.initials}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <h3 className="font-semibold text-foreground truncate">
+                            {conversation.contactName}
+                          </h3>
+                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                            {conversation.timestamp.split(' ')[1] || ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-muted-foreground truncate">
+                            {conversation.lastMessage || 'Sem mensagens'}
+                          </p>
+                          {conversation.unreadCount > 0 && (
+                            <div className="bg-primary text-primary-foreground rounded-full px-2 py-1 text-xs font-medium">
+                              {conversation.unreadCount}
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-1">
+                          <Badge variant={conversation.status === 'Atendendo' ? 'default' : 'secondary'} className="text-xs">
+                            {conversation.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </TabsContent>
+            
+            <TabsContent value="waiting" className="flex-1 overflow-auto mt-0">
+              {filteredData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 text-center">
+                  <Clock className="h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">Nenhuma conversa em espera</p>
+                </div>
+              ) : (
+                filteredData.map((conversation) => (
+                  <div
+                    key={conversation.id}
+                    onClick={() => handleSelectConversation(conversation)}
+                    className={`p-4 border-b border-border cursor-pointer hover:bg-accent transition-colors ${
+                      selectedConversation.id === conversation.id ? 'bg-accent' : ''
+                    }`}
+                    data-testid={`waiting-${conversation.id}`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-12 h-12 ${conversation.bgColor} rounded-full flex items-center justify-center flex-shrink-0 relative`}>
+                        <span className="text-white font-semibold text-sm">
+                          {conversation.initials}
+                        </span>
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center">
+                          <Clock className="h-2 w-2 text-white" />
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <h3 className="font-semibold text-foreground truncate">
+                            {conversation.contactName}
+                          </h3>
+                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                            {conversation.timestamp.split(' ')[1]}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-muted-foreground truncate">
+                            {conversation.lastMessage}
+                          </p>
+                          {conversation.unreadCount > 0 && (
+                            <div className="bg-amber-500 text-white rounded-full px-2 py-1 text-xs font-medium">
+                              {conversation.unreadCount}
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-1">
+                          <Badge variant="outline" className="text-xs border-amber-500 text-amber-600">
+                            {conversation.status}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </TabsContent>
+            
+            <TabsContent value="contacts" className="flex-1 overflow-auto mt-0">
+              <div className="p-3 border-b border-border">
+                <Button size="sm" className="w-full" data-testid="button-new-contact">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Contato
+                </Button>
               </div>
-            ))}
-          </div>
+              {filteredData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 text-center">
+                  <Users className="h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">Nenhum contato encontrado</p>
+                </div>
+              ) : (
+                filteredData.map((contact) => (
+                  <div
+                    key={contact.id}
+                    className="p-4 border-b border-border hover:bg-accent transition-colors cursor-pointer"
+                    data-testid={`contact-${contact.id}`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-12 h-12 ${contact.bgColor} rounded-full flex items-center justify-center flex-shrink-0`}>
+                        <span className="text-white font-semibold text-sm">
+                          {contact.initials}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-foreground truncate">
+                          {contact.contactName}
+                        </h3>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {contact.contactPhone}
+                        </p>
+                        <Badge variant="outline" className="text-xs mt-1">
+                          {contact.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
       )}
 

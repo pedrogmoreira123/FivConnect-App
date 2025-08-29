@@ -60,6 +60,7 @@ export const ptBRTranslations = {
     queues: "Filas",
     users: "Usuários",
     chatBot: "ChatBot",
+    aiAgent: "Agente de I.A",
     reports: "Relatórios",
     settings: "Configurações",
     customerService: "Atendimento ao Cliente"

@@ -4,8 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useT } from '@/hooks/use-translation';
 import { useMobile } from '@/hooks/use-mobile';
+import { useToast } from '@/hooks/use-toast';
 import { 
   Search, 
   Filter, 
@@ -213,9 +218,21 @@ const mockClients: Client[] = [
 export default function ClientsPage() {
   const { t } = useT();
   const isMobile = useMobile();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [showNewClientModal, setShowNewClientModal] = useState(false);
+  
+  const [newClient, setNewClient] = useState({
+    name: '',
+    company: '',
+    phone: '',
+    email: '',
+    address: '',
+    observations: '',
+    status: 'active' as 'active' | 'inactive'
+  });
 
   const filteredClients = mockClients.filter(client =>
     client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -233,6 +250,51 @@ export default function ClientsPage() {
     console.log(`Toggle web app for ${clientId}: ${enabled}`);
   };
 
+  const handleCreateClient = () => {
+    if (!newClient.name || !newClient.phone) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Nome e telefone são obrigatórios.",
+      });
+      return;
+    }
+
+    const clientId = newClient.name.split(' ').map(n => n[0]).join('').toUpperCase();
+    const colors = ['bg-pink-500', 'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-red-500'];
+    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+    
+    console.log('Criando novo cliente:', {
+      id: clientId,
+      name: newClient.name,
+      company: newClient.company || 'Empresa não informada',
+      phone: newClient.phone,
+      email: newClient.email || '',
+      address: newClient.address || '',
+      observations: newClient.observations || '',
+      status: newClient.status,
+      bgColor: randomColor,
+      avatar: clientId
+    });
+
+    toast({
+      title: "Cliente criado!",
+      description: `${newClient.name} foi adicionado com sucesso.`,
+    });
+
+    // Reset form
+    setNewClient({
+      name: '',
+      company: '',
+      phone: '',
+      email: '',
+      address: '',
+      observations: '',
+      status: 'active'
+    });
+    setShowNewClientModal(false);
+  };
+
   return (
     <div className="h-full flex bg-background">
       {/* Client List - Left Panel */}
@@ -241,19 +303,126 @@ export default function ClientsPage() {
         <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-semibold text-foreground">Clientes</h1>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 flex-wrap">
               <Button variant="outline" size="sm">
                 <Upload className="h-4 w-4 mr-2" />
                 Importar
               </Button>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
                 <Filter className="h-4 w-4 mr-2" />
                 Filtrar
               </Button>
-              <Button size="sm" data-testid="button-new-client">
-                <Plus className="h-4 w-4 mr-2" />
-                Novo
-              </Button>
+              
+              <Dialog open={showNewClientModal} onOpenChange={setShowNewClientModal}>
+                <DialogTrigger asChild>
+                  <Button size="sm" data-testid="button-new-client">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Novo
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>Cadastrar Novo Cliente</DialogTitle>
+                  </DialogHeader>
+                  
+                  <div className="space-y-4">
+                    {/* Nome */}
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Nome Completo *</Label>
+                      <Input
+                        id="name"
+                        placeholder="Ex: João Silva"
+                        value={newClient.name}
+                        onChange={(e) => setNewClient(prev => ({ ...prev, name: e.target.value }))}
+                      />
+                    </div>
+
+                    {/* Empresa */}
+                    <div className="space-y-2">
+                      <Label htmlFor="company">Empresa</Label>
+                      <Input
+                        id="company"
+                        placeholder="Ex: Silva Comércio LTDA"
+                        value={newClient.company}
+                        onChange={(e) => setNewClient(prev => ({ ...prev, company: e.target.value }))}
+                      />
+                    </div>
+
+                    {/* Telefone e Email */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="phone">Telefone *</Label>
+                        <Input
+                          id="phone"
+                          placeholder="(11) 99999-9999"
+                          value={newClient.phone}
+                          onChange={(e) => setNewClient(prev => ({ ...prev, phone: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="email">E-mail</Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="joao@exemplo.com"
+                          value={newClient.email}
+                          onChange={(e) => setNewClient(prev => ({ ...prev, email: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Endereço */}
+                    <div className="space-y-2">
+                      <Label htmlFor="address">Endereço</Label>
+                      <Input
+                        id="address"
+                        placeholder="Rua, número, bairro, cidade - UF"
+                        value={newClient.address}
+                        onChange={(e) => setNewClient(prev => ({ ...prev, address: e.target.value }))}
+                      />
+                    </div>
+
+                    {/* Status */}
+                    <div className="space-y-2">
+                      <Label htmlFor="status">Status</Label>
+                      <Select 
+                        value={newClient.status} 
+                        onValueChange={(value: 'active' | 'inactive') => setNewClient(prev => ({ ...prev, status: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Ativo</SelectItem>
+                          <SelectItem value="inactive">Inativo</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Observações */}
+                    <div className="space-y-2">
+                      <Label htmlFor="observations">Observações</Label>
+                      <Textarea
+                        id="observations"
+                        placeholder="Informações adicionais sobre o cliente..."
+                        value={newClient.observations}
+                        onChange={(e) => setNewClient(prev => ({ ...prev, observations: e.target.value }))}
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="flex justify-end space-x-2">
+                      <Button variant="outline" onClick={() => setShowNewClientModal(false)}>
+                        Cancelar
+                      </Button>
+                      <Button onClick={handleCreateClient}>
+                        Cadastrar Cliente
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+              
               <Button variant="outline" size="sm">
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
@@ -473,12 +642,16 @@ export default function ClientsPage() {
               <User className="h-12 w-12 text-muted-foreground" />
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">
-              Selecione um Cliente
+              Bem-vindo à Gestão de Clientes
             </h3>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground mb-4">
               Escolha um cliente da lista para visualizar<br />
               suas informações e histórico de atendimento
             </p>
+            <Button onClick={() => setShowNewClientModal(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Cadastrar Primeiro Cliente
+            </Button>
           </div>
         </div>
       )}

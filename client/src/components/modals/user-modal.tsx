@@ -52,8 +52,8 @@ export default function UserModal({ isOpen, onClose, user }: UserModalProps) {
       ...(password && { password })
     };
     
-    console.log(user ? 'Updating user:' : 'Creating user:', userData);
-    // In a real app, this would call the API to save the user
+    console.log(user ? 'Atualizando usuário:' : 'Criando usuário:', userData);
+    // Em uma aplicação real, isso chamaria a API para salvar o usuário
     onClose();
   };
 
@@ -65,18 +65,18 @@ export default function UserModal({ isOpen, onClose, user }: UserModalProps) {
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[425px]" data-testid="modal-user">
         <DialogHeader>
-          <DialogTitle>{user ? 'Edit User' : 'Add User'}</DialogTitle>
+          <DialogTitle>{user ? 'Editar Usuário' : 'Adicionar Usuário'}</DialogTitle>
           <DialogDescription>
-            {user ? 'Update user information and permissions.' : 'Create a new user account with role assignment.'}
+            {user ? 'Atualizar informações e permissões do usuário.' : 'Criar uma nova conta de usuário com atribuição de função.'}
           </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">Nome</Label>
             <Input
               id="name"
-              placeholder="Enter user name"
+              placeholder="Digite o nome do usuário"
               value={name}
               onChange={(e) => setName(e.target.value)}
               data-testid="input-user-name"
@@ -84,11 +84,11 @@ export default function UserModal({ isOpen, onClose, user }: UserModalProps) {
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">E-mail</Label>
             <Input
               id="email"
               type="email"
-              placeholder="Enter email address"
+              placeholder="Digite o endereço de e-mail"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               data-testid="input-user-email"
@@ -96,27 +96,27 @@ export default function UserModal({ isOpen, onClose, user }: UserModalProps) {
           </div>
           
           <div className="space-y-2">
-            <Label>Role</Label>
+            <Label>Função</Label>
             <Select value={role} onValueChange={(value: any) => setRole(value)}>
               <SelectTrigger data-testid="select-user-role">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="admin">Administrator</SelectItem>
+                <SelectItem value="admin">Administrador</SelectItem>
                 <SelectItem value="supervisor">Supervisor</SelectItem>
-                <SelectItem value="agent">Agent</SelectItem>
+                <SelectItem value="agent">Agente</SelectItem>
               </SelectContent>
             </Select>
           </div>
           
           <div className="space-y-2">
             <Label htmlFor="password">
-              {user ? 'New Password (leave blank to keep current)' : 'Password'}
+              {user ? 'Nova Senha (deixe em branco para manter a atual)' : 'Senha'}
             </Label>
             <Input
               id="password"
               type="password"
-              placeholder={user ? "Enter new password" : "Enter password"}
+              placeholder={user ? "Digite a nova senha" : "Digite a senha"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               data-testid="input-user-password"
@@ -126,14 +126,14 @@ export default function UserModal({ isOpen, onClose, user }: UserModalProps) {
         
         <div className="flex justify-end space-x-3">
           <Button variant="outline" onClick={handleClose} data-testid="button-cancel-user">
-            Cancel
+            Cancelar
           </Button>
           <Button
             onClick={handleSave}
             disabled={!name || !email || (!user && !password)}
             data-testid="button-save-user"
           >
-            Save User
+            Salvar Usuário
           </Button>
         </div>
       </DialogContent>

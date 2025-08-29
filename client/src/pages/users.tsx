@@ -26,9 +26,9 @@ export default function UsersPage() {
   };
 
   const handleDeleteUser = (userId: string) => {
-    if (window.confirm('Are you sure you want to delete this user?')) {
+    if (window.confirm('Tem certeza que deseja excluir este usuário?')) {
       console.log('Delete user:', userId);
-      // In a real app, this would call the API to delete the user
+      // Em uma aplicação real, isso chamaria a API para excluir o usuário
     }
   };
 
@@ -53,11 +53,11 @@ export default function UsersPage() {
   const getRoleDisplayName = (role: string) => {
     switch (role) {
       case 'admin':
-        return 'Administrator';
+        return 'Administrador';
       case 'supervisor':
         return 'Supervisor';
       case 'agent':
-        return 'Agent';
+        return 'Agente';
       default:
         return role;
     }
@@ -67,10 +67,10 @@ export default function UsersPage() {
     <>
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-foreground">User Management</h2>
+          <h2 className="text-xl font-semibold text-foreground">Gestão de Usuários</h2>
           <Button onClick={handleAddUser} data-testid="button-add-user">
             <Plus className="mr-2 h-4 w-4" />
-            Add User
+            Adicionar Usuário
           </Button>
         </div>
 
@@ -79,11 +79,11 @@ export default function UsersPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>E-mail</TableHead>
+                  <TableHead>Função</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead>Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

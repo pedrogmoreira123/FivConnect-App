@@ -57,8 +57,8 @@ export default function QueueModal({ isOpen, onClose, queue }: QueueModalProps) 
       messageOutsideHours
     };
     
-    console.log(queue ? 'Updating queue:' : 'Creating queue:', queueData);
-    // In a real app, this would call the API to save the queue
+    console.log(queue ? 'Atualizando fila:' : 'Criando fila:', queueData);
+    // Em uma aplicação real, isso chamaria a API para salvar a fila
     onClose();
   };
 
@@ -70,18 +70,18 @@ export default function QueueModal({ isOpen, onClose, queue }: QueueModalProps) 
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[525px]" data-testid="modal-queue">
         <DialogHeader>
-          <DialogTitle>{queue ? 'Edit Queue' : 'Add Queue'}</DialogTitle>
+          <DialogTitle>{queue ? 'Editar Fila' : 'Adicionar Fila'}</DialogTitle>
           <DialogDescription>
-            Configure queue settings including working hours and messages.
+            Configure as configurações da fila incluindo horários de funcionamento e mensagens.
           </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="queueName">Queue Name</Label>
+            <Label htmlFor="queueName">Nome da Fila</Label>
             <Input
               id="queueName"
-              placeholder="Enter queue name"
+              placeholder="Digite o nome da fila"
               value={queueName}
               onChange={(e) => setQueueName(e.target.value)}
               data-testid="input-queue-name"
@@ -89,20 +89,20 @@ export default function QueueModal({ isOpen, onClose, queue }: QueueModalProps) 
           </div>
           
           <div className="space-y-2">
-            <Label>Working Hours</Label>
+            <Label>Horário de Funcionamento</Label>
             <div className="grid grid-cols-2 gap-3">
               <Select value={workingDays} onValueChange={setWorkingDays}>
                 <SelectTrigger data-testid="select-working-days">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="monday">Monday</SelectItem>
-                  <SelectItem value="tuesday">Tuesday</SelectItem>
-                  <SelectItem value="wednesday">Wednesday</SelectItem>
-                  <SelectItem value="thursday">Thursday</SelectItem>
-                  <SelectItem value="friday">Friday</SelectItem>
-                  <SelectItem value="saturday">Saturday</SelectItem>
-                  <SelectItem value="sunday">Sunday</SelectItem>
+                  <SelectItem value="monday">Segunda-feira</SelectItem>
+                  <SelectItem value="tuesday">Terça-feira</SelectItem>
+                  <SelectItem value="wednesday">Quarta-feira</SelectItem>
+                  <SelectItem value="thursday">Quinta-feira</SelectItem>
+                  <SelectItem value="friday">Sexta-feira</SelectItem>
+                  <SelectItem value="saturday">Sábado</SelectItem>
+                  <SelectItem value="sunday">Domingo</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={workingHours} onValueChange={setWorkingHours}>
@@ -112,18 +112,18 @@ export default function QueueModal({ isOpen, onClose, queue }: QueueModalProps) 
                 <SelectContent>
                   <SelectItem value="09:00-18:00">09:00 - 18:00</SelectItem>
                   <SelectItem value="08:00-17:00">08:00 - 17:00</SelectItem>
-                  <SelectItem value="24-hours">24 Hours</SelectItem>
+                  <SelectItem value="24-hours">24 Horas</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="messageInsideHours">Message (Inside Hours)</Label>
+            <Label htmlFor="messageInsideHours">Mensagem (Dentro do Horário)</Label>
             <Textarea
               id="messageInsideHours"
               className="h-20 resize-none"
-              placeholder="Message for inside working hours"
+              placeholder="Mensagem para dentro do horário de funcionamento"
               value={messageInsideHours}
               onChange={(e) => setMessageInsideHours(e.target.value)}
               data-testid="textarea-message-inside-hours"
@@ -131,11 +131,11 @@ export default function QueueModal({ isOpen, onClose, queue }: QueueModalProps) 
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="messageOutsideHours">Message (Outside Hours)</Label>
+            <Label htmlFor="messageOutsideHours">Mensagem (Fora do Horário)</Label>
             <Textarea
               id="messageOutsideHours"
               className="h-20 resize-none"
-              placeholder="Message for outside working hours"
+              placeholder="Mensagem para fora do horário de funcionamento"
               value={messageOutsideHours}
               onChange={(e) => setMessageOutsideHours(e.target.value)}
               data-testid="textarea-message-outside-hours"
@@ -145,14 +145,14 @@ export default function QueueModal({ isOpen, onClose, queue }: QueueModalProps) 
         
         <div className="flex justify-end space-x-3">
           <Button variant="outline" onClick={handleClose} data-testid="button-cancel-queue">
-            Cancel
+            Cancelar
           </Button>
           <Button
             onClick={handleSave}
             disabled={!queueName}
             data-testid="button-save-queue"
           >
-            Save Queue
+            Salvar Fila
           </Button>
         </div>
       </DialogContent>

@@ -26,9 +26,9 @@ export default function QueuesPage() {
   };
 
   const handleDeleteQueue = (queueId: string) => {
-    if (window.confirm('Are you sure you want to delete this queue?')) {
+    if (window.confirm('Tem certeza que deseja excluir esta fila?')) {
       console.log('Delete queue:', queueId);
-      // In a real app, this would call the API to delete the queue
+      // Em uma aplicação real, isso chamaria a API para excluir a fila
     }
   };
 
@@ -41,10 +41,10 @@ export default function QueuesPage() {
     <>
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-foreground">Queue Management</h2>
+          <h2 className="text-xl font-semibold text-foreground">Gestão de Filas</h2>
           <Button onClick={handleAddQueue} data-testid="button-add-queue">
             <Plus className="mr-2 h-4 w-4" />
-            Add Queue
+            Adicionar Fila
           </Button>
         </div>
 
@@ -53,11 +53,11 @@ export default function QueuesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Queue Name</TableHead>
-                  <TableHead>Working Hours</TableHead>
-                  <TableHead>Active Conversations</TableHead>
+                  <TableHead>Nome da Fila</TableHead>
+                  <TableHead>Horário de Funcionamento</TableHead>
+                  <TableHead>Conversas Ativas</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead>Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -84,7 +84,7 @@ export default function QueuesPage() {
                         variant={queue.isActive ? "default" : "secondary"}
                         data-testid={`badge-queue-status-${queue.id}`}
                       >
-                        {queue.isActive ? 'Active' : 'Inactive'}
+                        {queue.isActive ? 'Ativa' : 'Inativa'}
                       </Badge>
                     </TableCell>
                     <TableCell>
