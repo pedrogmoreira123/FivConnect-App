@@ -300,10 +300,10 @@ export default function ClientsPage() {
       {/* Client List - Left Panel */}
       <div className={`${selectedClient && isMobile ? 'hidden' : ''} w-full md:w-96 border-r border-border flex flex-col bg-background`}>
         {/* Header */}
-        <div className="p-4 border-b border-border">
+        <div className="p-3 sm:p-4 border-b border-border">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-semibold text-foreground">Clientes</h1>
-            <div className="flex items-center space-x-2 flex-wrap">
+            <h1 className="text-lg sm:text-xl font-semibold text-foreground">Clientes</h1>
+            <div className="flex items-center space-x-1 sm:space-x-2 flex-wrap">
               <Button variant="outline" size="sm">
                 <Upload className="h-4 w-4 mr-2" />
                 Importar

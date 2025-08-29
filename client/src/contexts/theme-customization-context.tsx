@@ -168,6 +168,16 @@ export function ThemeCustomizationProvider({ children }: { children: React.React
       '--popover': `hsl(${colors.secondary})`,
       '--popover-foreground': `hsl(${colors.foreground})`,
       
+      // Sidebar - aplicar as cores personalizadas
+      '--sidebar': `hsl(${colors.secondary})`,
+      '--sidebar-foreground': `hsl(${colors.foreground})`,
+      '--sidebar-primary': `hsl(${colors.primary})`,
+      '--sidebar-primary-foreground': `hsl(${primaryContrast})`,
+      '--sidebar-accent': `hsl(${primaryLight})`,
+      '--sidebar-accent-foreground': `hsl(${colors.foreground})`,
+      '--sidebar-border': `hsl(${borderColor})`,
+      '--sidebar-ring': `hsl(${colors.primary})`,
+      
       // Cores destrutivas (mantém vermelho padrão)
       '--destructive': 'hsl(0 84% 60%)',
       '--destructive-foreground': 'hsl(210 40% 98%)'

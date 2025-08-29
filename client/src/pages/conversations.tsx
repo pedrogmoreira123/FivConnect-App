@@ -225,8 +225,8 @@ export default function ConversationsPage() {
       {(!isMobile || !showChat) && (
         <div className="w-full md:w-80 border-r border-border flex flex-col bg-background">
           {/* Header */}
-          <div className="p-4 border-b border-border">
-            <h1 className="text-xl font-semibold text-foreground mb-3">Chat</h1>
+          <div className="p-3 sm:p-4 border-b border-border">
+            <h1 className="text-lg sm:text-xl font-semibold text-foreground mb-3">Chat</h1>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
@@ -241,28 +241,31 @@ export default function ConversationsPage() {
 
           {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 bg-muted/20">
-              <TabsTrigger value="conversations" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                <MessageCircle className="h-4 w-4 mr-1" />
-                CONVERSAS
+            <TabsList className="grid w-full grid-cols-3 bg-muted/20 h-auto">
+              <TabsTrigger value="conversations" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground p-2 sm:p-3">
+                <MessageCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                <span className="hidden sm:inline">CONVERSAS</span>
+                <span className="sm:hidden">CONV</span>
                 {mockConversations.length > 0 && (
                   <Badge variant="secondary" className="ml-1 text-xs">
                     {mockConversations.length}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="waiting" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                <Clock className="h-4 w-4 mr-1" />
-                ESPERA
+              <TabsTrigger value="waiting" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground p-2 sm:p-3">
+                <Clock className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                <span className="hidden sm:inline">ESPERA</span>
+                <span className="sm:hidden">ESP</span>
                 {mockWaitingConversations.length > 0 && (
                   <Badge variant="destructive" className="ml-1 text-xs">
                     {mockWaitingConversations.length}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="contacts" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-                <Users className="h-4 w-4 mr-1" />
-                CONTATOS
+              <TabsTrigger value="contacts" className="text-xs font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground p-2 sm:p-3">
+                <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                <span className="hidden sm:inline">CONTATOS</span>
+                <span className="sm:hidden">CONT</span>
                 {mockContacts.length > 0 && (
                   <Badge variant="outline" className="ml-1 text-xs">
                     {mockContacts.length}
@@ -430,7 +433,7 @@ export default function ConversationsPage() {
       {(!isMobile || showChat) && selectedConversation && (
         <div className="flex-1 flex flex-col bg-background">
           {/* Chat Header */}
-          <div className="p-4 border-b border-border bg-background">
+          <div className="p-3 sm:p-4 border-b border-border bg-background">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 {isMobile && (
@@ -466,7 +469,7 @@ export default function ConversationsPage() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-auto p-4 space-y-4" data-testid="chat-messages">
+          <div className="flex-1 overflow-auto p-3 sm:p-4 space-y-3 sm:space-y-4" data-testid="chat-messages">
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -474,7 +477,7 @@ export default function ConversationsPage() {
                 data-testid={`message-${message.id}`}
               >
                 <div
-                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                  className={`max-w-[85%] sm:max-w-xs lg:max-w-md px-3 sm:px-4 py-2 rounded-lg ${
                     message.direction === 'outgoing'
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted text-foreground'
@@ -493,8 +496,8 @@ export default function ConversationsPage() {
           </div>
 
           {/* Message Input */}
-          <div className="p-4 border-t border-border bg-background">
-            <div className="flex items-center space-x-2">
+          <div className="p-3 sm:p-4 border-t border-border bg-background">
+            <div className="flex items-center space-x-1 sm:space-x-2">
               <Button variant="ghost" size="sm" data-testid="button-emoji">
                 <Smile className="h-5 w-5" />
               </Button>

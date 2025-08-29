@@ -35,10 +35,10 @@ export default function BackofficePage() {
   });
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center space-x-2">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center space-x-2">
             <Building2 className="h-6 w-6" />
             <span>{t('backoffice.title')}</span>
           </h1>
@@ -56,15 +56,15 @@ export default function BackofficePage() {
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-muted-foreground text-sm font-medium">
                   Total de Clientes
                 </p>
-                <p className="text-2xl font-bold text-foreground" data-testid="text-total-clients">
+                <p className="text-xl sm:text-2xl font-bold text-foreground" data-testid="text-total-clients">
                   {stats.totalClients}
                 </p>
               </div>
@@ -131,19 +131,19 @@ export default function BackofficePage() {
       </div>
 
       {/* Main Backoffice Tabs */}
-      <Tabs defaultValue="clients" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="clients" className="flex items-center space-x-2">
+      <Tabs defaultValue="clients" className="space-y-4 sm:space-y-6">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
+          <TabsTrigger value="clients" className="flex items-center justify-center space-x-2 p-2 sm:p-3">
             <Building2 className="h-4 w-4" />
-            <span>{t('backoffice.clientManagement')}</span>
+            <span className="text-sm sm:text-base">{t('backoffice.clientManagement')}</span>
           </TabsTrigger>
-          <TabsTrigger value="plans" className="flex items-center space-x-2">
+          <TabsTrigger value="plans" className="flex items-center justify-center space-x-2 p-2 sm:p-3">
             <CreditCard className="h-4 w-4" />
-            <span>{t('backoffice.plansAndBilling')}</span>
+            <span className="text-sm sm:text-base">{t('backoffice.plansAndBilling')}</span>
           </TabsTrigger>
-          <TabsTrigger value="access" className="flex items-center space-x-2">
+          <TabsTrigger value="access" className="flex items-center justify-center space-x-2 p-2 sm:p-3">
             <Shield className="h-4 w-4" />
-            <span>{t('backoffice.accessControl')}</span>
+            <span className="text-sm sm:text-base">{t('backoffice.accessControl')}</span>
           </TabsTrigger>
         </TabsList>
 
