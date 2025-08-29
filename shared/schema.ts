@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, relations } from "drizzle-orm";
 import { pgTable, text, varchar, timestamp, boolean, json, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -104,3 +104,31 @@ export type Settings = typeof settings.$inferSelect;
 export type InsertSettings = z.infer<typeof insertSettingsSchema>;
 export type AiAgentConfig = typeof aiAgentConfig.$inferSelect;
 export type InsertAiAgentConfig = z.infer<typeof insertAiAgentConfigSchema>;
+
+// Relations
+export const usersRelations = relations(users, ({ many }) => ({
+  assignedConversations: many(conversations),
+}));
+
+export const conversationsRelations = relations(conversations, ({ one, many }) => ({
+  assignedAgent: one(users, {
+    fields: [conversations.assignedAgentId],
+    references: [users.id],
+  }),
+  queue: one(queues, {
+    fields: [conversations.queueId],
+    references: [queues.id],
+  }),
+  messages: many(messages),
+}));
+
+export const messagesRelations = relations(messages, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [messages.conversationId],
+    references: [conversations.id],
+  }),
+}));
+
+export const queuesRelations = relations(queues, ({ many }) => ({
+  conversations: many(conversations),
+}));

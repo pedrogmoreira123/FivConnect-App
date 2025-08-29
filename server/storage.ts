@@ -10,9 +10,17 @@ import {
   type Settings,
   type InsertSettings,
   type AiAgentConfig,
-  type InsertAiAgentConfig
+  type InsertAiAgentConfig,
+  users,
+  conversations,
+  messages,
+  queues,
+  settings,
+  aiAgentConfig
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { db } from "./db";
+import { eq, and, asc } from "drizzle-orm";
 
 export interface IStorage {
   // User operations
@@ -56,297 +64,223 @@ export interface IStorage {
   updateAiAgentConfig(config: InsertAiAgentConfig): Promise<AiAgentConfig>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-  private conversations: Map<string, Conversation>;
-  private messages: Map<string, Message>;
-  private queues: Map<string, Queue>;
-  private settings: Map<string, Settings>;
-  private aiAgentConfig: AiAgentConfig | undefined;
-
+export class DatabaseStorage implements IStorage {
   constructor() {
-    this.users = new Map();
-    this.conversations = new Map();
-    this.messages = new Map();
-    this.queues = new Map();
-    this.settings = new Map();
-    this.aiAgentConfig = undefined;
     this.initializeDefaultData();
   }
 
-  private initializeDefaultData() {
-    // Create default admin user
-    const adminUser: User = {
-      id: randomUUID(),
-      name: "John Doe",
-      email: "admin@company.com",
-      password: "password",
-      role: "admin",
-      isOnline: true,
-      createdAt: new Date()
-    };
-    this.users.set(adminUser.id, adminUser);
+  private async initializeDefaultData() {
+    try {
+      // Check if we already have data
+      const existingUsers = await db.select().from(users).limit(1);
+      if (existingUsers.length > 0) return;
 
-    // Create default queues
-    const techSupportQueue: Queue = {
-      id: randomUUID(),
-      name: "Technical Support",
-      description: "Help with technical issues",
-      workingHours: { days: "Mon-Fri", hours: "9:00-18:00" },
-      messageInsideHours: "Welcome to Technical Support. An agent will be with you shortly.",
-      messageOutsideHours: "We're currently closed. Please leave a message and we'll get back to you.",
-      isActive: true,
-      createdAt: new Date()
-    };
-    
-    const salesQueue: Queue = {
-      id: randomUUID(),
-      name: "Sales",
-      description: "Sales inquiries and quotes",
-      workingHours: { days: "Mon-Sat", hours: "8:00-20:00" },
-      messageInsideHours: "Welcome to Sales! How can we help you today?",
-      messageOutsideHours: "Our sales team is currently unavailable. Please leave a message.",
-      isActive: true,
-      createdAt: new Date()
-    };
+      // Create default admin user
+      await db.insert(users).values({
+        name: "John Doe",
+        email: "admin@company.com",
+        password: "password",
+        role: "admin",
+        isOnline: true
+      });
 
-    this.queues.set(techSupportQueue.id, techSupportQueue);
-    this.queues.set(salesQueue.id, salesQueue);
+      // Create default queues
+      await db.insert(queues).values([
+        {
+          name: "Technical Support",
+          description: "Help with technical issues",
+          workingHours: { days: "Mon-Fri", hours: "9:00-18:00" },
+          messageInsideHours: "Welcome to Technical Support. An agent will be with you shortly.",
+          messageOutsideHours: "We're currently closed. Please leave a message and we'll get back to you.",
+          isActive: true
+        },
+        {
+          name: "Sales",
+          description: "Sales inquiries and quotes",
+          workingHours: { days: "Mon-Sat", hours: "8:00-20:00" },
+          messageInsideHours: "Welcome to Sales! How can we help you today?",
+          messageOutsideHours: "Our sales team is currently unavailable. Please leave a message.",
+          isActive: true
+        }
+      ]);
 
-    // Create default settings
-    const defaultSettings = [
-      { key: "companyName", value: "Fi.V App" },
-      { key: "cnpj", value: "" },
-      { key: "primaryColor", value: "#3B82F6" },
-      { key: "secondaryColor", value: "#64748B" },
-      { key: "whatsappConnected", value: "true" }
-    ];
+      // Create default settings
+      const defaultSettings = [
+        { key: "companyName", value: "Fi.V App" },
+        { key: "cnpj", value: "" },
+        { key: "primaryColor", value: "#3B82F6" },
+        { key: "secondaryColor", value: "#64748B" },
+        { key: "whatsappConnected", value: "true" }
+      ];
 
-    defaultSettings.forEach(setting => {
-      const settingRecord: Settings = {
-        id: randomUUID(),
-        key: setting.key,
-        value: setting.value,
-        updatedAt: new Date()
-      };
-      this.settings.set(setting.key, settingRecord);
-    });
+      await db.insert(settings).values(defaultSettings);
 
-    // Create default AI agent config
-    this.aiAgentConfig = {
-      id: randomUUID(),
-      isEnabled: true,
-      welcomeMessage: "Hello! I'm your virtual assistant. How can I help you today?",
-      responseDelay: 3,
-      updatedAt: new Date()
-    };
+      // Create default AI agent config
+      await db.insert(aiAgentConfig).values({
+        isEnabled: true,
+        welcomeMessage: "Hello! I'm your virtual assistant. How can I help you today?",
+        responseDelay: 3
+      });
+    } catch (error) {
+      // Ignore errors during initialization (table might not exist yet)
+      console.warn("Could not initialize default data:", error);
+    }
   }
 
   // User operations
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.email === email);
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = {
-      ...insertUser,
-      id,
-      role: insertUser.role || "agent",
-      isOnline: false,
-      createdAt: new Date()
-    };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
   async updateUser(id: string, updates: Partial<InsertUser>): Promise<User> {
-    const user = this.users.get(id);
+    const [user] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
     if (!user) throw new Error("User not found");
-    
-    const updatedUser = { ...user, ...updates };
-    this.users.set(id, updatedUser);
-    return updatedUser;
+    return user;
   }
 
   async deleteUser(id: string): Promise<boolean> {
-    return this.users.delete(id);
+    const result = await db.delete(users).where(eq(users.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 
   async getAllUsers(): Promise<User[]> {
-    return Array.from(this.users.values());
+    return await db.select().from(users);
   }
 
   // Conversation operations
   async getConversation(id: string): Promise<Conversation | undefined> {
-    return this.conversations.get(id);
+    const [conversation] = await db.select().from(conversations).where(eq(conversations.id, id));
+    return conversation || undefined;
   }
 
   async createConversation(insertConversation: InsertConversation): Promise<Conversation> {
-    const id = randomUUID();
-    const conversation: Conversation = {
-      ...insertConversation,
-      id,
-      status: insertConversation.status || "waiting",
-      assignedAgentId: insertConversation.assignedAgentId || null,
-      queueId: insertConversation.queueId || null,
-      lastMessageAt: new Date(),
-      createdAt: new Date()
-    };
-    this.conversations.set(id, conversation);
+    const [conversation] = await db.insert(conversations).values(insertConversation).returning();
     return conversation;
   }
 
   async updateConversation(id: string, updates: Partial<InsertConversation>): Promise<Conversation> {
-    const conversation = this.conversations.get(id);
+    const [conversation] = await db.update(conversations).set(updates).where(eq(conversations.id, id)).returning();
     if (!conversation) throw new Error("Conversation not found");
-    
-    const updatedConversation = { ...conversation, ...updates, lastMessageAt: new Date() };
-    this.conversations.set(id, updatedConversation);
-    return updatedConversation;
+    return conversation;
   }
 
   async deleteConversation(id: string): Promise<boolean> {
-    return this.conversations.delete(id);
+    const result = await db.delete(conversations).where(eq(conversations.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 
   async getConversationsByStatus(status: string): Promise<Conversation[]> {
-    return Array.from(this.conversations.values()).filter(conv => conv.status === status);
+    return await db.select().from(conversations).where(eq(conversations.status, status as any));
   }
 
   async getConversationsByAgent(agentId: string): Promise<Conversation[]> {
-    return Array.from(this.conversations.values()).filter(conv => conv.assignedAgentId === agentId);
+    return await db.select().from(conversations).where(eq(conversations.assignedAgentId, agentId));
   }
 
   async getAllConversations(): Promise<Conversation[]> {
-    return Array.from(this.conversations.values());
+    return await db.select().from(conversations);
   }
 
   // Message operations
   async getMessage(id: string): Promise<Message | undefined> {
-    return this.messages.get(id);
+    const [message] = await db.select().from(messages).where(eq(messages.id, id));
+    return message || undefined;
   }
 
   async createMessage(insertMessage: InsertMessage): Promise<Message> {
-    const id = randomUUID();
-    const message: Message = {
-      ...insertMessage,
-      id,
-      messageType: insertMessage.messageType || "text",
-      sentAt: new Date()
-    };
-    this.messages.set(id, message);
+    const [message] = await db.insert(messages).values(insertMessage).returning();
     return message;
   }
 
   async getMessagesByConversation(conversationId: string): Promise<Message[]> {
-    return Array.from(this.messages.values())
-      .filter(message => message.conversationId === conversationId)
-      .sort((a, b) => a.sentAt!.getTime() - b.sentAt!.getTime());
+    return await db.select().from(messages)
+      .where(eq(messages.conversationId, conversationId))
+      .orderBy(asc(messages.sentAt));
   }
 
   async deleteMessage(id: string): Promise<boolean> {
-    return this.messages.delete(id);
+    const result = await db.delete(messages).where(eq(messages.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Queue operations
   async getQueue(id: string): Promise<Queue | undefined> {
-    return this.queues.get(id);
+    const [queue] = await db.select().from(queues).where(eq(queues.id, id));
+    return queue || undefined;
   }
 
   async createQueue(insertQueue: InsertQueue): Promise<Queue> {
-    const id = randomUUID();
-    const queue: Queue = {
-      ...insertQueue,
-      id,
-      description: insertQueue.description || null,
-      workingHours: insertQueue.workingHours || null,
-      messageInsideHours: insertQueue.messageInsideHours || null,
-      messageOutsideHours: insertQueue.messageOutsideHours || null,
-      isActive: insertQueue.isActive !== undefined ? insertQueue.isActive : true,
-      createdAt: new Date()
-    };
-    this.queues.set(id, queue);
+    const [queue] = await db.insert(queues).values(insertQueue).returning();
     return queue;
   }
 
   async updateQueue(id: string, updates: Partial<InsertQueue>): Promise<Queue> {
-    const queue = this.queues.get(id);
+    const [queue] = await db.update(queues).set(updates).where(eq(queues.id, id)).returning();
     if (!queue) throw new Error("Queue not found");
-    
-    const updatedQueue = { ...queue, ...updates };
-    this.queues.set(id, updatedQueue);
-    return updatedQueue;
+    return queue;
   }
 
   async deleteQueue(id: string): Promise<boolean> {
-    return this.queues.delete(id);
+    const result = await db.delete(queues).where(eq(queues.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 
   async getAllQueues(): Promise<Queue[]> {
-    return Array.from(this.queues.values());
+    return await db.select().from(queues);
   }
 
   // Settings operations
   async getSetting(key: string): Promise<Settings | undefined> {
-    return this.settings.get(key);
+    const [setting] = await db.select().from(settings).where(eq(settings.key, key));
+    return setting || undefined;
   }
 
   async setSetting(insertSetting: InsertSettings): Promise<Settings> {
-    const id = randomUUID();
-    const setting: Settings = {
-      ...insertSetting,
-      id,
-      updatedAt: new Date()
-    };
-    this.settings.set(insertSetting.key, setting);
+    const [setting] = await db.insert(settings).values(insertSetting).returning();
     return setting;
   }
 
   async updateSetting(key: string, value: string): Promise<Settings> {
-    const setting = this.settings.get(key);
-    if (!setting) {
+    const existingSetting = await this.getSetting(key);
+    if (!existingSetting) {
       return this.setSetting({ key, value });
     }
     
-    const updatedSetting = { ...setting, value, updatedAt: new Date() };
-    this.settings.set(key, updatedSetting);
-    return updatedSetting;
+    const [setting] = await db.update(settings).set({ value }).where(eq(settings.key, key)).returning();
+    return setting;
   }
 
   async getAllSettings(): Promise<Settings[]> {
-    return Array.from(this.settings.values());
+    return await db.select().from(settings);
   }
 
   // AI Agent operations
   async getAiAgentConfig(): Promise<AiAgentConfig | undefined> {
-    return this.aiAgentConfig;
+    const [config] = await db.select().from(aiAgentConfig).limit(1);
+    return config || undefined;
   }
 
   async updateAiAgentConfig(config: InsertAiAgentConfig): Promise<AiAgentConfig> {
-    if (!this.aiAgentConfig) {
-      this.aiAgentConfig = {
-        id: randomUUID(),
-        isEnabled: config.isEnabled !== undefined ? config.isEnabled : false,
-        welcomeMessage: config.welcomeMessage || null,
-        responseDelay: config.responseDelay || null,
-        updatedAt: new Date()
-      };
+    const existingConfig = await this.getAiAgentConfig();
+    if (!existingConfig) {
+      const [newConfig] = await db.insert(aiAgentConfig).values(config).returning();
+      return newConfig;
     } else {
-      this.aiAgentConfig = {
-        ...this.aiAgentConfig,
-        isEnabled: config.isEnabled !== undefined ? config.isEnabled : this.aiAgentConfig.isEnabled,
-        welcomeMessage: config.welcomeMessage !== undefined ? config.welcomeMessage : this.aiAgentConfig.welcomeMessage,
-        responseDelay: config.responseDelay !== undefined ? config.responseDelay : this.aiAgentConfig.responseDelay,
-        updatedAt: new Date()
-      };
+      const [updatedConfig] = await db.update(aiAgentConfig).set(config).where(eq(aiAgentConfig.id, existingConfig.id)).returning();
+      return updatedConfig;
     }
-    return this.aiAgentConfig;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
