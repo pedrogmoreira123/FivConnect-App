@@ -20,13 +20,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSettings(updatedSettings);
     localStorage.setItem('appSettings', JSON.stringify(updatedSettings));
     
-    // Update CSS custom properties for primary/secondary colors
-    if (newSettings.primaryColor) {
-      document.documentElement.style.setProperty('--primary', newSettings.primaryColor);
-    }
-    if (newSettings.secondaryColor) {
-      document.documentElement.style.setProperty('--secondary', newSettings.secondaryColor);
-    }
+    // Note: Theme colors are now handled by ThemeCustomizationContext
+    // This prevents conflicts with the main theme system
   };
 
   return (

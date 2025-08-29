@@ -35,17 +35,17 @@ interface ThemeCustomizationContextType {
 }
 
 const defaultTheme: ThemeColors = {
-  primary: '262.1 83.3% 57.8%',
+  primary: '221 83% 53%',
   primaryForeground: '210 40% 98%',
-  secondary: '220 14.3% 95.9%',
-  secondaryForeground: '220.9 39.3% 11%',
+  secondary: '210 40% 96%',
+  secondaryForeground: '222 47% 11%',
   background: '0 0% 100%',
-  foreground: '220.9 39.3% 11%',
-  muted: '220 14.3% 95.9%',
-  mutedForeground: '220 8.9% 46.1%',
-  accent: '220 14.3% 95.9%',
-  accentForeground: '220.9 39.3% 11%',
-  border: '220 13% 91%'
+  foreground: '222 47% 11%',
+  muted: '210 40% 96%',
+  mutedForeground: '215 16% 47%',
+  accent: '210 40% 96%',
+  accentForeground: '222 47% 11%',
+  border: '214 32% 91%'
 };
 
 const defaultBranding: BrandingConfig = {
@@ -60,6 +60,11 @@ export function ThemeCustomizationProvider({ children }: { children: React.React
   const [previewMode, setPreviewMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { user, isAuthenticated } = useAuth();
+
+  // Apply default theme immediately on component mount
+  React.useEffect(() => {
+    applyThemeToDocument(defaultTheme);
+  }, []);
 
   // Load user's theme from database or fallback to localStorage
   useEffect(() => {
@@ -114,16 +119,34 @@ export function ThemeCustomizationProvider({ children }: { children: React.React
   // Apply theme colors to CSS variables
   const applyThemeToDocument = (colors: ThemeColors) => {
     const root = document.documentElement;
+    
+    // Map our theme keys to the correct CSS variable names expected by shadcn/ui
+    const cssVariableMap: Record<keyof ThemeColors, string> = {
+      primary: '--primary',
+      primaryForeground: '--primary-foreground',
+      secondary: '--secondary',
+      secondaryForeground: '--secondary-foreground',
+      background: '--background',
+      foreground: '--foreground',
+      muted: '--muted',
+      mutedForeground: '--muted-foreground',
+      accent: '--accent',
+      accentForeground: '--accent-foreground',
+      border: '--border'
+    };
+    
+    // Apply the theme colors with correct CSS variable names and HSL format
     Object.entries(colors).forEach(([key, value]) => {
-      const cssVar = `--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
-      root.style.setProperty(cssVar, value);
+      const cssVar = cssVariableMap[key as keyof ThemeColors];
+      if (cssVar) {
+        // Apply the value in HSL format that shadcn/ui expects
+        root.style.setProperty(cssVar, `hsl(${value})`);
+      }
     });
     
-    // Also apply as HSL format for components that need it
-    Object.entries(colors).forEach(([key, value]) => {
-      const cssVar = `--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}-hsl`;
-      root.style.setProperty(cssVar, `hsl(${value})`);
-    });
+    // Also update ring and input colors to match primary and border
+    root.style.setProperty('--ring', `hsl(${colors.primary})`);
+    root.style.setProperty('--input', `hsl(${colors.border})`);
     
     console.log('Theme applied:', colors); // Debug log
   };
