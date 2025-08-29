@@ -10,23 +10,27 @@ import { Palette, RotateCcw, Eye, Save, Upload } from 'lucide-react';
 const colorPresets = [
   { 
     name: 'Azul Corporativo',
-    colors: { primary: '217 91% 60%', accent: '217 91% 95%' }
+    colors: { primary: '217 91% 60%', secondary: '210 40% 96%', foreground: '222 47% 11%' }
   },
   { 
     name: 'Verde Natureza',
-    colors: { primary: '142 76% 36%', accent: '142 76% 95%' }
+    colors: { primary: '142 76% 36%', secondary: '142 76% 96%', foreground: '222 47% 11%' }
   },
   { 
     name: 'Roxo Moderno',
-    colors: { primary: '262 83% 58%', accent: '262 83% 95%' }
+    colors: { primary: '262 83% 58%', secondary: '262 83% 96%', foreground: '222 47% 11%' }
   },
   { 
     name: 'Laranja Vibrante',
-    colors: { primary: '25 95% 53%', accent: '25 95% 95%' }
+    colors: { primary: '25 95% 53%', secondary: '25 95% 96%', foreground: '222 47% 11%' }
   },
   { 
     name: 'Rosa Elegante',
-    colors: { primary: '330 81% 60%', accent: '330 81% 95%' }
+    colors: { primary: '330 81% 60%', secondary: '330 81% 96%', foreground: '222 47% 11%' }
+  },
+  {
+    name: 'Tema Escuro',
+    colors: { primary: '217 91% 60%', secondary: '224 71% 4%', foreground: '213 31% 91%' }
   }
 ];
 
@@ -196,7 +200,11 @@ export default function ColorPicker() {
                   />
                   <div
                     className="w-4 h-4 rounded"
-                    style={{ backgroundColor: `hsl(${preset.colors.accent})` }}
+                    style={{ backgroundColor: `hsl(${preset.colors.secondary})` }}
+                  />
+                  <div
+                    className="w-4 h-4 rounded"
+                    style={{ backgroundColor: `hsl(${preset.colors.foreground})` }}
                   />
                 </div>
                 <span className="text-xs font-medium">{preset.name}</span>
@@ -210,40 +218,32 @@ export default function ColorPicker() {
       <Card>
         <CardHeader>
           <CardTitle>Cores Personalizadas</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Configure apenas 3 cores que se aplicam automaticamente a toda a interface
+          </p>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <h4 className="font-medium">Cores Principais</h4>
-              <ColorInput
-                label="Cor Primária"
-                value={branding.colors.primary}
-                onChange={(value) => updateColors({ primary: value })}
-                description="Cor principal da interface (botões, links)"
-              />
-              <ColorInput
-                label="Cor Secundária"
-                value={branding.colors.secondary}
-                onChange={(value) => updateColors({ secondary: value })}
-                description="Cor secundária para elementos de destaque"
-              />
-            </div>
+          <div className="space-y-6">
+            <ColorInput
+              label="Cor Primária"
+              value={branding.colors.primary}
+              onChange={(value) => updateColors({ primary: value })}
+              description="Cor principal para botões, links e elementos de destaque"
+            />
             
-            <div className="space-y-4">
-              <h4 className="font-medium">Cores de Fundo</h4>
-              <ColorInput
-                label="Fundo Principal"
-                value={branding.colors.background}
-                onChange={(value) => updateColors({ background: value })}
-                description="Cor de fundo da aplicação"
-              />
-              <ColorInput
-                label="Fundo Secundário"
-                value={branding.colors.muted}
-                onChange={(value) => updateColors({ muted: value })}
-                description="Cor de fundo para elementos secundários"
-              />
-            </div>
+            <ColorInput
+              label="Cor Secundária"
+              value={branding.colors.secondary}
+              onChange={(value) => updateColors({ secondary: value })}
+              description="Cor de fundo da interface (fundos de cartões, modais, etc.)"
+            />
+            
+            <ColorInput
+              label="Cor da Fonte"
+              value={branding.colors.foreground}
+              onChange={(value) => updateColors({ foreground: value })}
+              description="Cor do texto principal em toda a aplicação"
+            />
           </div>
 
           {/* Action Buttons */}

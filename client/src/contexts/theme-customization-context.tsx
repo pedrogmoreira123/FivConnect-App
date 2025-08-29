@@ -3,17 +3,9 @@ import { useAuth } from './auth-context';
 import { apiRequest } from '@/lib/queryClient';
 
 export interface ThemeColors {
-  primary: string;
-  primaryForeground: string;
-  secondary: string;
-  secondaryForeground: string;
-  background: string;
-  foreground: string;
-  muted: string;
-  mutedForeground: string;
-  accent: string;
-  accentForeground: string;
-  border: string;
+  primary: string;        // Cor primária (fundo dos elementos principais)
+  secondary: string;      // Cor secundária (elementos sobre o fundo primário)
+  foreground: string;     // Cor da fonte/texto
 }
 
 export interface BrandingConfig {
@@ -35,17 +27,9 @@ interface ThemeCustomizationContextType {
 }
 
 const defaultTheme: ThemeColors = {
-  primary: '221 83% 53%',
-  primaryForeground: '210 40% 98%',
-  secondary: '210 40% 96%',
-  secondaryForeground: '222 47% 11%',
-  background: '0 0% 100%',
-  foreground: '222 47% 11%',
-  muted: '210 40% 96%',
-  mutedForeground: '215 16% 47%',
-  accent: '210 40% 96%',
-  accentForeground: '222 47% 11%',
-  border: '214 32% 91%'
+  primary: '221 83% 53%',      // Azul principal
+  secondary: '210 40% 96%',    // Cinza claro para fundos secundários  
+  foreground: '222 47% 11%'    // Texto escuro
 };
 
 const defaultBranding: BrandingConfig = {
@@ -120,33 +104,79 @@ export function ThemeCustomizationProvider({ children }: { children: React.React
   const applyThemeToDocument = (colors: ThemeColors) => {
     const root = document.documentElement;
     
-    // Map our theme keys to the correct CSS variable names expected by shadcn/ui
-    const cssVariableMap: Record<keyof ThemeColors, string> = {
-      primary: '--primary',
-      primaryForeground: '--primary-foreground',
-      secondary: '--secondary',
-      secondaryForeground: '--secondary-foreground',
-      background: '--background',
-      foreground: '--foreground',
-      muted: '--muted',
-      mutedForeground: '--muted-foreground',
-      accent: '--accent',
-      accentForeground: '--accent-foreground',
-      border: '--border'
+    // Função para calcular cor contrastante (branco ou preto)
+    const getContrastColor = (hslColor: string): string => {
+      const [h, s, l] = hslColor.split(' ').map(v => parseFloat(v.replace('%', '')));
+      // Se a luminosidade for alta (>50%), usar texto escuro, senão usar texto claro
+      return l > 50 ? '222 47% 11%' : '210 40% 98%';
     };
     
-    // Apply the theme colors with correct CSS variable names and HSL format
-    Object.entries(colors).forEach(([key, value]) => {
-      const cssVar = cssVariableMap[key as keyof ThemeColors];
-      if (cssVar) {
-        // Apply the value in HSL format that shadcn/ui expects
-        root.style.setProperty(cssVar, `hsl(${value})`);
-      }
-    });
+    // Função para calcular uma variação mais clara da cor
+    const getLighterVariant = (hslColor: string): string => {
+      const [h, s, l] = hslColor.split(' ').map(v => parseFloat(v.replace('%', '')));
+      // Aumentar a luminosidade em 35% (máximo 95%)
+      const newL = Math.min(95, l + 35);
+      return `${h} ${s}% ${newL}%`;
+    };
     
-    // Also update ring and input colors to match primary and border
-    root.style.setProperty('--ring', `hsl(${colors.primary})`);
-    root.style.setProperty('--input', `hsl(${colors.border})`);
+    // Função para calcular uma variação mais escura da cor
+    const getDarkerVariant = (hslColor: string): string => {
+      const [h, s, l] = hslColor.split(' ').map(v => parseFloat(v.replace('%', '')));
+      // Diminuir a luminosidade em 15% (mínimo 5%)
+      const newL = Math.max(5, l - 15);
+      return `${h} ${s}% ${newL}%`;
+    };
+    
+    // Mapear as 3 cores para todas as variáveis do shadcn/ui
+    const primaryContrast = getContrastColor(colors.primary);
+    const secondaryContrast = getContrastColor(colors.secondary);
+    const primaryLight = getLighterVariant(colors.primary);
+    const borderColor = getDarkerVariant(colors.secondary);
+    
+    // Aplicar todas as variáveis CSS necessárias
+    const cssVariables = {
+      // Cores primárias
+      '--primary': `hsl(${colors.primary})`,
+      '--primary-foreground': `hsl(${primaryContrast})`,
+      
+      // Cores secundárias
+      '--secondary': `hsl(${colors.secondary})`,
+      '--secondary-foreground': `hsl(${secondaryContrast})`,
+      
+      // Fundo e texto
+      '--background': `hsl(${colors.secondary})`,
+      '--foreground': `hsl(${colors.foreground})`,
+      
+      // Elementos neutros
+      '--muted': `hsl(${colors.secondary})`,
+      '--muted-foreground': `hsl(${colors.foreground})`,
+      
+      // Accent usa a cor primária em versão mais clara
+      '--accent': `hsl(${primaryLight})`,
+      '--accent-foreground': `hsl(${colors.foreground})`,
+      
+      // Bordas e inputs
+      '--border': `hsl(${borderColor})`,
+      '--input': `hsl(${borderColor})`,
+      '--ring': `hsl(${colors.primary})`,
+      
+      // Cores de cartão
+      '--card': `hsl(${colors.secondary})`,
+      '--card-foreground': `hsl(${colors.foreground})`,
+      
+      // Popover
+      '--popover': `hsl(${colors.secondary})`,
+      '--popover-foreground': `hsl(${colors.foreground})`,
+      
+      // Cores destrutivas (mantém vermelho padrão)
+      '--destructive': 'hsl(0 84% 60%)',
+      '--destructive-foreground': 'hsl(210 40% 98%)'
+    };
+    
+    // Aplicar todas as variáveis
+    Object.entries(cssVariables).forEach(([property, value]) => {
+      root.style.setProperty(property, value);
+    });
     
     console.log('Theme applied:', colors); // Debug log
   };
