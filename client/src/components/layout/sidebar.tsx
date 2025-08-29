@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/hooks/use-auth';
 import { useSettings } from '@/contexts/settings-context';
+import { useT } from '@/hooks/use-translation';
 import { Button } from '@/components/ui/button';
 import { 
   BarChart3, 
@@ -10,25 +11,31 @@ import {
   Bot, 
   FileBarChart, 
   Settings,
-  LogOut
+  LogOut,
+  TrendingUp,
+  Building2
 } from 'lucide-react';
 
-const navigationItems = [
+const getNavigationItems = (userRole: string) => [
   {
-    section: 'Main',
+    sectionKey: 'navigation.main',
     items: [
-      { name: 'Dashboard', href: '/', icon: BarChart3 },
-      { name: 'Conversations', href: '/conversations', icon: MessageCircle },
-      { name: 'Queues', href: '/queues', icon: List },
+      { nameKey: 'navigation.dashboard', href: '/', icon: BarChart3 },
+      { nameKey: 'navigation.conversations', href: '/conversations', icon: MessageCircle },
+      { nameKey: 'navigation.queues', href: '/queues', icon: List },
     ]
   },
   {
-    section: 'Management',
+    sectionKey: 'navigation.management',
     items: [
-      { name: 'Users', href: '/users', icon: Users },
-      { name: 'A.I. Agent', href: '/ai-agent', icon: Bot },
-      { name: 'Reports', href: '/reports', icon: FileBarChart },
-      { name: 'Settings', href: '/settings', icon: Settings },
+      { nameKey: 'navigation.users', href: '/users', icon: Users },
+      { nameKey: 'navigation.aiAgent', href: '/ai-agent', icon: Bot },
+      { nameKey: 'navigation.reports', href: '/reports', icon: FileBarChart },
+      { nameKey: 'navigation.enhancedReports', href: '/enhanced-reports', icon: TrendingUp },
+      { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
+      ...(userRole === 'admin' ? [
+        { nameKey: 'navigation.backoffice', href: '/backoffice', icon: Building2 }
+      ] : [])
     ]
   }
 ];
@@ -37,9 +44,12 @@ export default function Sidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
   const { settings } = useSettings();
+  const { t } = useT();
+
+  const navigationItems = getNavigationItems(user?.role || 'agent');
 
   const handleLogout = () => {
-    if (window.confirm('Are you sure you want to logout?')) {
+    if (window.confirm(t('auth.logoutConfirm'))) {
       logout();
     }
   };
@@ -51,34 +61,35 @@ export default function Sidebar() {
         <h2 className="text-xl font-bold text-sidebar-foreground" data-testid="text-company-name">
           {settings.companyName}
         </h2>
-        <p className="text-sm text-muted-foreground">Customer Service</p>
+        <p className="text-sm text-muted-foreground">{t('navigation.customerService')}</p>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 sidebar-nav">
         {navigationItems.map((section) => (
-          <div key={section.section} className="mb-4">
+          <div key={section.sectionKey} className="mb-4">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-              {section.section}
+              {t(section.sectionKey)}
             </p>
             {section.items.map((item) => {
               const Icon = item.icon;
               const isActive = location === item.href || 
                 (item.href !== '/' && location.startsWith(item.href));
+              const itemName = t(item.nameKey);
               
               return (
                 <Link
-                  key={item.name}
+                  key={item.nameKey}
                   href={item.href}
                   className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                     isActive 
                       ? 'active bg-sidebar-primary text-sidebar-primary-foreground' 
                       : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                   }`}
-                  data-testid={`link-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+                  data-testid={`link-${(itemName || '').toLowerCase().replace(/\s+/g, '-')}`}
                 >
                   <Icon className="mr-3 w-5 h-5" />
-                  {item.name}
+                  {itemName}
                 </Link>
               );
             })}
@@ -99,8 +110,8 @@ export default function Sidebar() {
               {user?.name}
             </p>
             <p className="text-xs text-muted-foreground" data-testid="text-user-role">
-              {user?.role === 'admin' ? 'Administrator' : 
-               user?.role === 'supervisor' ? 'Supervisor' : 'Agent'}
+              {user?.role === 'admin' ? t('users.admin') : 
+               user?.role === 'supervisor' ? t('users.supervisor') : t('users.agent')}
             </p>
           </div>
         </div>
@@ -112,7 +123,7 @@ export default function Sidebar() {
           data-testid="button-logout"
         >
           <LogOut className="mr-2 h-4 w-4" />
-          Logout
+          {t('common.logout')}
         </Button>
       </div>
     </div>

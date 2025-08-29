@@ -1,24 +1,27 @@
 import { useLocation } from 'wouter';
 import Sidebar from './sidebar';
 import Header from './header';
+import { useT } from '@/hooks/use-translation';
 
 interface MainLayoutProps {
   children: React.ReactNode;
 }
 
-const pageTitles: Record<string, string> = {
-  '/': 'Dashboard',
-  '/conversations': 'Conversations',
-  '/queues': 'Queue Management',
-  '/users': 'User Management',
-  '/ai-agent': 'A.I. Agent',
-  '/reports': 'Reports',
-  '/settings': 'Settings'
+const pageTitleKeys: Record<string, string> = {
+  '/': 'navigation.dashboard',
+  '/conversations': 'navigation.conversations',
+  '/queues': 'queues.title',
+  '/users': 'users.title',
+  '/ai-agent': 'navigation.aiAgent',
+  '/reports': 'navigation.reports',
+  '/settings': 'navigation.settings'
 };
 
 export default function MainLayout({ children }: MainLayoutProps) {
   const [location] = useLocation();
-  const title = pageTitles[location] || 'Dashboard';
+  const { t } = useT();
+  const titleKey = pageTitleKeys[location] || 'navigation.dashboard';
+  const title = t(titleKey);
 
   return (
     <div className="min-h-screen flex bg-background">

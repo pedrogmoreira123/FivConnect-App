@@ -12,11 +12,15 @@ import ConversationsPage from "@/pages/conversations";
 import QueuesPage from "@/pages/queues";
 import UsersPage from "@/pages/users";
 import AIAgentPage from "@/pages/ai-agent";
+import EnhancedAIAgentPage from "@/pages/enhanced-ai-agent";
 import ReportsPage from "@/pages/reports";
+import EnhancedReportsPage from "@/pages/enhanced-reports";
 import SettingsPage from "@/pages/settings";
+import BackofficePage from "@/pages/backoffice";
 import MainLayout from "@/components/layout/main-layout";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/use-auth";
+import "./lib/i18n"; // Initialize i18n
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -54,7 +58,7 @@ function Router() {
       </Route>
       <Route path="/ai-agent">
         <ProtectedRoute>
-          <AIAgentPage />
+          <EnhancedAIAgentPage />
         </ProtectedRoute>
       </Route>
       <Route path="/reports">
@@ -62,9 +66,19 @@ function Router() {
           <ReportsPage />
         </ProtectedRoute>
       </Route>
+      <Route path="/enhanced-reports">
+        <ProtectedRoute>
+          <EnhancedReportsPage />
+        </ProtectedRoute>
+      </Route>
       <Route path="/settings">
         <ProtectedRoute>
           <SettingsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/backoffice">
+        <ProtectedRoute>
+          <BackofficePage />
         </ProtectedRoute>
       </Route>
       <Route component={NotFound} />
