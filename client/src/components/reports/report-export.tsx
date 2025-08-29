@@ -3,6 +3,13 @@ import { Download, FileText, Table } from 'lucide-react';
 import { useT } from '@/hooks/use-translation';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+
+// Add type declaration for autoTable
+declare module 'jspdf' {
+  interface jsPDF {
+    autoTable: (options: any) => void;
+  }
+}
 import * as XLSX from 'xlsx';
 
 interface ReportExportProps {
@@ -68,7 +75,7 @@ export default function ReportExport({ data, title, reportType }: ReportExportPr
         break;
     }
     
-    (doc as any).autoTable({
+    doc.autoTable({
       head: [headers],
       body: tableData,
       startY: 40,

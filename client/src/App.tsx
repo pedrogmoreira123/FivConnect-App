@@ -10,6 +10,8 @@ import { ThemeCustomizationProvider } from "@/contexts/theme-customization-conte
 import LoginPage from "@/pages/login";
 import DashboardPage from "@/pages/dashboard";
 import ConversationsPage from "@/pages/conversations";
+import TicketsPage from "@/pages/tickets";
+import ClientsPage from "@/pages/clients";
 import QueuesPage from "@/pages/queues";
 import UsersPage from "@/pages/users";
 import AIAgentPage from "@/pages/ai-agent";
@@ -45,6 +47,16 @@ function Router() {
       <Route path="/conversations">
         <ProtectedRoute>
           <ConversationsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/tickets">
+        <ProtectedRoute>
+          <TicketsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/clients">
+        <ProtectedRoute>
+          <ClientsPage />
         </ProtectedRoute>
       </Route>
       <Route path="/queues">

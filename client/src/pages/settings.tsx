@@ -89,7 +89,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="appearance" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="appearance" className="flex items-center space-x-2">
             <Palette className="h-4 w-4" />
             <span>Aparência</span>
@@ -101,14 +101,6 @@ export default function SettingsPage() {
           <TabsTrigger value="whatsapp" className="flex items-center space-x-2">
             <MessageSquare className="h-4 w-4" />
             <span>WhatsApp</span>
-          </TabsTrigger>
-          <TabsTrigger value="profile" className="flex items-center space-x-2">
-            <User className="h-4 w-4" />
-            <span>Perfil</span>
-          </TabsTrigger>
-          <TabsTrigger value="security" className="flex items-center space-x-2">
-            <Shield className="h-4 w-4" />
-            <span>Segurança</span>
           </TabsTrigger>
         </TabsList>
 
@@ -126,39 +118,6 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          {/* Responsiveness Settings */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Monitor className="h-5 w-5" />
-                <span>Layout Responsivo</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div className="text-center p-4 border rounded-lg">
-                  <Smartphone className="h-8 w-8 text-blue-500 mx-auto mb-2" />
-                  <p className="font-medium">Mobile</p>
-                  <p className="text-sm text-muted-foreground">Otimizado para smartphones</p>
-                  <Badge variant="secondary" className="mt-2">Ativo</Badge>
-                </div>
-                <div className="text-center p-4 border rounded-lg">
-                  <div className="w-8 h-8 text-green-500 mx-auto mb-2 flex items-center justify-center">
-                    <div className="w-6 h-4 border-2 border-current rounded"></div>
-                  </div>
-                  <p className="font-medium">Tablet</p>
-                  <p className="text-sm text-muted-foreground">Otimizado para tablets</p>
-                  <Badge variant="secondary" className="mt-2">Ativo</Badge>
-                </div>
-                <div className="text-center p-4 border rounded-lg">
-                  <Monitor className="h-8 w-8 text-purple-500 mx-auto mb-2" />
-                  <p className="font-medium">Desktop</p>
-                  <p className="text-sm text-muted-foreground">Otimizado para desktops</p>
-                  <Badge variant="secondary" className="mt-2">Ativo</Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         {/* Notifications Tab */}
@@ -337,79 +296,6 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* Profile Tab */}
-        <TabsContent value="profile" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <User className="h-5 w-5" />
-                <span>Informações do Perfil</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="full-name">Nome Completo</Label>
-                  <Input id="full-name" placeholder="Seu nome completo" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">E-mail</Label>
-                  <Input id="email" type="email" placeholder="seu@email.com" />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="company-name">Nome da Empresa</Label>
-                <Input 
-                  id="company-name" 
-                  value={localSettings.companyName}
-                  onChange={(e) => setLocalSettings(prev => ({ ...prev, companyName: e.target.value }))}
-                  placeholder="Nome da sua empresa"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Security Tab */}
-        <TabsContent value="security" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Shield className="h-5 w-5" />
-                <span>Configurações de Segurança</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium">Autenticação de Dois Fatores</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Adicione uma camada extra de segurança
-                  </p>
-                </div>
-                <Switch defaultChecked />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium">Sessões Ativas</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Gerencie dispositivos conectados
-                  </p>
-                </div>
-                <Button variant="outline" size="sm">
-                  Gerenciar
-                </Button>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Nova Senha</Label>
-                <Input id="password" type="password" placeholder="Digite sua nova senha" />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       {/* Save Button */}

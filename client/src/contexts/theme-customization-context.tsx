@@ -76,6 +76,14 @@ export function ThemeCustomizationProvider({ children }: { children: React.React
       const cssVar = `--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
       root.style.setProperty(cssVar, value);
     });
+    
+    // Also apply as HSL format for components that need it
+    Object.entries(colors).forEach(([key, value]) => {
+      const cssVar = `--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}-hsl`;
+      root.style.setProperty(cssVar, `hsl(${value})`);
+    });
+    
+    console.log('Theme applied:', colors); // Debug log
   };
 
   const updateColors = (newColors: Partial<ThemeColors>) => {

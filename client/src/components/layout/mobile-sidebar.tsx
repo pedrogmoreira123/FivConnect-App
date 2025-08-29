@@ -13,7 +13,8 @@ import {
   TrendingUp,
   Settings,
   LogOut,
-  X
+  X,
+  AlertCircle
 } from 'lucide-react';
 
 const getNavigationItems = (userRole: string) => [
@@ -22,6 +23,8 @@ const getNavigationItems = (userRole: string) => [
     items: [
       { nameKey: 'navigation.dashboard', href: '/', icon: BarChart3 },
       { nameKey: 'navigation.conversations', href: '/conversations', icon: MessageCircle },
+      { nameKey: 'navigation.tickets', href: '/tickets', icon: AlertCircle },
+      { nameKey: 'navigation.clients', href: '/clients', icon: Users },
       { nameKey: 'navigation.queues', href: '/queues', icon: List },
     ]
   },

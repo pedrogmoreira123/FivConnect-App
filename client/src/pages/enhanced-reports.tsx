@@ -48,8 +48,17 @@ export default function EnhancedReportsPage() {
       {/* Date Range Picker */}
       <DateRangePicker onDateRangeChange={handleDateRangeChange} />
 
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      {/* Main Content Tabs */}
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList className="grid w-fit grid-cols-3 gap-1">
+          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+          <TabsTrigger value="detailed">Relatórios Detalhados</TabsTrigger>
+          <TabsTrigger value="sessions">Sessões Ativas</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          {/* KPI Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -330,6 +339,175 @@ export default function EnhancedReportsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Active Sessions Tab */}
+        <TabsContent value="sessions" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Active Sessions Summary */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Users className="h-5 w-5" />
+                  <span>Sessões Ativas</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                      <p className="text-2xl font-bold text-blue-600">5</p>
+                      <p className="text-sm text-muted-foreground">Usuários Online</p>
+                    </div>
+                    <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                      <p className="text-2xl font-bold text-green-600">3</p>
+                      <p className="text-sm text-muted-foreground">Em Atendimento</p>
+                    </div>
+                  </div>
+                  <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                    <p className="text-2xl font-bold text-orange-600">2h 30m</p>
+                    <p className="text-sm text-muted-foreground">Tempo Médio de Sessão</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Recent Activity */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Clock className="h-5 w-5" />
+                  <span>Atividade Recente</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-xs font-medium">GA</span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">Guilherme Admin</p>
+                        <p className="text-xs text-muted-foreground">Login realizado</p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground">13:45</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-xs font-medium">LU</span>
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">Lúcas User</p>
+                        <p className="text-xs text-muted-foreground">Iniciou atendimento</p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground">13:32</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Active Sessions Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Sessões Ativas Detalhadas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left p-3">Usuário</th>
+                      <th className="text-left p-3">Role</th>
+                      <th className="text-left p-3">Login</th>
+                      <th className="text-left p-3">Duração</th>
+                      <th className="text-left p-3">IP</th>
+                      <th className="text-left p-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b hover:bg-muted/50">
+                      <td className="p-3">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs font-medium">GA</span>
+                          </div>
+                          <span className="font-medium">Guilherme Admin</span>
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <Badge variant="default">Admin</Badge>
+                      </td>
+                      <td className="p-3 text-sm text-muted-foreground">29/08 09:15</td>
+                      <td className="p-3 text-sm">4h 33m</td>
+                      <td className="p-3 text-sm text-muted-foreground">192.168.1.100</td>
+                      <td className="p-3">
+                        <Badge variant="default" className="bg-green-100 text-green-800">Online</Badge>
+                      </td>
+                    </tr>
+                    <tr className="border-b hover:bg-muted/50">
+                      <td className="p-3">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs font-medium">LU</span>
+                          </div>
+                          <span className="font-medium">Lúcas User</span>
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <Badge variant="secondary">Agente</Badge>
+                      </td>
+                      <td className="p-3 text-sm text-muted-foreground">29/08 10:30</td>
+                      <td className="p-3 text-sm">3h 18m</td>
+                      <td className="p-3 text-sm text-muted-foreground">192.168.1.101</td>
+                      <td className="p-3">
+                        <Badge variant="default" className="bg-green-100 text-green-800">Online</Badge>
+                      </td>
+                    </tr>
+                    <tr className="border-b hover:bg-muted/50">
+                      <td className="p-3">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
+                            <span className="text-white text-xs font-medium">MA</span>
+                          </div>
+                          <span className="font-medium">Maria Silva</span>
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <Badge variant="secondary">Supervisor</Badge>
+                      </td>
+                      <td className="p-3 text-sm text-muted-foreground">29/08 11:00</td>
+                      <td className="p-3 text-sm">2h 48m</td>
+                      <td className="p-3 text-sm text-muted-foreground">192.168.1.102</td>
+                      <td className="p-3">
+                        <Badge variant="default" className="bg-green-100 text-green-800">Online</Badge>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Detailed Reports Tab */}
+        <TabsContent value="detailed" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Relatórios Detalhados</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">
+                Esta seção conterá relatórios detalhados sobre performance de agentes, 
+                análise de conversas, e métricas avançadas de produtividade.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
       </Tabs>
     </div>
   );
