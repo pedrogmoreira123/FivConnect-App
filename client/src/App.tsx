@@ -21,6 +21,7 @@ import EnhancedReportsPage from "@/pages/enhanced-reports";
 import SettingsPage from "@/pages/settings";
 import BackofficePage from "@/pages/backoffice";
 import FeedbackPage from "@/pages/feedback";
+import FinanceiroPage from "@/pages/financeiro";
 import MainLayout from "@/components/layout/main-layout";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/use-auth";
@@ -142,6 +143,11 @@ function Router() {
       <Route path="/feedback">
         <ProtectedRoute>
           <FeedbackPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/financeiro">
+        <ProtectedRoute>
+          <FinanceiroPage />
         </ProtectedRoute>
       </Route>
       <Route component={NotFound} />

@@ -166,6 +166,79 @@ export const statusCheckLogs = pgTable("status_check_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Financial system tables
+
+// Plans table - Available subscription plans
+export const plans = pgTable("plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  price: integer("price").notNull(), // Price in cents
+  currency: text("currency").notNull().default("BRL"),
+  billingInterval: text("billing_interval", { enum: ["monthly", "yearly"] }).notNull(),
+  features: json("features").notNull(), // Array of features included
+  maxUsers: integer("max_users").default(1),
+  maxConversations: integer("max_conversations").default(100),
+  storageLimit: integer("storage_limit").default(1000), // In MB
+  isActive: boolean("is_active").default(true),
+  stripeProductId: text("stripe_product_id"), // Stripe product ID
+  stripePriceId: text("stripe_price_id"), // Stripe price ID
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// User subscriptions table
+export const subscriptions = pgTable("subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  planId: varchar("plan_id").notNull().references(() => plans.id),
+  status: text("status", { enum: ["active", "inactive", "past_due", "canceled", "trialing"] }).notNull(),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  currentPeriodStart: timestamp("current_period_start"),
+  currentPeriodEnd: timestamp("current_period_end"),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false),
+  trialStart: timestamp("trial_start"),
+  trialEnd: timestamp("trial_end"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Invoices table
+export const invoices = pgTable("invoices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  subscriptionId: varchar("subscription_id").notNull().references(() => subscriptions.id),
+  stripeInvoiceId: text("stripe_invoice_id"),
+  number: text("number"), // Invoice number
+  amount: integer("amount").notNull(), // Amount in cents
+  currency: text("currency").notNull().default("BRL"),
+  status: text("status", { enum: ["draft", "open", "paid", "uncollectible", "void"] }).notNull(),
+  dueDate: timestamp("due_date"),
+  paidAt: timestamp("paid_at"),
+  description: text("description"),
+  invoiceUrl: text("invoice_url"), // Stripe hosted invoice URL
+  downloadUrl: text("download_url"), // PDF download URL
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Payments table
+export const payments = pgTable("payments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  invoiceId: varchar("invoice_id").notNull().references(() => invoices.id),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  amount: integer("amount").notNull(), // Amount in cents
+  currency: text("currency").notNull().default("BRL"),
+  status: text("status", { enum: ["pending", "succeeded", "failed", "canceled", "refunded"] }).notNull(),
+  paymentMethod: text("payment_method"), // e.g., "card", "pix", "boleto"
+  description: text("description"),
+  refundedAmount: integer("refunded_amount").default(0),
+  failureReason: text("failure_reason"),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -236,6 +309,30 @@ export const insertStatusCheckLogSchema = createInsertSchema(statusCheckLogs).om
   createdAt: true,
 });
 
+export const insertPlanSchema = createInsertSchema(plans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSubscriptionSchema = createInsertSchema(subscriptions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertInvoiceSchema = createInsertSchema(invoices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPaymentSchema = createInsertSchema(payments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -261,6 +358,14 @@ export type InstanceConfig = typeof instanceConfig.$inferSelect;
 export type InsertInstanceConfig = z.infer<typeof insertInstanceConfigSchema>;
 export type StatusCheckLog = typeof statusCheckLogs.$inferSelect;
 export type InsertStatusCheckLog = z.infer<typeof insertStatusCheckLogSchema>;
+export type Plan = typeof plans.$inferSelect;
+export type InsertPlan = z.infer<typeof insertPlanSchema>;
+export type Subscription = typeof subscriptions.$inferSelect;
+export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
+export type Invoice = typeof invoices.$inferSelect;
+export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
+export type Payment = typeof payments.$inferSelect;
+export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
@@ -271,6 +376,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   submittedFeedbacks: many(feedbacks, { relationName: "submittedFeedbacks" }),
   assignedFeedbacks: many(feedbacks, { relationName: "assignedFeedbacks" }),
   respondedFeedbacks: many(feedbacks, { relationName: "respondedFeedbacks" }),
+  subscriptions: many(subscriptions),
 }));
 
 export const clientsRelations = relations(clients, ({ many }) => ({
@@ -348,5 +454,36 @@ export const statusCheckLogsRelations = relations(statusCheckLogs, ({ one }) => 
   instanceConfig: one(instanceConfig, {
     fields: [statusCheckLogs.instanceConfigId],
     references: [instanceConfig.id],
+  }),
+}));
+
+export const plansRelations = relations(plans, ({ many }) => ({
+  subscriptions: many(subscriptions),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one, many }) => ({
+  user: one(users, {
+    fields: [subscriptions.userId],
+    references: [users.id],
+  }),
+  plan: one(plans, {
+    fields: [subscriptions.planId],
+    references: [plans.id],
+  }),
+  invoices: many(invoices),
+}));
+
+export const invoicesRelations = relations(invoices, ({ one, many }) => ({
+  subscription: one(subscriptions, {
+    fields: [invoices.subscriptionId],
+    references: [subscriptions.id],
+  }),
+  payments: many(payments),
+}));
+
+export const paymentsRelations = relations(payments, ({ one }) => ({
+  invoice: one(invoices, {
+    fields: [payments.invoiceId],
+    references: [invoices.id],
   }),
 }));

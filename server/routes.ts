@@ -13,7 +13,11 @@ import {
   insertAiAgentConfigSchema,
   insertFeedbackSchema,
   insertInstanceConfigSchema,
-  insertStatusCheckLogSchema
+  insertStatusCheckLogSchema,
+  insertPlanSchema,
+  insertSubscriptionSchema,
+  insertInvoiceSchema,
+  insertPaymentSchema
 } from "@shared/schema";
 import { 
   authenticateUser,
@@ -935,6 +939,201 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Failed to mark notification as shown:', error);
       res.status(500).json({ message: "Failed to update notification status" });
+    }
+  });
+
+  // Financial routes - Plans
+  app.get('/api/plans', requireAuth, async (req, res) => {
+    try {
+      const plans = await storage.getAllPlans();
+      res.json(plans);
+    } catch (error) {
+      console.error('Failed to fetch plans:', error);
+      res.status(500).json({ message: "Failed to fetch plans" });
+    }
+  });
+
+  app.get('/api/plans/active', requireAuth, async (req, res) => {
+    try {
+      const plans = await storage.getActivePlans();
+      res.json(plans);
+    } catch (error) {
+      console.error('Failed to fetch active plans:', error);
+      res.status(500).json({ message: "Failed to fetch active plans" });
+    }
+  });
+
+  app.post('/api/plans', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const planData = insertPlanSchema.parse(req.body);
+      const plan = await storage.createPlan(planData);
+      res.status(201).json(plan);
+    } catch (error) {
+      console.error('Failed to create plan:', error);
+      res.status(400).json({ message: "Failed to create plan" });
+    }
+  });
+
+  app.put('/api/plans/:id', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = insertPlanSchema.partial().parse(req.body);
+      const plan = await storage.updatePlan(id, updates);
+      res.json(plan);
+    } catch (error) {
+      console.error('Failed to update plan:', error);
+      res.status(400).json({ message: "Failed to update plan" });
+    }
+  });
+
+  app.delete('/api/plans/:id', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deletePlan(id);
+      if (success) {
+        res.json({ message: "Plan deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Plan not found" });
+      }
+    } catch (error) {
+      console.error('Failed to delete plan:', error);
+      res.status(500).json({ message: "Failed to delete plan" });
+    }
+  });
+
+  // Financial routes - Subscriptions
+  app.get('/api/subscriptions', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const subscriptions = await storage.getAllSubscriptions();
+      res.json(subscriptions);
+    } catch (error) {
+      console.error('Failed to fetch subscriptions:', error);
+      res.status(500).json({ message: "Failed to fetch subscriptions" });
+    }
+  });
+
+  app.get('/api/subscriptions/my', requireAuth, async (req, res) => {
+    try {
+      const subscription = await storage.getSubscriptionByUser(req.user.id);
+      res.json(subscription || null);
+    } catch (error) {
+      console.error('Failed to fetch user subscription:', error);
+      res.status(500).json({ message: "Failed to fetch subscription" });
+    }
+  });
+
+  app.post('/api/subscriptions', requireAuth, async (req, res) => {
+    try {
+      const subscriptionData = insertSubscriptionSchema.parse({
+        ...req.body,
+        userId: req.user.id
+      });
+      const subscription = await storage.createSubscription(subscriptionData);
+      res.status(201).json(subscription);
+    } catch (error) {
+      console.error('Failed to create subscription:', error);
+      res.status(400).json({ message: "Failed to create subscription" });
+    }
+  });
+
+  app.put('/api/subscriptions/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = insertSubscriptionSchema.partial().parse(req.body);
+      const subscription = await storage.updateSubscription(id, updates);
+      res.json(subscription);
+    } catch (error) {
+      console.error('Failed to update subscription:', error);
+      res.status(400).json({ message: "Failed to update subscription" });
+    }
+  });
+
+  // Financial routes - Invoices
+  app.get('/api/invoices', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const invoices = await storage.getAllInvoices();
+      res.json(invoices);
+    } catch (error) {
+      console.error('Failed to fetch invoices:', error);
+      res.status(500).json({ message: "Failed to fetch invoices" });
+    }
+  });
+
+  app.get('/api/invoices/my/open', requireAuth, async (req, res) => {
+    try {
+      const invoices = await storage.getOpenInvoicesByUser(req.user.id);
+      res.json(invoices);
+    } catch (error) {
+      console.error('Failed to fetch open invoices:', error);
+      res.status(500).json({ message: "Failed to fetch open invoices" });
+    }
+  });
+
+  app.post('/api/invoices', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const invoiceData = insertInvoiceSchema.parse(req.body);
+      const invoice = await storage.createInvoice(invoiceData);
+      res.status(201).json(invoice);
+    } catch (error) {
+      console.error('Failed to create invoice:', error);
+      res.status(400).json({ message: "Failed to create invoice" });
+    }
+  });
+
+  app.put('/api/invoices/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = insertInvoiceSchema.partial().parse(req.body);
+      const invoice = await storage.updateInvoice(id, updates);
+      res.json(invoice);
+    } catch (error) {
+      console.error('Failed to update invoice:', error);
+      res.status(400).json({ message: "Failed to update invoice" });
+    }
+  });
+
+  // Financial routes - Payments
+  app.get('/api/payments', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const payments = await storage.getAllPayments();
+      res.json(payments);
+    } catch (error) {
+      console.error('Failed to fetch payments:', error);
+      res.status(500).json({ message: "Failed to fetch payments" });
+    }
+  });
+
+  app.get('/api/payments/invoice/:invoiceId', requireAuth, async (req, res) => {
+    try {
+      const { invoiceId } = req.params;
+      const payments = await storage.getPaymentsByInvoice(invoiceId);
+      res.json(payments);
+    } catch (error) {
+      console.error('Failed to fetch payments for invoice:', error);
+      res.status(500).json({ message: "Failed to fetch payments" });
+    }
+  });
+
+  app.post('/api/payments', requireAuth, async (req, res) => {
+    try {
+      const paymentData = insertPaymentSchema.parse(req.body);
+      const payment = await storage.createPayment(paymentData);
+      res.status(201).json(payment);
+    } catch (error) {
+      console.error('Failed to create payment:', error);
+      res.status(400).json({ message: "Failed to create payment" });
+    }
+  });
+
+  app.put('/api/payments/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = insertPaymentSchema.partial().parse(req.body);
+      const payment = await storage.updatePayment(id, updates);
+      res.json(payment);
+    } catch (error) {
+      console.error('Failed to update payment:', error);
+      res.status(400).json({ message: "Failed to update payment" });
     }
   });
 

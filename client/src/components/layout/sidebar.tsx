@@ -16,7 +16,8 @@ import {
   TrendingUp,
   Building2,
   AlertCircle,
-  MessageSquare
+  MessageSquare,
+  DollarSign
 } from 'lucide-react';
 
 const getNavigationItems = (userRole: string) => [
@@ -37,6 +38,7 @@ const getNavigationItems = (userRole: string) => [
       { nameKey: 'navigation.chatBot', href: '/ai-agent', icon: Bot },
       { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
       { nameKey: 'navigation.feedback', href: '/feedback', icon: MessageSquare },
+      { nameKey: 'navigation.financeiro', href: '/financeiro', icon: DollarSign },
       { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
     ]
   }

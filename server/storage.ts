@@ -23,6 +23,14 @@ import {
   type InsertInstanceConfig,
   type StatusCheckLog,
   type InsertStatusCheckLog,
+  type Plan,
+  type InsertPlan,
+  type Subscription,
+  type InsertSubscription,
+  type Invoice,
+  type InsertInvoice,
+  type Payment,
+  type InsertPayment,
   users,
   clients,
   sessions,
@@ -34,7 +42,11 @@ import {
   aiAgentConfig,
   feedbacks,
   instanceConfig,
-  statusCheckLogs
+  statusCheckLogs,
+  plans,
+  subscriptions,
+  invoices,
+  payments
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
@@ -130,6 +142,39 @@ export interface IStorage {
   performStatusCheck(checkType: 'startup' | 'scheduled' | 'manual'): Promise<any>;
   createStatusCheckLog(log: InsertStatusCheckLog): Promise<StatusCheckLog>;
   getStatusCheckLogs(limit?: number): Promise<StatusCheckLog[]>;
+
+  // Financial operations - Plans
+  getPlan(id: string): Promise<Plan | undefined>;
+  createPlan(plan: InsertPlan): Promise<Plan>;
+  updatePlan(id: string, plan: Partial<InsertPlan>): Promise<Plan>;
+  deletePlan(id: string): Promise<boolean>;
+  getAllPlans(): Promise<Plan[]>;
+  getActivePlans(): Promise<Plan[]>;
+
+  // Financial operations - Subscriptions
+  getSubscription(id: string): Promise<Subscription | undefined>;
+  getSubscriptionByUser(userId: string): Promise<Subscription | undefined>;
+  createSubscription(subscription: InsertSubscription): Promise<Subscription>;
+  updateSubscription(id: string, subscription: Partial<InsertSubscription>): Promise<Subscription>;
+  deleteSubscription(id: string): Promise<boolean>;
+  getAllSubscriptions(): Promise<Subscription[]>;
+
+  // Financial operations - Invoices
+  getInvoice(id: string): Promise<Invoice | undefined>;
+  getInvoicesBySubscription(subscriptionId: string): Promise<Invoice[]>;
+  getOpenInvoicesByUser(userId: string): Promise<Invoice[]>;
+  createInvoice(invoice: InsertInvoice): Promise<Invoice>;
+  updateInvoice(id: string, invoice: Partial<InsertInvoice>): Promise<Invoice>;
+  deleteInvoice(id: string): Promise<boolean>;
+  getAllInvoices(): Promise<Invoice[]>;
+
+  // Financial operations - Payments
+  getPayment(id: string): Promise<Payment | undefined>;
+  getPaymentsByInvoice(invoiceId: string): Promise<Payment[]>;
+  createPayment(payment: InsertPayment): Promise<Payment>;
+  updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment>;
+  deletePayment(id: string): Promise<boolean>;
+  getAllPayments(): Promise<Payment[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -530,8 +575,8 @@ export class DatabaseStorage implements IStorage {
 
     const [config] = await db.update(instanceConfig)
       .set({
-        status,
-        billingStatus,
+        status: status as any,
+        billingStatus: billingStatus as any,
         enabledFeatures,
         lastSuccessfulCheck: new Date(),
         updatedAt: new Date()
@@ -687,6 +732,171 @@ export class DatabaseStorage implements IStorage {
       .from(statusCheckLogs)
       .orderBy(desc(statusCheckLogs.createdAt))
       .limit(limit);
+  }
+
+  // Financial operations - Plans
+  async getPlan(id: string): Promise<Plan | undefined> {
+    const [plan] = await db.select().from(plans).where(eq(plans.id, id));
+    return plan || undefined;
+  }
+
+  async createPlan(insertPlan: InsertPlan): Promise<Plan> {
+    const [plan] = await db.insert(plans).values(insertPlan).returning();
+    return plan;
+  }
+
+  async updatePlan(id: string, updates: Partial<InsertPlan>): Promise<Plan> {
+    const [plan] = await db.update(plans).set({ ...updates, updatedAt: new Date() }).where(eq(plans.id, id)).returning();
+    if (!plan) throw new Error("Plan not found");
+    return plan;
+  }
+
+  async deletePlan(id: string): Promise<boolean> {
+    const result = await db.delete(plans).where(eq(plans.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getAllPlans(): Promise<Plan[]> {
+    return await db.select().from(plans).orderBy(asc(plans.price));
+  }
+
+  async getActivePlans(): Promise<Plan[]> {
+    return await db.select().from(plans).where(eq(plans.isActive, true)).orderBy(asc(plans.price));
+  }
+
+  // Financial operations - Subscriptions
+  async getSubscription(id: string): Promise<Subscription | undefined> {
+    const [subscription] = await db.select().from(subscriptions).where(eq(subscriptions.id, id));
+    return subscription || undefined;
+  }
+
+  async getSubscriptionByUser(userId: string): Promise<Subscription | undefined> {
+    const [subscription] = await db.select().from(subscriptions)
+      .where(eq(subscriptions.userId, userId))
+      .orderBy(desc(subscriptions.createdAt))
+      .limit(1);
+    return subscription || undefined;
+  }
+
+  async createSubscription(insertSubscription: InsertSubscription): Promise<Subscription> {
+    const [subscription] = await db.insert(subscriptions).values(insertSubscription).returning();
+    return subscription;
+  }
+
+  async updateSubscription(id: string, updates: Partial<InsertSubscription>): Promise<Subscription> {
+    const [subscription] = await db.update(subscriptions)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(subscriptions.id, id))
+      .returning();
+    if (!subscription) throw new Error("Subscription not found");
+    return subscription;
+  }
+
+  async deleteSubscription(id: string): Promise<boolean> {
+    const result = await db.delete(subscriptions).where(eq(subscriptions.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getAllSubscriptions(): Promise<Subscription[]> {
+    return await db.select().from(subscriptions).orderBy(desc(subscriptions.createdAt));
+  }
+
+  // Financial operations - Invoices
+  async getInvoice(id: string): Promise<Invoice | undefined> {
+    const [invoice] = await db.select().from(invoices).where(eq(invoices.id, id));
+    return invoice || undefined;
+  }
+
+  async getInvoicesBySubscription(subscriptionId: string): Promise<Invoice[]> {
+    return await db.select().from(invoices)
+      .where(eq(invoices.subscriptionId, subscriptionId))
+      .orderBy(desc(invoices.createdAt));
+  }
+
+  async getOpenInvoicesByUser(userId: string): Promise<Invoice[]> {
+    const results = await db.select({
+        id: invoices.id,
+        subscriptionId: invoices.subscriptionId,
+        stripeInvoiceId: invoices.stripeInvoiceId,
+        number: invoices.number,
+        amount: invoices.amount,
+        currency: invoices.currency,
+        status: invoices.status,
+        dueDate: invoices.dueDate,
+        paidAt: invoices.paidAt,
+        description: invoices.description,
+        invoiceUrl: invoices.invoiceUrl,
+        downloadUrl: invoices.downloadUrl,
+        createdAt: invoices.createdAt,
+        updatedAt: invoices.updatedAt
+      })
+      .from(invoices)
+      .innerJoin(subscriptions, eq(invoices.subscriptionId, subscriptions.id))
+      .where(and(
+        eq(subscriptions.userId, userId),
+        eq(invoices.status, 'open')
+      ))
+      .orderBy(desc(invoices.createdAt));
+    
+    return results;
+  }
+
+  async createInvoice(insertInvoice: InsertInvoice): Promise<Invoice> {
+    const [invoice] = await db.insert(invoices).values(insertInvoice).returning();
+    return invoice;
+  }
+
+  async updateInvoice(id: string, updates: Partial<InsertInvoice>): Promise<Invoice> {
+    const [invoice] = await db.update(invoices)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(invoices.id, id))
+      .returning();
+    if (!invoice) throw new Error("Invoice not found");
+    return invoice;
+  }
+
+  async deleteInvoice(id: string): Promise<boolean> {
+    const result = await db.delete(invoices).where(eq(invoices.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getAllInvoices(): Promise<Invoice[]> {
+    return await db.select().from(invoices).orderBy(desc(invoices.createdAt));
+  }
+
+  // Financial operations - Payments
+  async getPayment(id: string): Promise<Payment | undefined> {
+    const [payment] = await db.select().from(payments).where(eq(payments.id, id));
+    return payment || undefined;
+  }
+
+  async getPaymentsByInvoice(invoiceId: string): Promise<Payment[]> {
+    return await db.select().from(payments)
+      .where(eq(payments.invoiceId, invoiceId))
+      .orderBy(desc(payments.createdAt));
+  }
+
+  async createPayment(insertPayment: InsertPayment): Promise<Payment> {
+    const [payment] = await db.insert(payments).values(insertPayment).returning();
+    return payment;
+  }
+
+  async updatePayment(id: string, updates: Partial<InsertPayment>): Promise<Payment> {
+    const [payment] = await db.update(payments)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(payments.id, id))
+      .returning();
+    if (!payment) throw new Error("Payment not found");
+    return payment;
+  }
+
+  async deletePayment(id: string): Promise<boolean> {
+    const result = await db.delete(payments).where(eq(payments.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getAllPayments(): Promise<Payment[]> {
+    return await db.select().from(payments).orderBy(desc(payments.createdAt));
   }
 }
 
