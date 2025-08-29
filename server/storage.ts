@@ -651,12 +651,21 @@ export class DatabaseStorage implements IStorage {
     const startTime = Date.now();
     
     try {
+      // Use environment variables for FiVConnect API
+      const apiUrl = process.env.FIV_APP_API_URL || config.connectApiUrl;
+      const apiKey = process.env.FIV_APP_API_KEY || config.instanceKey;
+      
+      if (!apiUrl || !apiKey) {
+        throw new Error("FiVConnect API configuration missing. Please set FIV_APP_API_URL and FIV_APP_API_KEY environment variables.");
+      }
+      
       // Make request to Fi.V Connect API
-      const response = await fetch(`${config.connectApiUrl}/api/v1/instances/status`, {
+      const response = await fetch(`${apiUrl}/api/v1/instances/status`, {
         method: 'GET',
         headers: {
-          'X-Instance-Key': config.instanceKey,
-          'Content-Type': 'application/json'
+          'X-Instance-Key': apiKey,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
         }
       });
 
