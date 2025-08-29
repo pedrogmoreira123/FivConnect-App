@@ -12,6 +12,8 @@ export const users = pgTable("users", {
   isOnline: boolean("is_online").default(false),
   // Theme customization fields
   customTheme: json("custom_theme"), // Store user's custom theme colors
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -25,6 +27,8 @@ export const conversations = pgTable("conversations", {
   queueId: varchar("queue_id").references(() => queues.id),
   priority: text("priority", { enum: ["low", "medium", "high", "urgent"] }).default("medium"),
   tags: json("tags"), // Store conversation tags as JSON array
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   lastMessageAt: timestamp("last_message_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -38,6 +42,8 @@ export const messages = pgTable("messages", {
   messageType: text("message_type", { enum: ["text", "image", "audio", "video", "document"] }).default("text"),
   direction: text("direction", { enum: ["incoming", "outgoing"] }).notNull(),
   mediaUrl: text("media_url"), // For media messages
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   isRead: boolean("is_read").default(false),
   sentAt: timestamp("sent_at").defaultNow(),
 });
@@ -50,6 +56,8 @@ export const queues = pgTable("queues", {
   messageInsideHours: text("message_inside_hours"),
   messageOutsideHours: text("message_outside_hours"),
   isActive: boolean("is_active").default(true),
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -67,6 +75,8 @@ export const clients = pgTable("clients", {
   phone: text("phone").notNull().unique(),
   email: text("email"),
   notes: text("notes"),
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

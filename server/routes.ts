@@ -1137,6 +1137,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Environment management routes (admin only)
+  app.get('/api/environment/info', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const currentEnv = storage.getCurrentEnvironment();
+      const userData = await storage.getAllUsers();
+      const clientData = await storage.getAllClients();
+      const conversationData = await storage.getAllConversations();
+      const queueData = await storage.getAllQueues();
+      
+      res.json({
+        currentEnvironment: currentEnv,
+        dataCount: {
+          users: userData.length,
+          clients: clientData.length,
+          conversations: conversationData.length,
+          queues: queueData.length
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch environment info" });
+    }
+  });
+
+  app.post('/api/environment/clean-test-data', requireAuth, requireRole(['admin']), async (req, res) => {
+    try {
+      const currentEnv = storage.getCurrentEnvironment();
+      
+      if (currentEnv === 'development') {
+        return res.status(400).json({ 
+          message: "Cannot clean test data while in development environment" 
+        });
+      }
+      
+      const success = await storage.cleanTestData();
+      
+      if (success) {
+        res.json({ 
+          message: "Test data cleaned successfully",
+          environment: currentEnv
+        });
+      } else {
+        res.status(500).json({ message: "Failed to clean test data" });
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Failed to clean test data" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

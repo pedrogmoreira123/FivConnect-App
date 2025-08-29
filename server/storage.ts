@@ -175,11 +175,52 @@ export interface IStorage {
   updatePayment(id: string, payment: Partial<InsertPayment>): Promise<Payment>;
   deletePayment(id: string): Promise<boolean>;
   getAllPayments(): Promise<Payment[]>;
+  
+  // Environment management operations
+  cleanTestData(): Promise<boolean>;
+  getCurrentEnvironment(): string;
 }
 
 export class DatabaseStorage implements IStorage {
+  private currentEnvironment: string;
+
   constructor() {
+    // Determine current environment: development when NODE_ENV is development, otherwise production
+    this.currentEnvironment = process.env.NODE_ENV === 'development' ? 'development' : 'production';
     this.initializeDefaultData();
+  }
+
+  // Public method to get current environment (for interface)
+  getCurrentEnvironment(): string {
+    return this.currentEnvironment;
+  }
+
+  // Method to clean test data (removes all development environment data)
+  async cleanTestData(): Promise<boolean> {
+    try {
+      console.log('🧹 Cleaning test data from development environment...');
+      
+      // Delete messages first (due to foreign key constraints)
+      await db.delete(messages).where(eq(messages.environment, 'development'));
+      
+      // Delete conversations
+      await db.delete(conversations).where(eq(conversations.environment, 'development'));
+      
+      // Delete clients
+      await db.delete(clients).where(eq(clients.environment, 'development'));
+      
+      // Delete queues (but preserve default production queues)
+      await db.delete(queues).where(eq(queues.environment, 'development'));
+      
+      // Delete users (but preserve production admin)
+      await db.delete(users).where(eq(users.environment, 'development'));
+      
+      console.log('✅ Test data cleaned successfully');
+      return true;
+    } catch (error) {
+      console.error('❌ Error cleaning test data:', error);
+      return false;
+    }
   }
 
   private async initializeDefaultData() {
@@ -194,8 +235,9 @@ export class DatabaseStorage implements IStorage {
         name: "System Administrator",
         email: "admin@company.com",
         password: hashedPassword,
-        role: "admin",
-        isOnline: true
+        role: "admin" as const,
+        isOnline: true,
+        environment: this.getCurrentEnvironment() as "development" | "production"
       });
 
       // Create default queues
@@ -206,7 +248,8 @@ export class DatabaseStorage implements IStorage {
           workingHours: { days: "Mon-Fri", hours: "9:00-18:00" },
           messageInsideHours: "Welcome to Technical Support. An agent will be with you shortly.",
           messageOutsideHours: "We're currently closed. Please leave a message and we'll get back to you.",
-          isActive: true
+          isActive: true,
+          environment: this.getCurrentEnvironment() as "development" | "production"
         },
         {
           name: "Sales",
@@ -214,7 +257,8 @@ export class DatabaseStorage implements IStorage {
           workingHours: { days: "Mon-Sat", hours: "8:00-20:00" },
           messageInsideHours: "Welcome to Sales! How can we help you today?",
           messageOutsideHours: "Our sales team is currently unavailable. Please leave a message.",
-          isActive: true
+          isActive: true,
+          environment: this.getCurrentEnvironment() as "development" | "production"
         }
       ]);
 
@@ -237,9 +281,14 @@ export class DatabaseStorage implements IStorage {
         responseDelay: 3
       });
       
+      const envInfo = this.getCurrentEnvironment() === 'development' 
+        ? '🧪 Development environment with test data' 
+        : '🚀 Production environment';
+        
       console.log("✅ Default data initialized successfully");
-      console.log("📧 Default admin email: admin@company.com");
-      console.log("🔑 Default admin password: admin123");
+      console.log(`📧 Default admin email: admin@company.com`);
+      console.log(`🔑 Default admin password: admin123`);
+      console.log(`🌍 Environment: ${envInfo}`);
     } catch (error) {
       // Ignore errors during initialization (table might not exist yet)
       console.warn("Could not initialize default data:", error);
@@ -258,7 +307,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
+    // Tag new users with current environment
+    const userWithEnv = {
+      ...insertUser,
+      environment: this.getCurrentEnvironment() as "development" | "production"
+    };
+    const [user] = await db.insert(users).values(userWithEnv).returning();
     return user;
   }
 
@@ -274,7 +328,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users);
+    // In production, show all users. In development, only show current environment
+    if (this.getCurrentEnvironment() === 'production') {
+      return await db.select().from(users);
+    } else {
+      return await db.select().from(users).where(eq(users.environment, this.getCurrentEnvironment() as "development" | "production"));
+    }
   }
   
   // Authentication operations
@@ -341,7 +400,12 @@ export class DatabaseStorage implements IStorage {
   }
   
   async createClient(insertClient: InsertClient): Promise<Client> {
-    const [client] = await db.insert(clients).values(insertClient).returning();
+    // Tag new clients with current environment
+    const clientWithEnv = {
+      ...insertClient,
+      environment: this.getCurrentEnvironment() as "development" | "production"
+    };
+    const [client] = await db.insert(clients).values(clientWithEnv).returning();
     return client;
   }
   
@@ -357,7 +421,14 @@ export class DatabaseStorage implements IStorage {
   }
   
   async getAllClients(): Promise<Client[]> {
-    return await db.select().from(clients).orderBy(desc(clients.createdAt));
+    // In production, show all clients. In development, only show current environment
+    if (this.getCurrentEnvironment() === 'production') {
+      return await db.select().from(clients).orderBy(desc(clients.createdAt));
+    } else {
+      return await db.select().from(clients)
+        .where(eq(clients.environment, this.getCurrentEnvironment() as "development" | "production"))
+        .orderBy(desc(clients.createdAt));
+    }
   }
   
   // Announcement operations
@@ -399,7 +470,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createConversation(insertConversation: InsertConversation): Promise<Conversation> {
-    const [conversation] = await db.insert(conversations).values(insertConversation).returning();
+    // Tag new conversations with current environment
+    const conversationWithEnv = {
+      ...insertConversation,
+      environment: this.getCurrentEnvironment() as "development" | "production"
+    };
+    const [conversation] = await db.insert(conversations).values(conversationWithEnv).returning();
     return conversation;
   }
 
@@ -423,7 +499,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllConversations(): Promise<Conversation[]> {
-    return await db.select().from(conversations);
+    // In production, show all conversations. In development, only show current environment
+    if (this.getCurrentEnvironment() === 'production') {
+      return await db.select().from(conversations);
+    } else {
+      return await db.select().from(conversations)
+        .where(eq(conversations.environment, this.getCurrentEnvironment() as "development" | "production"));
+    }
   }
 
   // Message operations
@@ -433,7 +515,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createMessage(insertMessage: InsertMessage): Promise<Message> {
-    const [message] = await db.insert(messages).values(insertMessage).returning();
+    // Tag new messages with current environment
+    const messageWithEnv = {
+      ...insertMessage,
+      environment: this.getCurrentEnvironment() as "development" | "production"
+    };
+    const [message] = await db.insert(messages).values(messageWithEnv).returning();
     return message;
   }
 
@@ -455,7 +542,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createQueue(insertQueue: InsertQueue): Promise<Queue> {
-    const [queue] = await db.insert(queues).values(insertQueue).returning();
+    // Tag new queues with current environment
+    const queueWithEnv = {
+      ...insertQueue,
+      environment: this.getCurrentEnvironment() as "development" | "production"
+    };
+    const [queue] = await db.insert(queues).values(queueWithEnv).returning();
     return queue;
   }
 
@@ -471,7 +563,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllQueues(): Promise<Queue[]> {
-    return await db.select().from(queues);
+    // In production, show all queues. In development, only show current environment
+    if (this.getCurrentEnvironment() === 'production') {
+      return await db.select().from(queues);
+    } else {
+      return await db.select().from(queues)
+        .where(eq(queues.environment, this.getCurrentEnvironment() as "development" | "production"));
+    }
   }
 
   // Settings operations
