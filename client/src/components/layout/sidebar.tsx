@@ -2,6 +2,7 @@ import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/hooks/use-auth';
 import { useSettings } from '@/contexts/settings-context';
 import { useT } from '@/hooks/use-translation';
+import { useFeedbackNotifications } from '@/hooks/use-feedback-notifications';
 import { Button } from '@/components/ui/button';
 import { 
   BarChart3, 
@@ -14,7 +15,8 @@ import {
   LogOut,
   TrendingUp,
   Building2,
-  AlertCircle
+  AlertCircle,
+  MessageSquare
 } from 'lucide-react';
 
 const getNavigationItems = (userRole: string) => [
@@ -34,6 +36,7 @@ const getNavigationItems = (userRole: string) => [
       { nameKey: 'navigation.users', href: '/users', icon: Users },
       { nameKey: 'navigation.chatBot', href: '/ai-agent', icon: Bot },
       { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
+      { nameKey: 'navigation.feedback', href: '/feedback', icon: MessageSquare },
       { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
     ]
   }
@@ -44,6 +47,7 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
   const { settings } = useSettings();
   const { t } = useT();
+  const { pendingCount, shouldShowNotifications } = useFeedbackNotifications();
 
   const navigationItems = getNavigationItems(user?.role || 'agent');
 
@@ -80,15 +84,22 @@ export default function Sidebar() {
                 <Link
                   key={item.nameKey}
                   href={item.href}
-                  className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  className={`flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                     isActive 
                       ? 'active bg-sidebar-primary text-sidebar-primary-foreground' 
                       : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
                   }`}
                   data-testid={`link-${(itemName || '').toLowerCase().replace(/\s+/g, '-')}`}
                 >
-                  <Icon className="mr-3 w-5 h-5" />
-                  {itemName}
+                  <div className="flex items-center">
+                    <Icon className="mr-3 w-5 h-5" />
+                    {itemName}
+                  </div>
+                  {item.href === '/feedback' && shouldShowNotifications && pendingCount > 0 && (
+                    <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] h-5 flex items-center justify-center">
+                      {pendingCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}

@@ -10,7 +10,8 @@ import {
   insertMessageSchema,
   insertQueueSchema,
   insertSettingsSchema,
-  insertAiAgentConfigSchema
+  insertAiAgentConfigSchema,
+  insertFeedbackSchema
 } from "@shared/schema";
 import { 
   authenticateUser,
@@ -613,6 +614,192 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch weekly performance" });
+    }
+  });
+
+  // Feedback routes (protected)
+  app.get('/api/feedbacks', requireAuth, async (req, res) => {
+    try {
+      const { status, type, priority, assignedTo } = req.query;
+      
+      let feedbacks;
+      if (req.user.role === 'agent') {
+        // Agents can only see their own submitted feedbacks
+        feedbacks = await storage.getFeedbacksBySubmitter(req.user.id);
+      } else {
+        // Admins and supervisors can see all feedbacks
+        feedbacks = await storage.getAllFeedbacks();
+      }
+      
+      // Apply filters if provided
+      if (status && typeof status === 'string') {
+        feedbacks = feedbacks.filter(f => f.status === status);
+      }
+      if (type && typeof type === 'string') {
+        feedbacks = feedbacks.filter(f => f.type === type);
+      }
+      if (priority && typeof priority === 'string') {
+        feedbacks = feedbacks.filter(f => f.priority === priority);
+      }
+      if (assignedTo && typeof assignedTo === 'string') {
+        feedbacks = feedbacks.filter(f => f.assignedToId === assignedTo);
+      }
+      
+      res.json(feedbacks);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch feedbacks" });
+    }
+  });
+
+  app.get('/api/feedbacks/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const feedback = await storage.getFeedback(id);
+      
+      if (!feedback) {
+        return res.status(404).json({ message: "Feedback not found" });
+      }
+      
+      // Check permissions - users can only view their own feedbacks unless admin/supervisor
+      if (req.user.role === 'agent' && feedback.submittedById !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      res.json(feedback);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch feedback" });
+    }
+  });
+
+  app.post('/api/feedbacks', requireAuth, async (req, res) => {
+    try {
+      const feedbackData = insertFeedbackSchema.parse({
+        ...req.body,
+        submittedById: req.user.id
+      });
+      const feedback = await storage.createFeedback(feedbackData);
+      res.status(201).json(feedback);
+    } catch (error) {
+      res.status(400).json({ message: "Invalid feedback data" });
+    }
+  });
+
+  app.put('/api/feedbacks/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const feedbackData = insertFeedbackSchema.partial().parse(req.body);
+      
+      const existingFeedback = await storage.getFeedback(id);
+      if (!existingFeedback) {
+        return res.status(404).json({ message: "Feedback not found" });
+      }
+      
+      // Check permissions - users can only edit their own feedback if status is pending
+      if (req.user.role === 'agent') {
+        if (existingFeedback.submittedById !== req.user.id) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        if (existingFeedback.status !== 'pending') {
+          return res.status(403).json({ message: "Cannot edit feedback once it's being reviewed" });
+        }
+        // Agents can only edit title, description, type, priority, category, tags
+        const allowedFields = ['title', 'description', 'type', 'priority', 'category', 'tags'];
+        const filteredData = Object.keys(feedbackData)
+          .filter(key => allowedFields.includes(key))
+          .reduce((obj, key) => {
+            obj[key] = feedbackData[key];
+            return obj;
+          }, {} as any);
+        feedbackData = filteredData;
+      }
+      
+      const feedback = await storage.updateFeedback(id, feedbackData);
+      res.json(feedback);
+    } catch (error) {
+      res.status(400).json({ message: "Failed to update feedback" });
+    }
+  });
+
+  app.delete('/api/feedbacks/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const existingFeedback = await storage.getFeedback(id);
+      if (!existingFeedback) {
+        return res.status(404).json({ message: "Feedback not found" });
+      }
+      
+      // Check permissions - users can only delete their own pending feedback
+      if (req.user.role === 'agent') {
+        if (existingFeedback.submittedById !== req.user.id) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+        if (existingFeedback.status !== 'pending') {
+          return res.status(403).json({ message: "Cannot delete feedback once it's being reviewed" });
+        }
+      }
+      
+      const success = await storage.deleteFeedback(id);
+      if (success) {
+        res.json({ message: "Feedback deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Feedback not found" });
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete feedback" });
+    }
+  });
+
+  // Respond to feedback (admin/supervisor only)
+  app.post('/api/feedbacks/:id/respond', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { response } = req.body;
+      
+      if (!response) {
+        return res.status(400).json({ message: "Response is required" });
+      }
+      
+      const feedback = await storage.updateFeedback(id, {
+        response,
+        respondedById: req.user.id,
+        respondedAt: new Date(),
+        status: 'resolved'
+      });
+      
+      res.json(feedback);
+    } catch (error) {
+      res.status(400).json({ message: "Failed to respond to feedback" });
+    }
+  });
+
+  // Vote on feedback (for feature requests and suggestions)
+  app.post('/api/feedbacks/:id/vote', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { vote } = req.body; // +1 or -1
+      
+      if (vote !== 1 && vote !== -1) {
+        return res.status(400).json({ message: "Vote must be +1 or -1" });
+      }
+      
+      const feedback = await storage.getFeedback(id);
+      if (!feedback) {
+        return res.status(404).json({ message: "Feedback not found" });
+      }
+      
+      // Only allow voting on suggestions and feature requests
+      if (feedback.type !== 'suggestion' && feedback.type !== 'feature_request') {
+        return res.status(400).json({ message: "Can only vote on suggestions and feature requests" });
+      }
+      
+      const updatedFeedback = await storage.updateFeedback(id, {
+        votes: feedback.votes + vote
+      });
+      
+      res.json(updatedFeedback);
+    } catch (error) {
+      res.status(400).json({ message: "Failed to vote on feedback" });
     }
   });
 

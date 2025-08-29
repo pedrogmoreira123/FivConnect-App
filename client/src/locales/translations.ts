@@ -62,6 +62,7 @@ export const ptBRTranslations = {
     chatBot: "ChatBot",
     aiAgent: "Agente de I.A",
     reports: "Relatórios",
+    feedback: "Feedback",
     settings: "Configurações",
     customerService: "Atendimento ao Cliente"
   },

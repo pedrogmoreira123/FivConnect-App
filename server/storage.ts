@@ -17,6 +17,8 @@ import {
   type InsertSettings,
   type AiAgentConfig,
   type InsertAiAgentConfig,
+  type Feedback,
+  type InsertFeedback,
   users,
   clients,
   sessions,
@@ -25,7 +27,8 @@ import {
   messages,
   queues,
   settings,
-  aiAgentConfig
+  aiAgentConfig,
+  feedbacks
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
@@ -100,6 +103,14 @@ export interface IStorage {
   // AI Agent operations
   getAiAgentConfig(): Promise<AiAgentConfig | undefined>;
   updateAiAgentConfig(config: InsertAiAgentConfig): Promise<AiAgentConfig>;
+
+  // Feedback operations
+  getFeedback(id: string): Promise<Feedback | undefined>;
+  createFeedback(feedback: InsertFeedback): Promise<Feedback>;
+  updateFeedback(id: string, feedback: Partial<InsertFeedback>): Promise<Feedback>;
+  deleteFeedback(id: string): Promise<boolean>;
+  getAllFeedbacks(): Promise<Feedback[]>;
+  getFeedbacksBySubmitter(submitterId: string): Promise<Feedback[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -439,6 +450,35 @@ export class DatabaseStorage implements IStorage {
       const [updatedConfig] = await db.update(aiAgentConfig).set(config).where(eq(aiAgentConfig.id, existingConfig.id)).returning();
       return updatedConfig;
     }
+  }
+
+  // Feedback operations
+  async getFeedback(id: string): Promise<Feedback | undefined> {
+    const [feedback] = await db.select().from(feedbacks).where(eq(feedbacks.id, id));
+    return feedback || undefined;
+  }
+
+  async createFeedback(insertFeedback: InsertFeedback): Promise<Feedback> {
+    const [feedback] = await db.insert(feedbacks).values(insertFeedback).returning();
+    return feedback;
+  }
+
+  async updateFeedback(id: string, updateData: Partial<InsertFeedback>): Promise<Feedback> {
+    const [feedback] = await db.update(feedbacks).set(updateData).where(eq(feedbacks.id, id)).returning();
+    return feedback;
+  }
+
+  async deleteFeedback(id: string): Promise<boolean> {
+    const result = await db.delete(feedbacks).where(eq(feedbacks.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  async getAllFeedbacks(): Promise<Feedback[]> {
+    return await db.select().from(feedbacks).orderBy(desc(feedbacks.createdAt));
+  }
+
+  async getFeedbacksBySubmitter(submitterId: string): Promise<Feedback[]> {
+    return await db.select().from(feedbacks).where(eq(feedbacks.submittedById, submitterId)).orderBy(desc(feedbacks.createdAt));
   }
 }
 

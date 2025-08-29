@@ -7,6 +7,7 @@ import { useT } from '@/hooks/use-translation';
 import ClientManagement from '@/components/backoffice/client-management';
 import PlansAndBilling from '@/components/backoffice/plans-billing';
 import AccessControl from '@/components/backoffice/access-control';
+import FeedbackManagement from '@/components/backoffice/feedback-management';
 import { 
   Building2, 
   Users, 
@@ -14,7 +15,8 @@ import {
   Shield, 
   BarChart3,
   Globe,
-  Settings
+  Settings,
+  MessageSquare
 } from 'lucide-react';
 
 interface BackofficeStats {
@@ -132,7 +134,7 @@ export default function BackofficePage() {
 
       {/* Main Backoffice Tabs */}
       <Tabs defaultValue="clients" className="space-y-4 sm:space-y-6">
-        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
+        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 h-auto">
           <TabsTrigger value="clients" className="flex items-center justify-center space-x-2 p-2 sm:p-3">
             <Building2 className="h-4 w-4" />
             <span className="text-sm sm:text-base">{t('backoffice.clientManagement')}</span>
@@ -140,6 +142,10 @@ export default function BackofficePage() {
           <TabsTrigger value="plans" className="flex items-center justify-center space-x-2 p-2 sm:p-3">
             <CreditCard className="h-4 w-4" />
             <span className="text-sm sm:text-base">{t('backoffice.plansAndBilling')}</span>
+          </TabsTrigger>
+          <TabsTrigger value="feedback" className="flex items-center justify-center space-x-2 p-2 sm:p-3">
+            <MessageSquare className="h-4 w-4" />
+            <span className="text-sm sm:text-base">Feedback</span>
           </TabsTrigger>
           <TabsTrigger value="access" className="flex items-center justify-center space-x-2 p-2 sm:p-3">
             <Shield className="h-4 w-4" />
@@ -153,6 +159,10 @@ export default function BackofficePage() {
 
         <TabsContent value="plans">
           <PlansAndBilling />
+        </TabsContent>
+
+        <TabsContent value="feedback">
+          <FeedbackManagement />
         </TabsContent>
 
         <TabsContent value="access">

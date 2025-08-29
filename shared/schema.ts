@@ -108,6 +108,27 @@ export const aiAgentConfig = pgTable("ai_agent_config", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Feedback and suggestions table
+export const feedbacks = pgTable("feedbacks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  type: text("type", { enum: ["bug", "suggestion", "feature_request", "complaint", "compliment"] }).notNull(),
+  priority: text("priority", { enum: ["low", "medium", "high", "urgent"] }).default("medium"),
+  status: text("status", { enum: ["pending", "in_review", "in_progress", "resolved", "closed"] }).default("pending"),
+  submittedById: varchar("submitted_by_id").notNull().references(() => users.id),
+  assignedToId: varchar("assigned_to_id").references(() => users.id),
+  response: text("response"),
+  respondedById: varchar("responded_by_id").references(() => users.id),
+  respondedAt: timestamp("responded_at"),
+  category: text("category"), // e.g., "UI/UX", "Performance", "Security", etc.
+  attachments: json("attachments"), // Store file URLs or references
+  tags: json("tags"), // Store tags as JSON array
+  votes: integer("votes").default(0), // For upvoting/downvoting suggestions
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -158,6 +179,13 @@ export const insertAiAgentConfigSchema = createInsertSchema(aiAgentConfig).omit(
   updatedAt: true,
 });
 
+export const insertFeedbackSchema = createInsertSchema(feedbacks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  respondedAt: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -177,6 +205,8 @@ export type Settings = typeof settings.$inferSelect;
 export type InsertSettings = z.infer<typeof insertSettingsSchema>;
 export type AiAgentConfig = typeof aiAgentConfig.$inferSelect;
 export type InsertAiAgentConfig = z.infer<typeof insertAiAgentConfigSchema>;
+export type Feedback = typeof feedbacks.$inferSelect;
+export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
 
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
@@ -184,6 +214,9 @@ export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),
   announcements: many(announcements),
   sentMessages: many(messages),
+  submittedFeedbacks: many(feedbacks, { relationName: "submittedFeedbacks" }),
+  assignedFeedbacks: many(feedbacks, { relationName: "assignedFeedbacks" }),
+  respondedFeedbacks: many(feedbacks, { relationName: "respondedFeedbacks" }),
 }));
 
 export const clientsRelations = relations(clients, ({ many }) => ({
@@ -233,4 +266,22 @@ export const messagesRelations = relations(messages, ({ one }) => ({
 
 export const queuesRelations = relations(queues, ({ many }) => ({
   conversations: many(conversations),
+}));
+
+export const feedbacksRelations = relations(feedbacks, ({ one }) => ({
+  submittedBy: one(users, {
+    fields: [feedbacks.submittedById],
+    references: [users.id],
+    relationName: "submittedFeedbacks",
+  }),
+  assignedTo: one(users, {
+    fields: [feedbacks.assignedToId],
+    references: [users.id],
+    relationName: "assignedFeedbacks",
+  }),
+  respondedBy: one(users, {
+    fields: [feedbacks.respondedById],
+    references: [users.id],
+    relationName: "respondedFeedbacks",
+  }),
 }));

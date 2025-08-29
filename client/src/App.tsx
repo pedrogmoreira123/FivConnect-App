@@ -20,6 +20,7 @@ import ReportsPage from "@/pages/reports";
 import EnhancedReportsPage from "@/pages/enhanced-reports";
 import SettingsPage from "@/pages/settings";
 import BackofficePage from "@/pages/backoffice";
+import FeedbackPage from "@/pages/feedback";
 import MainLayout from "@/components/layout/main-layout";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/use-auth";
@@ -92,6 +93,11 @@ function Router() {
       <Route path="/backoffice">
         <ProtectedRoute>
           <BackofficePage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/feedback">
+        <ProtectedRoute>
+          <FeedbackPage />
         </ProtectedRoute>
       </Route>
       <Route component={NotFound} />
