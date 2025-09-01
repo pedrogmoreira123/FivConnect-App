@@ -1526,6 +1526,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get current instance status (for UI components)
+  // Debug environment endpoint (temporary)
+  app.get('/api/debug/environment', (req, res) => {
+    res.json({
+      NODE_ENV: process.env.NODE_ENV,
+      currentEnvironment: storage.getCurrentEnvironment(),
+      filterEnvironment: process.env.NODE_ENV === 'development' ? 'development' : 'production'
+    });
+  });
+
   app.get('/api/instance/status', async (req, res) => {
     try {
       const config = await storage.getInstanceConfig();
