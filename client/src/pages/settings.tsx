@@ -13,6 +13,7 @@ import { useT } from '@/hooks/use-translation';
 import { useSettings } from '@/contexts/settings-context';
 import { useThemeCustomization } from '@/contexts/theme-customization-context';
 import { useToast } from '@/hooks/use-toast';
+import { useSound } from '@/hooks/use-sound';
 import ColorPicker from '@/components/theme-customization/color-picker';
 import { 
   Settings, 
@@ -41,6 +42,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const { settings, updateSettings } = useSettings();
   const { branding } = useThemeCustomization();
+  const { soundSettings, updateSoundSettings } = useSound();
   
   const [localSettings, setLocalSettings] = useState({
     companyName: branding.companyName,
@@ -48,7 +50,12 @@ export default function SettingsPage() {
       desktop: true,
       browser: false,
       sound: true,
-      persistent: false
+      persistent: false,
+      conversationSound: soundSettings.conversationSound,
+      waitingSound: soundSettings.waitingSound,
+      waitingSoundType: soundSettings.waitingSoundType,
+      muteConversations: soundSettings.muteConversations,
+      muteWaiting: soundSettings.muteWaiting
     },
     whatsapp: {
       connected: false,
@@ -81,7 +88,7 @@ export default function SettingsPage() {
     });
   };
 
-  const handleNotificationChange = (key: string, value: boolean) => {
+  const handleNotificationChange = (key: string, value: boolean | string) => {
     setLocalSettings(prev => ({
       ...prev,
       notifications: {
@@ -89,6 +96,11 @@ export default function SettingsPage() {
         [key]: value
       }
     }));
+    
+    // Update sound settings immediately
+    if (['conversationSound', 'waitingSound', 'waitingSoundType', 'muteConversations', 'muteWaiting'].includes(key)) {
+      updateSoundSettings({ [key]: value });
+    }
   };
 
   const handleWhatsAppConnect = () => {
@@ -354,6 +366,63 @@ export default function SettingsPage() {
                     data-testid="switch-sound-notifications"
                   />
                 </div>
+
+                {/* Configurações Específicas de Som */}
+                {localSettings.notifications.sound && (
+                  <div className="ml-6 space-y-4 border-l-2 border-muted pl-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium">Som de Conversas</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Som de notificação para novas conversas (BIP)
+                        </p>
+                      </div>
+                      <Switch
+                        checked={localSettings.notifications.conversationSound}
+                        onCheckedChange={(value) => handleNotificationChange('conversationSound', value)}
+                        data-testid="switch-conversation-sound"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium">Som de Espera</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Som para conversas em fila de espera
+                        </p>
+                      </div>
+                      <Switch
+                        checked={localSettings.notifications.waitingSound}
+                        onCheckedChange={(value) => handleNotificationChange('waitingSound', value)}
+                        data-testid="switch-waiting-sound"
+                      />
+                    </div>
+
+                    {localSettings.notifications.waitingSound && (
+                      <div className="ml-6">
+                        <Label className="text-sm font-medium">Tipo de Som para Espera</Label>
+                        <Select
+                          value={localSettings.notifications.waitingSoundType}
+                          onValueChange={(value) => handleNotificationChange('waitingSoundType', value)}
+                        >
+                          <SelectTrigger className="mt-2">
+                            <SelectValue placeholder="Selecione o tipo" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="bip">Apenas BIP</SelectItem>
+                            <SelectItem value="constant">Som Constante</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {localSettings.notifications.waitingSoundType === 'constant' 
+                            ? 'Som contínuo a cada 2 segundos enquanto houver conversas em espera'
+                            : 'Som único quando nova conversa entra na fila de espera'
+                          }
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

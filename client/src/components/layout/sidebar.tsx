@@ -37,7 +37,6 @@ const getNavigationItems = (userRole: string) => [
       { nameKey: 'navigation.users', href: '/users', icon: Users },
       { nameKey: 'navigation.chatBot', href: '/ai-agent', icon: Bot },
       { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
-      { nameKey: 'navigation.feedback', href: '/feedback', icon: MessageSquare },
       { nameKey: 'navigation.financeiro', href: '/financeiro', icon: DollarSign },
       { nameKey: 'navigation.admin', href: '/admin', icon: Building2, superadminOnly: true },
       { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
@@ -50,7 +49,6 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
   const { settings } = useSettings();
   const { t } = useT();
-  const { pendingCount, shouldShowNotifications } = useFeedbackNotifications();
 
   const navigationItems = getNavigationItems(user?.role || 'agent');
 

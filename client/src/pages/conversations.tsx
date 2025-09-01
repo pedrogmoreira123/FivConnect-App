@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useT } from '@/hooks/use-translation';
 import { useMobile } from '@/hooks/use-mobile';
+import { useSound } from '@/hooks/use-sound';
 import { 
   MessageCircle, 
   Search, 
@@ -15,7 +16,9 @@ import {
   ArrowLeft,
   Clock,
   Users,
-  Plus
+  Plus,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 // Mock data
@@ -169,12 +172,23 @@ export default function ConversationsPage() {
   const [showChat, setShowChat] = useState(!isMobile);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('conversations');
+  
+  const { 
+    playNotificationSound, 
+    playWaitingSound, 
+    stopWaitingSound, 
+    soundSettings,
+    updateSoundSettings 
+  } = useSound();
 
   const handleSelectConversation = (conversation: typeof mockConversations[0]) => {
     setSelectedConversation(conversation);
     if (isMobile) {
       setShowChat(true);
     }
+    
+    // Play notification sound for new conversation
+    playNotificationSound('conversation');
   };
 
   const handleBackToList = () => {
@@ -185,6 +199,8 @@ export default function ConversationsPage() {
     if (newMessage.trim()) {
       // Handle send message logic here
       setNewMessage('');
+      // Play notification sound for sent message
+      playNotificationSound('conversation');
     }
   };
 
@@ -226,7 +242,30 @@ export default function ConversationsPage() {
         <div className="w-full md:w-80 border-r border-border flex flex-col bg-background">
           {/* Header */}
           <div className="p-3 sm:p-4 border-b border-border">
-            <h1 className="text-base sm:text-lg font-semibold text-foreground mb-3">Chat</h1>
+            <div className="flex items-center justify-between mb-3">
+              <h1 className="text-base sm:text-lg font-semibold text-foreground">Chat</h1>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant={soundSettings.muteConversations ? "destructive" : "ghost"}
+                  size="sm"
+                  onClick={() => updateSoundSettings({ muteConversations: !soundSettings.muteConversations })}
+                  title={soundSettings.muteConversations ? "Som de conversas mutado" : "Mutar som de conversas"}
+                  data-testid="button-mute-conversations"
+                >
+                  {soundSettings.muteConversations ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                </Button>
+                <Button
+                  variant={soundSettings.muteWaiting ? "destructive" : "ghost"}
+                  size="sm"
+                  onClick={() => updateSoundSettings({ muteWaiting: !soundSettings.muteWaiting })}
+                  title={soundSettings.muteWaiting ? "Som de espera mutado" : "Mutar som de espera"}
+                  data-testid="button-mute-waiting"
+                >
+                  {soundSettings.muteWaiting ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                  <Clock className="h-3 w-3 ml-1" />
+                </Button>
+              </div>
+            </div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
