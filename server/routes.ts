@@ -33,6 +33,7 @@ import {
 } from "./auth";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import { Logger } from "./logger";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -42,10 +43,21 @@ const loginSchema = z.object({
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes
   app.post('/api/auth/login', async (req, res) => {
+    const requestContext = {
+      ip: req.ip,
+      userAgent: req.get('User-Agent'),
+      endpoint: req.originalUrl,
+      method: req.method
+    };
+    
     try {
       const { email, password } = loginSchema.parse(req.body);
       
-      console.log(`🔐 Login attempt for: ${email} (Environment: ${storage.getCurrentEnvironment()})`);
+      Logger.auth(`Login attempt for: ${email}`, {
+        ...requestContext,
+        email,
+        environment: storage.getCurrentEnvironment()
+      });
       
       const result = await authenticateUser(
         email, 
@@ -56,11 +68,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       
       if (!result) {
-        console.log(`❌ Login failed for: ${email} - Invalid credentials or no company association`);
+        Logger.warn(`Login failed for: ${email} - Invalid credentials or no company association`, {
+          ...requestContext,
+          email,
+          reason: 'invalid_credentials_or_no_company'
+        });
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      console.log(`✅ Login successful for: ${email} (Company: ${result.user.company?.name})`);
+      Logger.success(`Login successful for: ${email}`, {
+        ...requestContext,
+        email,
+        userId: result.user.id,
+        companyId: (result.user as any)?.company?.id,
+        companyName: (result.user as any)?.company?.name
+      });
+      
       res.json({
         message: "Login successful",
         user: result.user,
@@ -68,24 +91,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         expiresAt: result.expiresAt
       });
     } catch (error) {
-      console.error('🚨 Login error:', error);
+      Logger.error('Login error occurred', error, {
+        ...requestContext,
+        errorType: error instanceof Error ? error.name : 'unknown'
+      });
       res.status(500).json({ message: "Login failed" });
     }
   });
 
   app.post('/api/auth/logout', requireAuth, async (req, res) => {
+    const requestContext = Logger.createRequestContext(req);
+    
     try {
       const authHeader = req.headers.authorization;
       const token = authHeader?.substring(7); // Remove 'Bearer ' prefix
       
-      if (token) {
+      if (token && req.user) {
         await logoutUser(token);
         // Update user offline status
         await storage.updateUser(req.user.id, { isOnline: false });
+        
+        Logger.info('User logged out successfully', requestContext);
       }
       
       res.json({ message: "Logged out successfully" });
     } catch (error) {
+      Logger.error('Logout failed', error, requestContext);
       res.status(500).json({ message: "Logout failed" });
     }
   });
@@ -97,27 +128,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Change password
   app.post('/api/auth/change-password', requireAuth, async (req, res) => {
+    const requestContext = Logger.createRequestContext(req);
+    
     try {
       const { currentPassword, newPassword } = req.body;
       
       if (!currentPassword || !newPassword) {
+        Logger.warn('Password change failed - missing passwords', requestContext);
         return res.status(400).json({ message: "Current and new passwords are required" });
+      }
+      
+      if (!req.user) {
+        Logger.error('Password change failed - no authenticated user', undefined, requestContext);
+        return res.status(401).json({ message: "Authentication required" });
       }
       
       // Verify current password
       const user = await storage.authenticateUser(req.user.email, currentPassword);
       if (!user) {
+        Logger.warn('Password change failed - incorrect current password', requestContext);
         return res.status(401).json({ message: "Current password is incorrect" });
       }
       
       // Change password
       const success = await storage.changePassword(req.user.id, newPassword);
       if (success) {
+        Logger.success('Password changed successfully', requestContext);
         res.json({ message: "Password changed successfully" });
       } else {
+        Logger.error('Password change failed - storage operation failed', undefined, requestContext);
         res.status(500).json({ message: "Failed to change password" });
       }
     } catch (error) {
+      Logger.error('Password change failed with exception', error, requestContext);
       res.status(500).json({ message: "Password change failed" });
     }
   });
@@ -254,14 +297,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post('/api/announcements', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    const requestContext = Logger.createRequestContext(req);
+    
     try {
+      if (!req.user) {
+        Logger.error('Announcement creation failed - no authenticated user', undefined, requestContext);
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const announcementData = insertAnnouncementSchema.parse({
         ...req.body,
         authorId: req.user.id
       });
       const announcement = await storage.createAnnouncement(announcementData);
+      
+      Logger.success('Announcement created successfully', {
+        ...requestContext,
+        announcementId: announcement.id,
+        title: announcement.title
+      });
+      
       res.status(201).json(announcement);
     } catch (error) {
+      Logger.error('Announcement creation failed', error, requestContext);
       res.status(400).json({ message: "Invalid announcement data" });
     }
   });
@@ -525,16 +583,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // User theme settings
   app.get('/api/settings/theme/:userId', requireAuth, async (req, res) => {
+    const requestContext = Logger.createRequestContext(req);
+    
     try {
       const { userId } = req.params;
       
+      if (!req.user) {
+        Logger.error('Theme access failed - no authenticated user', undefined, requestContext);
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       // Users can only access their own theme or admins can access any
       if (req.user.id !== userId && req.user.role !== 'admin') {
+        Logger.warn('Theme access denied - insufficient permissions', {
+          ...requestContext,
+          targetUserId: userId,
+          userRole: req.user.role
+        });
         return res.status(403).json({ message: "Access denied" });
       }
       
       const user = await storage.getUser(userId);
       if (!user) {
+        Logger.warn('Theme access failed - user not found', {
+          ...requestContext,
+          targetUserId: userId
+        });
         return res.status(404).json({ message: "User not found" });
       }
       
@@ -654,8 +728,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Feedback routes (protected)
   app.get('/api/feedbacks', requireAuth, async (req, res) => {
+    const requestContext = Logger.createRequestContext(req);
+    
     try {
       const { status, type, priority, assignedTo } = req.query;
+      
+      if (!req.user) {
+        Logger.error('Feedbacks access failed - no authenticated user', undefined, requestContext);
+        return res.status(401).json({ message: "Authentication required" });
+      }
       
       let feedbacks;
       if (req.user.role === 'agent') {
@@ -696,7 +777,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Check permissions - users can only view their own feedbacks unless admin/supervisor
+      if (!req.user) {
+        Logger.error('Feedback access failed - no authenticated user', undefined, { endpoint: req.originalUrl });
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       if (req.user.role === 'agent' && feedback.submittedById !== req.user.id) {
+        Logger.warn('Feedback access denied - insufficient permissions', {
+          userId: req.user.id,
+          feedbackId: id,
+          submittedById: feedback.submittedById
+        });
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -707,14 +798,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post('/api/feedbacks', requireAuth, async (req, res) => {
+    const requestContext = Logger.createRequestContext(req);
+    
     try {
+      if (!req.user) {
+        Logger.error('Feedback creation failed - no authenticated user', undefined, requestContext);
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       const feedbackData = insertFeedbackSchema.parse({
         ...req.body,
         submittedById: req.user.id
       });
       const feedback = await storage.createFeedback(feedbackData);
+      
+      Logger.success('Feedback created successfully', {
+        ...requestContext,
+        feedbackId: feedback.id,
+        type: feedback.type
+      });
+      
       res.status(201).json(feedback);
     } catch (error) {
+      Logger.error('Feedback creation failed', error, requestContext);
       res.status(400).json({ message: "Invalid feedback data" });
     }
   });
@@ -730,6 +836,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Check permissions - users can only edit their own feedback if status is pending
+      if (!req.user) {
+        Logger.error('Feedback update failed - no authenticated user', undefined, { endpoint: req.originalUrl });
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
       if (req.user.role === 'agent') {
         if (existingFeedback.submittedById !== req.user.id) {
           return res.status(403).json({ message: "Access denied" });
@@ -742,9 +853,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const filteredData = Object.keys(feedbackData)
           .filter(key => allowedFields.includes(key))
           .reduce((obj, key) => {
-            obj[key] = feedbackData[key];
+            (obj as any)[key] = (feedbackData as any)[key];
             return obj;
-          }, {} as any);
+          }, {} as Record<string, any>);
         feedbackData = filteredData;
       }
       
@@ -1272,16 +1383,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const databases = await response.json();
         res.json(databases);
       } catch (fetchError) {
-        console.log('⚠️ Fi.V Connect API call failed, using mock data:', (fetchError as Error).message);
+        Logger.warn('Fi.V Connect API call failed, using mock data', {
+          error: (fetchError as Error).message,
+          endpoint: req.originalUrl
+        });
         // Fallback to mock data when Fi.V Connect is not available
         const mockDatabases = [
           {
-            id: `db_${instanceId}_main`,
+            id: `db_${req.params.instanceId || 'default'}_main`,
             name: "Main Database",
             type: "postgresql",
             host: "db.fiv-connect.com",
             port: 5432,
-            database: `fivapp_${instanceId}`,
+            database: `fivapp_${req.params.instanceId || 'default'}`,
             status: "active",
             created_at: "2025-01-01T00:00:00Z",
             size_mb: 250,

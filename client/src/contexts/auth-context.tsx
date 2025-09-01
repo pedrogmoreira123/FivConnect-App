@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { UserRole } from '@/types';
 import { apiRequest } from '@/lib/queryClient';
+import { ClientLogger } from '@/utils/logger';
 
 interface AuthContextType {
   user: UserRole | null;
@@ -41,7 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return false;
     } catch (error) {
-      console.error('Login error:', error);
+      ClientLogger.error('Login failed', error, { 
+        email, 
+        component: 'AuthContext' 
+      });
       return false;
     }
   };
@@ -60,7 +64,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch (error) {
-      console.error('Logout error:', error);
+      ClientLogger.error('Logout failed', error, { 
+        component: 'AuthContext',
+        userId: user?.id 
+      });
     } finally {
       setUser(null);
       localStorage.removeItem('user');
