@@ -5,7 +5,7 @@ import { storage } from './storage';
 import type { WhatsappConnection } from '@shared/schema';
 
 interface WhatsAppClientSession {
-  client: Client;
+  client: any;
   connection: WhatsappConnection;
   qrString?: string;
 }
@@ -185,7 +185,7 @@ export class WhatsAppService {
     });
 
     // Incoming messages
-    client.on('message', async (message) => {
+    client.on('message', async (message: any) => {
       console.log(`📨 New message from ${message.from}: ${message.body}`);
       
       try {
@@ -480,7 +480,7 @@ export class WhatsAppService {
   private async markConversationAsUrgent(conversationId: string): Promise<void> {
     try {
       await storage.updateConversation(conversationId, {
-        notes: 'URGENTE - Prioridade alta solicitada pelo cliente'
+        status: 'in_progress'
       });
     } catch (error) {
       console.error('❌ Failed to mark conversation as urgent:', error);
