@@ -26,6 +26,7 @@ interface UserModalProps {
 
 export default function UserModal({ isOpen, onClose, user }: UserModalProps) {
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'admin' | 'supervisor' | 'agent'>('agent');
   const [password, setPassword] = useState('');
@@ -33,11 +34,13 @@ export default function UserModal({ isOpen, onClose, user }: UserModalProps) {
   useEffect(() => {
     if (user) {
       setName(user.name);
+      setUsername((user as any).username || '');
       setEmail(user.email);
       setRole(user.role);
       setPassword('');
     } else {
       setName('');
+      setUsername('');
       setEmail('');
       setRole('agent');
       setPassword('');
@@ -47,6 +50,7 @@ export default function UserModal({ isOpen, onClose, user }: UserModalProps) {
   const handleSave = () => {
     const userData = {
       name,
+      username,
       email,
       role,
       ...(password && { password })
@@ -80,6 +84,18 @@ export default function UserModal({ isOpen, onClose, user }: UserModalProps) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               data-testid="input-user-name"
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="username">Nome de Usuário</Label>
+            <Input
+              id="username"
+              type="text"
+              placeholder="Digite o nome de usuário (ex: pedro.moreira)"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              data-testid="input-user-username"
             />
           </div>
           
@@ -130,7 +146,7 @@ export default function UserModal({ isOpen, onClose, user }: UserModalProps) {
           </Button>
           <Button
             onClick={handleSave}
-            disabled={!name || !email || (!user && !password)}
+            disabled={!name || !username || !email || (!user && !password)}
             data-testid="button-save-user"
           >
             Salvar Usuário

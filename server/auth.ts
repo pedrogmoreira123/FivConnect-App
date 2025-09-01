@@ -10,6 +10,7 @@ const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'your-super-secret-encrypti
 
 export interface AuthPayload {
   userId: string;
+  username: string;
   email: string;
   role: string;
   companyId: string;
@@ -32,6 +33,7 @@ export function generateToken(user: User, userCompany: any, sessionId: string): 
   
   const payload: AuthPayload = {
     userId: user.id,
+    username: user.username,
     email: user.email,
     role: effectiveRole,
     companyId: userCompany.companyId,
@@ -105,6 +107,47 @@ export async function authenticateUser(
   userAgent?: string
 ): Promise<LoginResult | null> {
   const result = await storage.authenticateUserMultiTenant(email, password, companyId);
+  if (!result) return null;
+
+  const { user, userCompany, company } = result;
+
+  // Create session
+  const sessionId = randomUUID();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
+  const token = generateToken(user, userCompany, sessionId);
+
+  await storage.createSession({
+    userId: user.id,
+    token,
+    ipAddress,
+    userAgent,
+    expiresAt
+  });
+
+  // Remove password from response
+  const { password: _, ...userWithoutPassword } = user;
+
+  return {
+    user: {
+      ...userWithoutPassword,
+      company: company
+    } as any,
+    token,
+    expiresAt
+  };
+}
+
+/**
+ * Authenticate user by username and create session (Multi-tenant)
+ */
+export async function authenticateUserByUsername(
+  username: string, 
+  password: string, 
+  companyId?: string,
+  ipAddress?: string, 
+  userAgent?: string
+): Promise<LoginResult | null> {
+  const result = await storage.authenticateUserMultiTenantByUsername(username, password, companyId);
   if (!result) return null;
 
   const { user, userCompany, company } = result;

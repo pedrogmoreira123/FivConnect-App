@@ -12,8 +12,6 @@ import {
   insertSettingsSchema,
   insertAiAgentConfigSchema,
   insertFeedbackSchema,
-  insertInstanceConfigSchema,
-  insertStatusCheckLogSchema,
   insertPlanSchema,
   insertSubscriptionSchema,
   insertInvoiceSchema,
@@ -24,6 +22,7 @@ import {
 } from "@shared/schema";
 import { 
   authenticateUser,
+  authenticateUserByUsername,
   logoutUser,
   requireAuth,
   requireRole,
@@ -36,7 +35,7 @@ import bcrypt from "bcryptjs";
 import { Logger } from "./logger";
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  username: z.string().min(1),
   password: z.string().min(1)
 });
 
@@ -51,16 +50,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
     
     try {
-      const { email, password } = loginSchema.parse(req.body);
+      const { username, password } = loginSchema.parse(req.body);
       
-      Logger.auth(`Login attempt for: ${email}`, {
+      Logger.auth(`Login attempt for username: ${username}`, {
         ...requestContext,
-        email,
+        username,
         environment: storage.getCurrentEnvironment()
       });
       
-      const result = await authenticateUser(
-        email, 
+      const result = await authenticateUserByUsername(
+        username, 
         password, 
         undefined, // companyId - let it auto-select
         req.ip,
@@ -68,17 +67,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       
       if (!result) {
-        Logger.warn(`Login failed for: ${email} - Invalid credentials or no company association`, {
+        Logger.warn(`Login failed for username: ${username} - Invalid credentials or no company association`, {
           ...requestContext,
-          email,
+          username,
           reason: 'invalid_credentials_or_no_company'
         });
-        return res.status(401).json({ message: "Invalid email or password" });
+        return res.status(401).json({ message: "Invalid username or password" });
       }
 
-      Logger.success(`Login successful for: ${email}`, {
+      Logger.success(`Login successful for username: ${username}`, {
         ...requestContext,
-        email,
+        username,
         userId: result.user.id,
         companyId: (result.user as any)?.company?.id,
         companyName: (result.user as any)?.company?.name

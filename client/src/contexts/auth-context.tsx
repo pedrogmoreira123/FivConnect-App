@@ -5,7 +5,7 @@ import { ClientLogger } from '@/utils/logger';
 
 interface AuthContextType {
   user: UserRole | null;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
@@ -18,9 +18,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return savedUser ? JSON.parse(savedUser) : null;
   });
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (username: string, password: string): Promise<boolean> => {
     try {
-      const response = await apiRequest('POST', '/api/auth/login', { email, password });
+      const response = await apiRequest('POST', '/api/auth/login', { username, password });
       const data = await response.json();
       
       if (data.user && data.token) {
@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return false;
     } catch (error) {
       ClientLogger.error('Login failed', error, { 
-        email, 
+        username, 
         component: 'AuthContext' 
       });
       return false;

@@ -6,6 +6,7 @@ import { z } from "zod";
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  username: text("username").notNull().unique(), // New field for username-based login
   email: text("email").notNull().unique(),
   password: text("password").notNull(), // Will store hashed passwords
   role: text("role", { enum: ["superadmin", "admin", "supervisor", "agent"] }).notNull().default("agent"),

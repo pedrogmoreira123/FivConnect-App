@@ -68,6 +68,7 @@ export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<InsertUser>): Promise<User>;
   deleteUser(id: string): Promise<boolean>;
@@ -75,7 +76,13 @@ export interface IStorage {
   
   // Authentication operations
   authenticateUser(email: string, password: string): Promise<User | null>;
+  authenticateUserByUsername(username: string, password: string): Promise<User | null>;
   authenticateUserMultiTenant(email: string, password: string, companyId?: string): Promise<{
+    user: User;
+    userCompany: UserCompany;
+    company: Company;
+  } | null>;
+  authenticateUserMultiTenantByUsername(username: string, password: string, companyId?: string): Promise<{
     user: User;
     userCompany: UserCompany;
     company: Company;
@@ -278,6 +285,7 @@ export class DatabaseStorage implements IStorage {
       const hashedPassword = await bcrypt.hash("admin123", 10);
       await db.insert(users).values({
         name: "System Administrator",
+        username: "admin",
         email: "admin@company.com",
         password: hashedPassword,
         role: "admin" as const,
@@ -331,6 +339,7 @@ export class DatabaseStorage implements IStorage {
         : '🚀 Production environment';
         
       console.log("✅ Default data initialized successfully");
+      console.log(`👤 Default admin username: admin`);
       console.log(`📧 Default admin email: admin@company.com`);
       console.log(`🔑 Default admin password: admin123`);
       console.log(`🌍 Environment: ${envInfo}`);
@@ -357,6 +366,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Version that searches in both environments for authentication
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(
+      and(
+        eq(users.username, username),
+        eq(users.environment, this.getEnvironmentFilter())
+      )
+    );
+    return user || undefined;
+  }
+
   async getUserByEmailAllEnvironments(email: string): Promise<User | undefined> {
     // First try production environment
     const [prodUser] = await db.select().from(users).where(
@@ -418,12 +437,67 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async authenticateUserByUsername(username: string, password: string): Promise<User | null> {
+    const user = await this.getUserByUsername(username);
+    if (!user) return null;
+    
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) return null;
+    
+    // Update online status
+    await this.updateUser(user.id, { isOnline: true });
+    return user;
+  }
+
   async authenticateUserMultiTenant(email: string, password: string, companyId?: string): Promise<{
     user: User;
     userCompany: UserCompany;
     company: Company;
   } | null> {
     const user = await this.getUserByEmail(email);
+    if (!user) return null;
+    
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) return null;
+    
+    // Get user's companies
+    const userCompanies = await this.getUserCompaniesByUser(user.id);
+    if (userCompanies.length === 0) return null;
+
+    // If companyId specified, find that specific company
+    let selectedUserCompany;
+    if (companyId) {
+      selectedUserCompany = userCompanies.find(uc => uc.companyId === companyId);
+      if (!selectedUserCompany) return null;
+    } else {
+      // Use first company (or owner's company if exists)
+      const ownerCompany = userCompanies.find(uc => uc.isOwner);
+      selectedUserCompany = ownerCompany || userCompanies[0];
+    }
+
+    const company = selectedUserCompany.company;
+    
+    // Check if company is active
+    if (company.status === 'suspended' || company.status === 'canceled') {
+      return null;
+    }
+    
+    // Update online status
+    await this.updateUser(user.id, { isOnline: true });
+    
+    return {
+      user,
+      userCompany: selectedUserCompany,
+      company
+    };
+  }
+
+  async authenticateUserMultiTenantByUsername(username: string, password: string, companyId?: string): Promise<{
+    user: User;
+    userCompany: UserCompany;
+    company: Company;
+  } | null> {
+    const user = await this.getUserByUsername(username);
     if (!user) return null;
     
     const isValidPassword = await bcrypt.compare(password, user.password);
