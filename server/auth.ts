@@ -74,6 +74,27 @@ export function decryptData(encryptedData: string): string {
 }
 
 /**
+ * Validate WhatsApp webhook signature using HMAC-SHA256
+ */
+export function validateWebhookSignature(
+  payload: string,
+  signature: string,
+  secret: string
+): boolean {
+  try {
+    // WhatsApp sends signature as 'sha256=<hash>'
+    const expectedSignature = `sha256=${crypto.HmacSHA256(payload, secret).toString()}`;
+    
+    // Use timingSafeEqual equivalent for constant-time comparison
+    return expectedSignature.length === signature.length && 
+           expectedSignature === signature;
+  } catch (error) {
+    console.error('Webhook signature validation error:', error);
+    return false;
+  }
+}
+
+/**
  * Authenticate user and create session (Multi-tenant)
  */
 export async function authenticateUser(

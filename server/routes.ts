@@ -28,7 +28,8 @@ import {
   requireAuth,
   requireRole,
   encryptData,
-  decryptData
+  decryptData,
+  validateWebhookSignature
 } from "./auth";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -366,6 +367,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Inbound message webhook (for WhatsApp API integration)
   app.post('/api/webhook/inbound-message', async (req, res) => {
     try {
+      // Webhook signature validation
+      const webhookSecret = process.env.WHATSAPP_WEBHOOK_SECRET;
+      const signature = req.headers['x-hub-signature-256'] as string;
+      
+      if (webhookSecret && signature) {
+        const payload = JSON.stringify(req.body);
+        const isValidSignature = validateWebhookSignature(payload, signature, webhookSecret);
+        
+        if (!isValidSignature) {
+          console.warn('Invalid webhook signature received');
+          return res.status(401).json({ message: "Invalid signature" });
+        }
+      } else if (webhookSecret) {
+        // Webhook secret is configured but signature is missing
+        console.warn('Webhook signature missing but secret is configured');
+        return res.status(401).json({ message: "Signature required" });
+      }
+      // If no webhook secret is configured, allow the request (for development)
+      
       const { 
         phone, 
         content, 
