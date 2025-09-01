@@ -15,6 +15,7 @@ import { useThemeCustomization } from '@/contexts/theme-customization-context';
 import { useToast } from '@/hooks/use-toast';
 import { useSound } from '@/hooks/use-sound';
 import ColorPicker from '@/components/theme-customization/color-picker';
+import { authenticatedGet, authenticatedPost, authenticatedPut, authenticatedDelete } from '@/lib/api-client';
 import { 
   Settings, 
   Bell, 
@@ -763,18 +764,9 @@ function QuickRepliesManager() {
   const fetchQuickReplies = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/quick-replies', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setQuickReplies(data);
-      } else {
-        throw new Error('Failed to fetch quick replies');
-      }
+      const response = await authenticatedGet('/api/quick-replies');
+      const data = await response.json();
+      setQuickReplies(data);
     } catch (error) {
       console.error('Error fetching quick replies:', error);
       toast({
@@ -798,35 +790,23 @@ function QuickRepliesManager() {
     }
 
     try {
-      const url = editingReply 
-        ? `/api/quick-replies/${editingReply.id}`
-        : '/api/quick-replies';
+      let response;
       
-      const method = editingReply ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(formData)
-      });
-
-      if (response.ok) {
-        toast({
-          title: "Sucesso",
-          description: editingReply ? "Resposta rápida atualizada!" : "Resposta rápida criada!"
-        });
-        
-        setFormData({ shortcut: '', message: '', isGlobal: false });
-        setShowAddForm(false);
-        setEditingReply(null);
-        fetchQuickReplies();
+      if (editingReply) {
+        response = await authenticatedPut(`/api/quick-replies/${editingReply.id}`, formData);
       } else {
-        const error = await response.json();
-        throw new Error(error.message);
+        response = await authenticatedPost('/api/quick-replies', formData);
       }
+
+      toast({
+        title: "Sucesso",
+        description: editingReply ? "Resposta rápida atualizada!" : "Resposta rápida criada!"
+      });
+      
+      setFormData({ shortcut: '', message: '', isGlobal: false });
+      setShowAddForm(false);
+      setEditingReply(null);
+      fetchQuickReplies();
     } catch (error) {
       console.error('Error saving quick reply:', error);
       toast({
@@ -849,23 +829,12 @@ function QuickRepliesManager() {
 
   const handleDelete = async (id) => {
     try {
-      const response = await fetch(`/api/quick-replies/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+      await authenticatedDelete(`/api/quick-replies/${id}`);
+      toast({
+        title: "Sucesso",
+        description: "Resposta rápida excluída!"
       });
-
-      if (response.ok) {
-        toast({
-          title: "Sucesso",
-          description: "Resposta rápida excluída!"
-        });
-        fetchQuickReplies();
-      } else {
-        const error = await response.json();
-        throw new Error(error.message);
-      }
+      fetchQuickReplies();
     } catch (error) {
       console.error('Error deleting quick reply:', error);
       toast({
