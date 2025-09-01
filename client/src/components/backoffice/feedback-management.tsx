@@ -75,7 +75,7 @@ export default function FeedbackManagement() {
     queryFn: async () => {
       const response = await fetch("/api/feedbacks", {
         headers: {
-          "Authorization": `Bearer ${localStorage.getItem("auth_token")}`
+          "Authorization": `Bearer ${localStorage.getItem("authToken")}`
         }
       });
       if (!response.ok) throw new Error("Failed to fetch feedbacks");
@@ -86,10 +86,7 @@ export default function FeedbackManagement() {
   // Update feedback mutation
   const updateFeedbackMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => 
-      apiRequest(`/api/feedbacks/${id}`, {
-        method: "PUT",
-        body: JSON.stringify(data)
-      }),
+      apiRequest('PUT', `/api/feedbacks/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feedbacks"] });
       toast({
@@ -102,10 +99,7 @@ export default function FeedbackManagement() {
   // Respond to feedback mutation
   const respondMutation = useMutation({
     mutationFn: ({ id, response }: { id: string; response: string }) =>
-      apiRequest(`/api/feedbacks/${id}/respond`, {
-        method: "POST",
-        body: JSON.stringify({ response })
-      }),
+      apiRequest('POST', `/api/feedbacks/${id}/respond`, { response }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feedbacks"] });
       setResponseDialogOpen(false);
