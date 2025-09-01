@@ -27,10 +27,13 @@ export interface LoginResult {
  * Generate a secure JWT token for the user
  */
 export function generateToken(user: User, userCompany: any, sessionId: string): string {
+  // Use user.role for superadmin, otherwise use userCompany.role
+  const effectiveRole = user.role === 'superadmin' ? 'superadmin' : userCompany.role;
+  
   const payload: AuthPayload = {
     userId: user.id,
     email: user.email,
-    role: userCompany.role,
+    role: effectiveRole,
     companyId: userCompany.companyId,
     sessionId,
     isOwner: userCompany.isOwner || false
