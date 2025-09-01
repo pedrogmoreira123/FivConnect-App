@@ -17,16 +17,36 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// WhatsApp Connections table (must be defined before conversations that reference it)
+export const whatsappConnections = pgTable("whatsapp_connections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(), // Connection name/label
+  phone: text("phone"), // WhatsApp phone number when connected
+  qrCode: text("qr_code"), // Current QR code for connection
+  status: text("status", { 
+    enum: ["disconnected", "connecting", "connected", "qr_ready", "destroyed"] 
+  }).notNull().default("disconnected"),
+  isDefault: boolean("is_default").default(false), // Default connection for new conversations
+  sessionData: json("session_data"), // WhatsApp session data
+  lastSeen: timestamp("last_seen"),
+  // Environment field to separate test from production data  
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   contactName: text("contact_name").notNull(),
   contactPhone: text("contact_phone").notNull(),
   clientId: varchar("client_id").references(() => clients.id), // Link to clients table
+  whatsappConnectionId: varchar("whatsapp_connection_id").references(() => whatsappConnections.id), // NEW: Link to WhatsApp connection
   status: text("status", { enum: ["in_progress", "waiting", "completed", "closed"] }).notNull().default("waiting"),
   assignedAgentId: varchar("assigned_agent_id").references(() => users.id),
   queueId: varchar("queue_id").references(() => queues.id),
   priority: text("priority", { enum: ["low", "medium", "high", "urgent"] }).default("medium"),
   tags: json("tags"), // Store conversation tags as JSON array
+  isGroup: boolean("is_group").default(false), // NEW: WhatsApp group conversations
   // Environment field to separate test from production data
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   lastMessageAt: timestamp("last_message_at").defaultNow(),
@@ -497,3 +517,36 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
     references: [invoices.id],
   }),
 }));
+
+// Quick Replies/Respostas Rápidas table
+export const quickReplies = pgTable("quick_replies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  shortcut: text("shortcut").notNull().unique(), // Ex: "/ola", "/info"
+  message: text("message").notNull(),
+  userId: varchar("user_id").references(() => users.id), // Owner of the quick reply
+  isGlobal: boolean("is_global").default(false), // Global for all users or personal
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Create insert schemas for the new tables
+export const insertQuickReplySchema = createInsertSchema(quickReplies).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertWhatsappConnectionSchema = createInsertSchema(whatsappConnections).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Type definitions
+export type QuickReply = typeof quickReplies.$inferSelect;
+export type InsertQuickReply = z.infer<typeof insertQuickReplySchema>;
+
+export type WhatsappConnection = typeof whatsappConnections.$inferSelect;
+export type InsertWhatsappConnection = z.infer<typeof insertWhatsappConnectionSchema>;

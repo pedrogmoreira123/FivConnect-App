@@ -31,6 +31,10 @@ import {
   type InsertInvoice,
   type Payment,
   type InsertPayment,
+  type QuickReply,
+  type InsertQuickReply,
+  type WhatsappConnection,
+  type InsertWhatsappConnection,
   users,
   clients,
   sessions,
@@ -46,7 +50,9 @@ import {
   plans,
   subscriptions,
   invoices,
-  payments
+  payments,
+  quickReplies,
+  whatsappConnections
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
@@ -180,6 +186,22 @@ export interface IStorage {
   // Environment management operations
   cleanTestData(): Promise<boolean>;
   getCurrentEnvironment(): string;
+  
+  // WhatsApp Connection operations
+  createWhatsAppConnection(connection: InsertWhatsappConnection): Promise<WhatsappConnection>;
+  getWhatsAppConnection(id: string): Promise<WhatsappConnection | undefined>;
+  getAllWhatsAppConnections(): Promise<WhatsappConnection[]>;
+  updateWhatsAppConnection(id: string, updates: Partial<InsertWhatsappConnection>): Promise<WhatsappConnection>;
+  deleteWhatsAppConnection(id: string): Promise<boolean>;
+
+  // Quick Reply operations
+  createQuickReply(reply: InsertQuickReply): Promise<QuickReply>;
+  getQuickReply(id: string): Promise<QuickReply | undefined>;
+  getAllQuickReplies(): Promise<QuickReply[]>;
+  getQuickRepliesByUser(userId: string): Promise<QuickReply[]>;
+  getGlobalQuickReplies(): Promise<QuickReply[]>;
+  updateQuickReply(id: string, reply: Partial<InsertQuickReply>): Promise<QuickReply>;
+  deleteQuickReply(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -999,6 +1021,76 @@ export class DatabaseStorage implements IStorage {
 
   async getAllPayments(): Promise<Payment[]> {
     return await db.select().from(payments).orderBy(desc(payments.createdAt));
+  }
+
+  // WhatsApp Connection operations
+  async createWhatsAppConnection(connection: InsertWhatsappConnection): Promise<WhatsappConnection> {
+    const [createdConnection] = await db.insert(whatsappConnections).values(connection).returning();
+    return createdConnection;
+  }
+
+  async getWhatsAppConnection(id: string): Promise<WhatsappConnection | undefined> {
+    const [connection] = await db.select().from(whatsappConnections).where(eq(whatsappConnections.id, id));
+    return connection || undefined;
+  }
+
+  async getAllWhatsAppConnections(): Promise<WhatsappConnection[]> {
+    return await db.select().from(whatsappConnections).orderBy(desc(whatsappConnections.createdAt));
+  }
+
+  async updateWhatsAppConnection(id: string, updates: Partial<InsertWhatsappConnection>): Promise<WhatsappConnection> {
+    const [connection] = await db.update(whatsappConnections)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(whatsappConnections.id, id))
+      .returning();
+    if (!connection) throw new Error("WhatsApp connection not found");
+    return connection;
+  }
+
+  async deleteWhatsAppConnection(id: string): Promise<boolean> {
+    const result = await db.delete(whatsappConnections).where(eq(whatsappConnections.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // Quick Reply operations
+  async createQuickReply(reply: InsertQuickReply): Promise<QuickReply> {
+    const [createdReply] = await db.insert(quickReplies).values(reply).returning();
+    return createdReply;
+  }
+
+  async getQuickReply(id: string): Promise<QuickReply | undefined> {
+    const [reply] = await db.select().from(quickReplies).where(eq(quickReplies.id, id));
+    return reply || undefined;
+  }
+
+  async getAllQuickReplies(): Promise<QuickReply[]> {
+    return await db.select().from(quickReplies).orderBy(asc(quickReplies.shortcut));
+  }
+
+  async getQuickRepliesByUser(userId: string): Promise<QuickReply[]> {
+    return await db.select().from(quickReplies)
+      .where(eq(quickReplies.userId, userId))
+      .orderBy(asc(quickReplies.shortcut));
+  }
+
+  async getGlobalQuickReplies(): Promise<QuickReply[]> {
+    return await db.select().from(quickReplies)
+      .where(eq(quickReplies.isGlobal, true))
+      .orderBy(asc(quickReplies.shortcut));
+  }
+
+  async updateQuickReply(id: string, reply: Partial<InsertQuickReply>): Promise<QuickReply> {
+    const [updatedReply] = await db.update(quickReplies)
+      .set({ ...reply, updatedAt: new Date() })
+      .where(eq(quickReplies.id, id))
+      .returning();
+    if (!updatedReply) throw new Error("Quick reply not found");
+    return updatedReply;
+  }
+
+  async deleteQuickReply(id: string): Promise<boolean> {
+    const result = await db.delete(quickReplies).where(eq(quickReplies.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 }
 

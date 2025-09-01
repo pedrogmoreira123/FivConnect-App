@@ -1872,6 +1872,238 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // WhatsApp Connection routes (protected)
+  app.get('/api/whatsapp/connections', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const connections = await storage.getAllWhatsAppConnections();
+      res.json(connections);
+    } catch (error) {
+      console.error('Failed to get WhatsApp connections:', error);
+      res.status(500).json({ message: "Failed to get WhatsApp connections" });
+    }
+  });
+
+  app.post('/api/whatsapp/connections', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const { name, isDefault } = req.body;
+      
+      if (!name) {
+        return res.status(400).json({ message: "Connection name is required" });
+      }
+
+      // Create connection in database
+      const connection = await storage.createWhatsAppConnection({
+        name,
+        isDefault: isDefault || false,
+        status: 'connecting'
+      });
+
+      // Initialize WhatsApp session
+      const { whatsappService } = await import('./whatsapp-service');
+      await whatsappService.createConnection(name, isDefault || false);
+
+      res.status(201).json(connection);
+    } catch (error) {
+      console.error('Failed to create WhatsApp connection:', error);
+      res.status(500).json({ message: "Failed to create WhatsApp connection" });
+    }
+  });
+
+  app.get('/api/whatsapp/connections/:id/qr', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const { whatsappService } = await import('./whatsapp-service');
+      const connectionInfo = whatsappService.getConnectionInfo(id);
+      
+      if (!connectionInfo) {
+        return res.status(404).json({ message: "WhatsApp connection not found" });
+      }
+
+      res.json({
+        status: connectionInfo.status,
+        qrCode: connectionInfo.qrCode
+      });
+    } catch (error) {
+      console.error('Failed to get QR code:', error);
+      res.status(500).json({ message: "Failed to get QR code" });
+    }
+  });
+
+  app.post('/api/whatsapp/connections/:id/disconnect', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const { whatsappService } = await import('./whatsapp-service');
+      await whatsappService.disconnectConnection(id);
+
+      res.json({ message: "WhatsApp connection disconnected successfully" });
+    } catch (error) {
+      console.error('Failed to disconnect WhatsApp connection:', error);
+      res.status(500).json({ message: "Failed to disconnect WhatsApp connection" });
+    }
+  });
+
+  app.delete('/api/whatsapp/connections/:id', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Disconnect first
+      try {
+        const { whatsappService } = await import('./whatsapp-service');
+        await whatsappService.disconnectConnection(id);
+      } catch (error) {
+        console.warn('Failed to disconnect WhatsApp connection:', error);
+      }
+
+      // Delete from database
+      const success = await storage.deleteWhatsAppConnection(id);
+      
+      if (success) {
+        res.json({ message: "WhatsApp connection deleted successfully" });
+      } else {
+        res.status(404).json({ message: "WhatsApp connection not found" });
+      }
+    } catch (error) {
+      console.error('Failed to delete WhatsApp connection:', error);
+      res.status(500).json({ message: "Failed to delete WhatsApp connection" });
+    }
+  });
+
+  app.post('/api/whatsapp/send-message', requireAuth, async (req, res) => {
+    try {
+      const { connectionId, to, message } = req.body;
+      
+      if (!connectionId || !to || !message) {
+        return res.status(400).json({ message: "Connection ID, phone number, and message are required" });
+      }
+
+      const { whatsappService } = await import('./whatsapp-service');
+      const success = await whatsappService.sendMessage(connectionId, to, message);
+      
+      if (success) {
+        res.json({ message: "Message sent successfully" });
+      } else {
+        res.status(400).json({ message: "Failed to send message" });
+      }
+    } catch (error) {
+      console.error('Failed to send WhatsApp message:', error);
+      res.status(500).json({ message: "Failed to send WhatsApp message" });
+    }
+  });
+
+  // Quick Replies routes (protected)
+  app.get('/api/quick-replies', requireAuth, async (req, res) => {
+    try {
+      const { userId } = req.query;
+      
+      let replies;
+      if (userId && req.user.role === 'admin') {
+        // Admin can get replies by specific user
+        replies = await storage.getQuickRepliesByUser(userId as string);
+      } else {
+        // Get user's personal replies + global replies
+        const personalReplies = await storage.getQuickRepliesByUser(req.user.id);
+        const globalReplies = await storage.getGlobalQuickReplies();
+        replies = [...personalReplies, ...globalReplies];
+      }
+      
+      res.json(replies);
+    } catch (error) {
+      console.error('Failed to get quick replies:', error);
+      res.status(500).json({ message: "Failed to get quick replies" });
+    }
+  });
+
+  app.post('/api/quick-replies', requireAuth, async (req, res) => {
+    try {
+      const { shortcut, message, isGlobal } = req.body;
+      
+      if (!shortcut || !message) {
+        return res.status(400).json({ message: "Shortcut and message are required" });
+      }
+
+      // Only admins can create global replies
+      if (isGlobal && req.user.role !== 'admin') {
+        return res.status(403).json({ message: "Only administrators can create global quick replies" });
+      }
+
+      const reply = await storage.createQuickReply({
+        shortcut,
+        message,
+        userId: req.user.id,
+        isGlobal: isGlobal && req.user.role === 'admin'
+      });
+
+      res.status(201).json(reply);
+    } catch (error) {
+      console.error('Failed to create quick reply:', error);
+      res.status(500).json({ message: "Failed to create quick reply" });
+    }
+  });
+
+  app.put('/api/quick-replies/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { shortcut, message, isGlobal } = req.body;
+      
+      // Check if reply exists and user has permission
+      const existingReply = await storage.getQuickReply(id);
+      if (!existingReply) {
+        return res.status(404).json({ message: "Quick reply not found" });
+      }
+
+      // Users can only edit their own replies, admins can edit any
+      if (req.user.role !== 'admin' && existingReply.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Only admins can create/modify global replies
+      if (isGlobal && req.user.role !== 'admin') {
+        return res.status(403).json({ message: "Only administrators can create global quick replies" });
+      }
+
+      const reply = await storage.updateQuickReply(id, {
+        shortcut,
+        message,
+        isGlobal: isGlobal && req.user.role === 'admin'
+      });
+
+      res.json(reply);
+    } catch (error) {
+      console.error('Failed to update quick reply:', error);
+      res.status(500).json({ message: "Failed to update quick reply" });
+    }
+  });
+
+  app.delete('/api/quick-replies/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Check if reply exists and user has permission
+      const existingReply = await storage.getQuickReply(id);
+      if (!existingReply) {
+        return res.status(404).json({ message: "Quick reply not found" });
+      }
+
+      // Users can only delete their own replies, admins can delete any
+      if (req.user.role !== 'admin' && existingReply.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const success = await storage.deleteQuickReply(id);
+      
+      if (success) {
+        res.json({ message: "Quick reply deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Quick reply not found" });
+      }
+    } catch (error) {
+      console.error('Failed to delete quick reply:', error);
+      res.status(500).json({ message: "Failed to delete quick reply" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

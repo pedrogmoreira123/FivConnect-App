@@ -38,6 +38,15 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Initialize WhatsApp service
+  try {
+    const { whatsappService } = await import('./whatsapp-service');
+    await whatsappService.initialize();
+  } catch (error) {
+    console.warn('⚠️  WhatsApp service initialization failed:', error);
+    console.log('💡 WhatsApp features will be unavailable until properly configured');
+  }
+
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
