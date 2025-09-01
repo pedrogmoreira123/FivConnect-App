@@ -412,30 +412,6 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
   
-  
-  async getSession(token: string): Promise<Session | undefined> {
-    const [session] = await db.select().from(sessions).where(eq(sessions.token, token));
-    if (!session) return undefined;
-    
-    // Check if session is expired
-    if (new Date() > session.expiresAt) {
-      await this.deleteSession(token);
-      return undefined;
-    }
-    
-    return session;
-  }
-  
-  async deleteSession(token: string): Promise<boolean> {
-    const result = await db.delete(sessions).where(eq(sessions.token, token));
-    return (result.rowCount ?? 0) > 0;
-  }
-  
-  async deleteUserSessions(userId: string): Promise<boolean> {
-    const result = await db.delete(sessions).where(eq(sessions.userId, userId));
-    return (result.rowCount ?? 0) > 0;
-  }
-  
   // Client operations
   async getClient(id: string): Promise<Client | undefined> {
     const [client] = await db.select().from(clients).where(eq(clients.id, id));
