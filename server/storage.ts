@@ -19,10 +19,6 @@ import {
   type InsertAiAgentConfig,
   type Feedback,
   type InsertFeedback,
-  type InstanceConfig,
-  type InsertInstanceConfig,
-  type StatusCheckLog,
-  type InsertStatusCheckLog,
   type Plan,
   type InsertPlan,
   type Subscription,
@@ -51,8 +47,6 @@ import {
   settings,
   aiAgentConfig,
   feedbacks,
-  instanceConfig,
-  statusCheckLogs,
   plans,
   subscriptions,
   invoices,
@@ -150,18 +144,6 @@ export interface IStorage {
   getAllFeedbacks(): Promise<Feedback[]>;
   getFeedbacksBySubmitter(submitterId: string): Promise<Feedback[]>;
 
-  // Instance configuration operations
-  getInstanceConfig(): Promise<InstanceConfig | undefined>;
-  createOrUpdateInstanceConfig(config: InsertInstanceConfig): Promise<InstanceConfig>;
-  updateInstanceStatus(status: string, billingStatus: string, enabledFeatures: any): Promise<InstanceConfig>;
-  lockInstance(lockMessage: string): Promise<boolean>;
-  unlockInstance(): Promise<boolean>;
-  markPaymentNotificationShown(): Promise<boolean>;
-  
-  // Status check operations  
-  performStatusCheck(checkType: 'startup' | 'scheduled' | 'manual'): Promise<any>;
-  createStatusCheckLog(log: InsertStatusCheckLog): Promise<StatusCheckLog>;
-  getStatusCheckLogs(limit?: number): Promise<StatusCheckLog[]>;
 
   // Financial operations - Plans
   getPlan(id: string): Promise<Plan | undefined>;
@@ -738,203 +720,6 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(feedbacks).where(eq(feedbacks.submittedById, submitterId)).orderBy(desc(feedbacks.createdAt));
   }
 
-  // Instance configuration operations
-  async getInstanceConfig(): Promise<InstanceConfig | undefined> {
-    const [config] = await db.select().from(instanceConfig).limit(1);
-    return config || undefined;
-  }
-
-  async createOrUpdateInstanceConfig(insertConfig: InsertInstanceConfig): Promise<InstanceConfig> {
-    const existingConfig = await this.getInstanceConfig();
-    
-    if (!existingConfig) {
-      const [config] = await db.insert(instanceConfig).values(insertConfig).returning();
-      return config;
-    } else {
-      const [config] = await db.update(instanceConfig)
-        .set({ ...insertConfig, updatedAt: new Date() })
-        .where(eq(instanceConfig.id, existingConfig.id))
-        .returning();
-      return config;
-    }
-  }
-
-  async updateInstanceStatus(status: string, billingStatus: string, enabledFeatures: any): Promise<InstanceConfig> {
-    const existingConfig = await this.getInstanceConfig();
-    
-    if (!existingConfig) {
-      throw new Error("Instance configuration not found");
-    }
-
-    const [config] = await db.update(instanceConfig)
-      .set({
-        status: status as any,
-        billingStatus: billingStatus as any,
-        enabledFeatures,
-        lastSuccessfulCheck: new Date(),
-        updatedAt: new Date()
-      })
-      .where(eq(instanceConfig.id, existingConfig.id))
-      .returning();
-    
-    return config;
-  }
-
-  async lockInstance(lockMessage: string): Promise<boolean> {
-    const existingConfig = await this.getInstanceConfig();
-    
-    if (!existingConfig) {
-      return false;
-    }
-
-    await db.update(instanceConfig)
-      .set({
-        isLocked: true,
-        lockMessage,
-        updatedAt: new Date()
-      })
-      .where(eq(instanceConfig.id, existingConfig.id));
-    
-    return true;
-  }
-
-  async unlockInstance(): Promise<boolean> {
-    const existingConfig = await this.getInstanceConfig();
-    
-    if (!existingConfig) {
-      return false;
-    }
-
-    await db.update(instanceConfig)
-      .set({
-        isLocked: false,
-        lockMessage: null,
-        updatedAt: new Date()
-      })
-      .where(eq(instanceConfig.id, existingConfig.id));
-    
-    return true;
-  }
-
-  async markPaymentNotificationShown(): Promise<boolean> {
-    const existingConfig = await this.getInstanceConfig();
-    
-    if (!existingConfig) {
-      return false;
-    }
-
-    await db.update(instanceConfig)
-      .set({
-        paymentNotificationShown: true,
-        updatedAt: new Date()
-      })
-      .where(eq(instanceConfig.id, existingConfig.id));
-    
-    return true;
-  }
-
-  // Status check operations
-  async performStatusCheck(checkType: 'startup' | 'scheduled' | 'manual'): Promise<any> {
-    const config = await this.getInstanceConfig();
-    
-    if (!config) {
-      throw new Error("Instance configuration not found. Please configure the instance first.");
-    }
-
-    const startTime = Date.now();
-    
-    try {
-      // Use environment variables for FiVConnect API
-      const apiUrl = process.env.FIV_APP_API_URL || config.connectApiUrl;
-      const apiKey = process.env.FIV_APP_API_KEY || config.instanceKey;
-      
-      if (!apiUrl || !apiKey) {
-        throw new Error("FiVConnect API configuration missing. Please set FIV_APP_API_URL and FIV_APP_API_KEY environment variables.");
-      }
-      
-      // Make request to Fi.V Connect API
-      const response = await fetch(`${apiUrl}/api/v1/instances/status`, {
-        method: 'GET',
-        headers: {
-          'X-Instance-Key': apiKey,
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        }
-      });
-
-      const responseTime = Date.now() - startTime;
-
-      if (!response.ok) {
-        throw new Error(`API returned ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      // Update instance configuration with new status
-      await this.updateInstanceStatus(data.status, data.billingStatus, data.enabledFeatures);
-
-      // Handle status-specific actions
-      if (data.status === 'suspended') {
-        await this.lockInstance("This account has been suspended. Please contact support.");
-      } else if (data.status === 'active') {
-        await this.unlockInstance();
-      }
-
-      // Log successful check
-      await this.createStatusCheckLog({
-        instanceConfigId: config.id,
-        checkType,
-        success: true,
-        statusReceived: data.status,
-        billingStatusReceived: data.billingStatus,
-        featuresReceived: data.enabledFeatures,
-        responseTime
-      });
-
-      return {
-        success: true,
-        status: data.status,
-        billingStatus: data.billingStatus,
-        enabledFeatures: data.enabledFeatures,
-        responseTime
-      };
-
-    } catch (error) {
-      const responseTime = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-      // Log failed check
-      await this.createStatusCheckLog({
-        instanceConfigId: config.id,
-        checkType,
-        success: false,
-        errorMessage,
-        responseTime
-      });
-
-      // Update last check time even on failure
-      await db.update(instanceConfig)
-        .set({
-          lastStatusCheck: new Date(),
-          updatedAt: new Date()
-        })
-        .where(eq(instanceConfig.id, config.id));
-
-      throw error;
-    }
-  }
-
-  async createStatusCheckLog(insertLog: InsertStatusCheckLog): Promise<StatusCheckLog> {
-    const [log] = await db.insert(statusCheckLogs).values(insertLog).returning();
-    return log;
-  }
-
-  async getStatusCheckLogs(limit: number = 50): Promise<StatusCheckLog[]> {
-    return await db.select()
-      .from(statusCheckLogs)
-      .orderBy(desc(statusCheckLogs.createdAt))
-      .limit(limit);
-  }
 
   // Financial operations - Plans
   async getPlan(id: string): Promise<Plan | undefined> {

@@ -159,42 +159,6 @@ export const feedbacks = pgTable("feedbacks", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Fi.V Connect instance configuration table
-export const instanceConfig = pgTable("instance_config", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  instanceId: text("instance_id").notNull(), // Unique identifier for this instance
-  instanceKey: text("instance_key").notNull(), // Secret key for Fi.V Connect API authentication
-  connectApiUrl: text("connect_api_url").notNull(), // Fi.V Connect panel API URL
-  status: text("status", { enum: ["active", "suspended", "pending_payment"] }).default("active"),
-  billingStatus: text("billing_status", { enum: ["paid", "overdue"] }).default("paid"),
-  enabledFeatures: json("enabled_features").default({
-    chat: true,
-    chatbot: true,
-    ai_agent: false
-  }),
-  lastStatusCheck: timestamp("last_status_check"),
-  lastSuccessfulCheck: timestamp("last_successful_check"),
-  checkIntervalMinutes: integer("check_interval_minutes").default(60), // Check every hour by default
-  isLocked: boolean("is_locked").default(false), // True when instance is suspended
-  lockMessage: text("lock_message"), // Message to show when locked
-  paymentNotificationShown: boolean("payment_notification_shown").default(false),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// Status check logs table
-export const statusCheckLogs = pgTable("status_check_logs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  instanceConfigId: varchar("instance_config_id").notNull().references(() => instanceConfig.id),
-  checkType: text("check_type", { enum: ["startup", "scheduled", "manual"] }).notNull(),
-  success: boolean("success").notNull(),
-  statusReceived: text("status_received"),
-  billingStatusReceived: text("billing_status_received"),
-  featuresReceived: json("features_received"),
-  errorMessage: text("error_message"),
-  responseTime: integer("response_time"), // In milliseconds
-  createdAt: timestamp("created_at").defaultNow(),
-});
 
 // Financial system tables
 
@@ -326,18 +290,6 @@ export const insertFeedbackSchema = createInsertSchema(feedbacks).omit({
   respondedAt: true,
 });
 
-export const insertInstanceConfigSchema = createInsertSchema(instanceConfig).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  lastStatusCheck: true,
-  lastSuccessfulCheck: true,
-});
-
-export const insertStatusCheckLogSchema = createInsertSchema(statusCheckLogs).omit({
-  id: true,
-  createdAt: true,
-});
 
 export const insertPlanSchema = createInsertSchema(plans).omit({
   id: true,
@@ -384,10 +336,6 @@ export type AiAgentConfig = typeof aiAgentConfig.$inferSelect;
 export type InsertAiAgentConfig = z.infer<typeof insertAiAgentConfigSchema>;
 export type Feedback = typeof feedbacks.$inferSelect;
 export type InsertFeedback = z.infer<typeof insertFeedbackSchema>;
-export type InstanceConfig = typeof instanceConfig.$inferSelect;
-export type InsertInstanceConfig = z.infer<typeof insertInstanceConfigSchema>;
-export type StatusCheckLog = typeof statusCheckLogs.$inferSelect;
-export type InsertStatusCheckLog = z.infer<typeof insertStatusCheckLogSchema>;
 export type Plan = typeof plans.$inferSelect;
 export type InsertPlan = z.infer<typeof insertPlanSchema>;
 export type Subscription = typeof subscriptions.$inferSelect;
@@ -476,16 +424,6 @@ export const feedbacksRelations = relations(feedbacks, ({ one }) => ({
   }),
 }));
 
-export const instanceConfigRelations = relations(instanceConfig, ({ many }) => ({
-  statusCheckLogs: many(statusCheckLogs),
-}));
-
-export const statusCheckLogsRelations = relations(statusCheckLogs, ({ one }) => ({
-  instanceConfig: one(instanceConfig, {
-    fields: [statusCheckLogs.instanceConfigId],
-    references: [instanceConfig.id],
-  }),
-}));
 
 export const plansRelations = relations(plans, ({ many }) => ({
   subscriptions: many(subscriptions),

@@ -1,7 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { statusCheckService } from "./status-check-service";
 
 const app = express();
 app.use(express.json());
@@ -78,11 +77,5 @@ app.use((req, res, next) => {
   }, async () => {
     log(`serving on port ${port}`);
     
-    // Start the Fi.V Connect status check service
-    try {
-      await statusCheckService.start();
-    } catch (error) {
-      log('Failed to start status check service, but server will continue running');
-    }
   });
 })();
