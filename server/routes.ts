@@ -44,17 +44,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, password } = loginSchema.parse(req.body);
       
+      console.log(`🔐 Login attempt for: ${email} (Environment: ${storage.getCurrentEnvironment()})`);
+      
       const result = await authenticateUser(
         email, 
         password, 
+        undefined, // companyId - let it auto-select
         req.ip,
         req.get('User-Agent')
       );
       
       if (!result) {
+        console.log(`❌ Login failed for: ${email} - Invalid credentials or no company association`);
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
+      console.log(`✅ Login successful for: ${email} (Company: ${result.user.company?.name})`);
       res.json({
         message: "Login successful",
         user: result.user,
@@ -62,7 +67,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         expiresAt: result.expiresAt
       });
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('🚨 Login error:', error);
       res.status(500).json({ message: "Login failed" });
     }
   });

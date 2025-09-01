@@ -365,7 +365,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
+    const [user] = await db.select().from(users).where(
+      and(
+        eq(users.email, email),
+        eq(users.environment, this.getEnvironmentFilter())
+      )
+    );
     return user || undefined;
   }
 
@@ -1241,7 +1246,8 @@ export class DatabaseStorage implements IStorage {
     .innerJoin(companies, eq(userCompanies.companyId, companies.id))
     .where(and(
       eq(userCompanies.userId, userId),
-      eq(userCompanies.isActive, true)
+      eq(userCompanies.isActive, true),
+      eq(companies.environment, this.getEnvironmentFilter())
     ));
 
     return result;

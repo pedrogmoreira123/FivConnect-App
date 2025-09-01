@@ -104,8 +104,8 @@ export async function authenticateUser(
   return {
     user: {
       ...userWithoutPassword,
-      company
-    },
+      company: company
+    } as any,
     token,
     expiresAt
   };
