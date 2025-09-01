@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
@@ -131,7 +131,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="appearance" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="appearance" className="flex items-center space-x-2">
             <Palette className="h-4 w-4" />
             <span>Personalização</span>
@@ -144,8 +144,12 @@ export default function SettingsPage() {
             <MessageSquare className="h-4 w-4" />
             <span>WhatsApp</span>
           </TabsTrigger>
-          <TabsTrigger value="apis" className="flex items-center space-x-2">
+          <TabsTrigger value="quick-replies" className="flex items-center space-x-2">
             <Zap className="h-4 w-4" />
+            <span>Respostas Rápidas</span>
+          </TabsTrigger>
+          <TabsTrigger value="apis" className="flex items-center space-x-2">
+            <Link className="h-4 w-4" />
             <span>APIs Externas</span>
           </TabsTrigger>
         </TabsList>
@@ -664,7 +668,295 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Quick Replies Tab */}
+        <TabsContent value="quick-replies" className="space-y-6">
+          <QuickRepliesManager />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// Quick Replies Manager Component
+function QuickRepliesManager() {
+  const { toast } = useToast();
+  const [quickReplies, setQuickReplies] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingReply, setEditingReply] = useState(null);
+  const [formData, setFormData] = useState({
+    shortcut: '',
+    message: '',
+    isGlobal: false
+  });
+
+  const fetchQuickReplies = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/quick-replies', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setQuickReplies(data);
+      } else {
+        throw new Error('Failed to fetch quick replies');
+      }
+    } catch (error) {
+      console.error('Error fetching quick replies:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao carregar respostas rápidas",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!formData.shortcut || !formData.message) {
+      toast({
+        title: "Erro",
+        description: "Atalho e mensagem são obrigatórios",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const url = editingReply 
+        ? `/api/quick-replies/${editingReply.id}`
+        : '/api/quick-replies';
+      
+      const method = editingReply ? 'PUT' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(formData)
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Sucesso",
+          description: editingReply ? "Resposta rápida atualizada!" : "Resposta rápida criada!"
+        });
+        
+        setFormData({ shortcut: '', message: '', isGlobal: false });
+        setShowAddForm(false);
+        setEditingReply(null);
+        fetchQuickReplies();
+      } else {
+        const error = await response.json();
+        throw new Error(error.message);
+      }
+    } catch (error) {
+      console.error('Error saving quick reply:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao salvar resposta rápida",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleEdit = (reply) => {
+    setEditingReply(reply);
+    setFormData({
+      shortcut: reply.shortcut,
+      message: reply.message,
+      isGlobal: reply.isGlobal || false
+    });
+    setShowAddForm(true);
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      const response = await fetch(`/api/quick-replies/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Sucesso",
+          description: "Resposta rápida excluída!"
+        });
+        fetchQuickReplies();
+      } else {
+        const error = await response.json();
+        throw new Error(error.message);
+      }
+    } catch (error) {
+      console.error('Error deleting quick reply:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao excluir resposta rápida",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({ shortcut: '', message: '', isGlobal: false });
+    setShowAddForm(false);
+    setEditingReply(null);
+  };
+
+  // Load quick replies on component mount
+  useEffect(() => {
+    fetchQuickReplies();
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Zap className="h-5 w-5" />
+              <span>Respostas Rápidas</span>
+            </div>
+            <Button 
+              onClick={() => setShowAddForm(!showAddForm)}
+              data-testid="button-add-quick-reply"
+            >
+              {showAddForm ? 'Cancelar' : 'Nova Resposta'}
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Configure respostas automáticas usando atalhos. Digite "/" seguido do atalho para usar.
+          </p>
+
+          {showAddForm && (
+            <Card className="border-dashed">
+              <CardContent className="pt-6 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="shortcut">Atalho</Label>
+                    <Input
+                      id="shortcut"
+                      value={formData.shortcut}
+                      onChange={(e) => setFormData(prev => ({ ...prev, shortcut: e.target.value }))}
+                      placeholder="ex: ola, info, horario"
+                      data-testid="input-shortcut"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Use apenas letras e números, sem espaços
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2 flex items-end">
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        id="is-global"
+                        checked={formData.isGlobal}
+                        onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isGlobal: checked }))}
+                        data-testid="switch-global"
+                      />
+                      <Label htmlFor="is-global" className="text-sm">
+                        Resposta Global
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="message">Mensagem</Label>
+                  <Textarea
+                    id="message"
+                    value={formData.message}
+                    onChange={(e) => setFormData(prev => ({ ...prev, message: e.target.value }))}
+                    placeholder="Digite a mensagem da resposta rápida..."
+                    className="h-24"
+                    data-testid="textarea-message"
+                  />
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Button onClick={handleSave} data-testid="button-save-reply">
+                    <Save className="h-4 w-4 mr-2" />
+                    {editingReply ? 'Atualizar' : 'Salvar'}
+                  </Button>
+                  <Button variant="outline" onClick={resetForm}>
+                    Cancelar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Quick Replies List */}
+          <div className="space-y-2">
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="h-6 w-6 animate-spin" />
+              </div>
+            ) : quickReplies.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Nenhuma resposta rápida configurada</p>
+                <p className="text-sm">Clique em "Nova Resposta" para começar</p>
+              </div>
+            ) : (
+              quickReplies.map((reply) => (
+                <Card key={reply.id} className="border">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-2 flex-1">
+                        <div className="flex items-center space-x-2">
+                          <Badge variant="secondary" className="font-mono">
+                            /{reply.shortcut}
+                          </Badge>
+                          {reply.isGlobal && (
+                            <Badge variant="outline" className="text-xs">
+                              <Globe className="h-3 w-3 mr-1" />
+                              Global
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-foreground">
+                          {reply.message}
+                        </p>
+                      </div>
+                      <div className="flex items-center space-x-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(reply)}
+                          data-testid={`button-edit-${reply.id}`}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(reply.id)}
+                          data-testid={`button-delete-${reply.id}`}
+                        >
+                          <Wrench className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, json, integer, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, json, integer, serial, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -550,3 +550,71 @@ export type InsertQuickReply = z.infer<typeof insertQuickReplySchema>;
 
 export type WhatsappConnection = typeof whatsappConnections.$inferSelect;
 export type InsertWhatsappConnection = z.infer<typeof insertWhatsappConnectionSchema>;
+
+// Companies/Tenants Table - WhaTicket inspired multi-tenant architecture
+export const companies = pgTable("companies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone"),
+  document: text("document"), // CNPJ/CPF for Brazilian companies
+  planId: varchar("plan_id").references(() => plans.id),
+  status: text("status", { enum: ["active", "suspended", "canceled", "trial"] }).notNull().default("trial"),
+  maxUsers: integer("max_users").default(1),
+  maxConnections: integer("max_connections").default(1),
+  maxQueues: integer("max_queues").default(3),
+  trialEndsAt: timestamp("trial_ends_at"),
+  // Environment field
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// User-Company relationship (Multi-tenant support)
+export const userCompanies = pgTable("user_companies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  role: text("role", { enum: ["owner", "admin", "supervisor", "agent"] }).notNull().default("agent"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Update existing tables to support multi-tenant
+// Note: We'll add companyId to existing tables via migrations
+
+// Company settings (per-tenant settings)
+export const companySettings = pgTable("company_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: 'cascade' }).notNull(),
+  key: text("key").notNull(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Create insert schemas for the new tables
+export const insertCompanySchema = createInsertSchema(companies).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertUserCompanySchema = createInsertSchema(userCompanies).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCompanySettingsSchema = createInsertSchema(companySettings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+// Type definitions for new tables
+export type Company = typeof companies.$inferSelect;
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
+
+export type UserCompany = typeof userCompanies.$inferSelect;
+export type InsertUserCompany = z.infer<typeof insertUserCompanySchema>;
+
+export type CompanySettings = typeof companySettings.$inferSelect;
+export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;
