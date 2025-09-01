@@ -356,6 +356,29 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  // Version that searches in both environments for authentication
+  async getUserByEmailAllEnvironments(email: string): Promise<User | undefined> {
+    // First try production environment
+    const [prodUser] = await db.select().from(users).where(
+      and(
+        eq(users.email, email),
+        eq(users.environment, 'production')
+      )
+    );
+    
+    if (prodUser) return prodUser;
+    
+    // Then try development environment
+    const [devUser] = await db.select().from(users).where(
+      and(
+        eq(users.email, email),
+        eq(users.environment, 'development')
+      )
+    );
+    
+    return devUser || undefined;
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     // Tag new users with current environment
     const userWithEnv = {
