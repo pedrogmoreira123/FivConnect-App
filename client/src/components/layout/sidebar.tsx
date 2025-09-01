@@ -39,6 +39,7 @@ const getNavigationItems = (userRole: string) => [
       { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
       { nameKey: 'navigation.feedback', href: '/feedback', icon: MessageSquare },
       { nameKey: 'navigation.financeiro', href: '/financeiro', icon: DollarSign },
+      { nameKey: 'navigation.admin', href: '/admin', icon: Building2, adminOnly: true },
       { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
     ]
   }
@@ -76,7 +77,15 @@ export default function Sidebar() {
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               {t(section.sectionKey)}
             </p>
-            {section.items.map((item) => {
+            {section.items
+              .filter((item) => {
+                // Filter out admin-only items for non-admin users
+                if (item.adminOnly && user?.role !== 'admin') {
+                  return false;
+                }
+                return true;
+              })
+              .map((item) => {
               const Icon = item.icon;
               const isActive = location === item.href || 
                 (item.href !== '/' && location.startsWith(item.href));

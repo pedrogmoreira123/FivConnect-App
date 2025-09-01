@@ -22,6 +22,7 @@ import SettingsPage from "@/pages/settings";
 import BackofficePage from "@/pages/backoffice";
 import FeedbackPage from "@/pages/feedback";
 import FinanceiroPage from "@/pages/financeiro";
+import AdminPage from "@/pages/admin";
 import MainLayout from "@/components/layout/main-layout";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/use-auth";
@@ -58,7 +59,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return (
       <InstanceLockScreen 
         lockMessage={instanceStatus.lockMessage}
-        status={instanceStatus.status}
+        status={instanceStatus.status === 'active' ? 'suspended' : instanceStatus.status}
       />
     );
   }
@@ -150,6 +151,13 @@ function Router() {
           <FinanceiroPage />
         </ProtectedRoute>
       </Route>
+
+      <Route path="/admin">
+        <ProtectedRoute>
+          <AdminPage />
+        </ProtectedRoute>
+      </Route>
+      
       <Route component={NotFound} />
     </Switch>
   );

@@ -35,6 +35,12 @@ import {
   type InsertQuickReply,
   type WhatsappConnection,
   type InsertWhatsappConnection,
+  type Company,
+  type InsertCompany,
+  type UserCompany,
+  type InsertUserCompany,
+  type CompanySettings,
+  type InsertCompanySettings,
   users,
   clients,
   sessions,
@@ -52,7 +58,10 @@ import {
   invoices,
   payments,
   quickReplies,
-  whatsappConnections
+  whatsappConnections,
+  companies,
+  userCompanies,
+  companySettings
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
@@ -72,6 +81,11 @@ export interface IStorage {
   
   // Authentication operations
   authenticateUser(email: string, password: string): Promise<User | null>;
+  authenticateUserMultiTenant(email: string, password: string, companyId?: string): Promise<{
+    user: User;
+    userCompany: UserCompany;
+    company: Company;
+  } | null>;
   changePassword(userId: string, newPassword: string): Promise<boolean>;
   
   // Session operations
@@ -202,6 +216,26 @@ export interface IStorage {
   getGlobalQuickReplies(): Promise<QuickReply[]>;
   updateQuickReply(id: string, reply: Partial<InsertQuickReply>): Promise<QuickReply>;
   deleteQuickReply(id: string): Promise<boolean>;
+
+  // Company operations (Multi-tenant)
+  getCompany(id: string): Promise<Company | undefined>;
+  createCompany(company: InsertCompany): Promise<Company>;
+  updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company>;
+  deleteCompany(id: string): Promise<boolean>;
+  getAllCompanies(): Promise<Company[]>;
+
+  // User-Company operations
+  getUserCompany(userId: string, companyId: string): Promise<UserCompany | undefined>;
+  createUserCompany(userCompany: InsertUserCompany): Promise<UserCompany>;
+  updateUserCompany(id: string, userCompany: Partial<InsertUserCompany>): Promise<UserCompany>;
+  getUserCompaniesByUser(userId: string): Promise<(UserCompany & { company: Company })[]>;
+  getUsersByCompany(companyId: string): Promise<(UserCompany & { user: User })[]>;
+
+  // Company settings operations
+  getCompanySetting(companyId: string, key: string): Promise<CompanySettings | undefined>;
+  setCompanySetting(setting: InsertCompanySettings): Promise<CompanySettings>;
+  updateCompanySetting(companyId: string, key: string, value: string): Promise<CompanySettings>;
+  getAllCompanySettings(companyId: string): Promise<CompanySettings[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -372,6 +406,49 @@ export class DatabaseStorage implements IStorage {
     // Update online status
     await this.updateUser(user.id, { isOnline: true });
     return user;
+  }
+
+  async authenticateUserMultiTenant(email: string, password: string, companyId?: string): Promise<{
+    user: User;
+    userCompany: UserCompany;
+    company: Company;
+  } | null> {
+    const user = await this.getUserByEmail(email);
+    if (!user) return null;
+    
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) return null;
+    
+    // Get user's companies
+    const userCompanies = await this.getUserCompaniesByUser(user.id);
+    if (userCompanies.length === 0) return null;
+
+    // If companyId specified, find that specific company
+    let selectedUserCompany;
+    if (companyId) {
+      selectedUserCompany = userCompanies.find(uc => uc.companyId === companyId);
+      if (!selectedUserCompany) return null;
+    } else {
+      // Use first company (or owner's company if exists)
+      const ownerCompany = userCompanies.find(uc => uc.isOwner);
+      selectedUserCompany = ownerCompany || userCompanies[0];
+    }
+
+    const company = selectedUserCompany.company;
+    
+    // Check if company is active
+    if (company.status === 'suspended' || company.status === 'canceled') {
+      return null;
+    }
+    
+    // Update online status
+    await this.updateUser(user.id, { isOnline: true });
+    
+    return {
+      user,
+      userCompany: selectedUserCompany,
+      company
+    };
   }
   
   async changePassword(userId: string, newPassword: string): Promise<boolean> {
@@ -1091,6 +1168,137 @@ export class DatabaseStorage implements IStorage {
   async deleteQuickReply(id: string): Promise<boolean> {
     const result = await db.delete(quickReplies).where(eq(quickReplies.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  // Company operations (Multi-tenant)
+  async getCompany(id: string): Promise<Company | undefined> {
+    const [company] = await db.select().from(companies).where(eq(companies.id, id));
+    return company || undefined;
+  }
+
+  async createCompany(company: InsertCompany): Promise<Company> {
+    const companyWithEnv = {
+      ...company,
+      environment: this.getEnvironmentFilter()
+    };
+    const [createdCompany] = await db.insert(companies).values(companyWithEnv).returning();
+    return createdCompany;
+  }
+
+  async updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company> {
+    const [updatedCompany] = await db.update(companies)
+      .set({ ...company, updatedAt: new Date() })
+      .where(eq(companies.id, id))
+      .returning();
+    if (!updatedCompany) throw new Error("Company not found");
+    return updatedCompany;
+  }
+
+  async deleteCompany(id: string): Promise<boolean> {
+    const result = await db.delete(companies).where(eq(companies.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getAllCompanies(): Promise<Company[]> {
+    return await db.select().from(companies)
+      .where(eq(companies.environment, this.getEnvironmentFilter()))
+      .orderBy(desc(companies.createdAt));
+  }
+
+  // User-Company operations
+  async getUserCompany(userId: string, companyId: string): Promise<UserCompany | undefined> {
+    const [userCompany] = await db.select().from(userCompanies)
+      .where(and(eq(userCompanies.userId, userId), eq(userCompanies.companyId, companyId)));
+    return userCompany || undefined;
+  }
+
+  async createUserCompany(userCompany: InsertUserCompany): Promise<UserCompany> {
+    const [created] = await db.insert(userCompanies).values(userCompany).returning();
+    return created;
+  }
+
+  async updateUserCompany(id: string, userCompany: Partial<InsertUserCompany>): Promise<UserCompany> {
+    const [updated] = await db.update(userCompanies)
+      .set(userCompany)
+      .where(eq(userCompanies.id, id))
+      .returning();
+    if (!updated) throw new Error("User-Company relationship not found");
+    return updated;
+  }
+
+  async getUserCompaniesByUser(userId: string): Promise<(UserCompany & { company: Company })[]> {
+    const result = await db.select({
+      id: userCompanies.id,
+      userId: userCompanies.userId,
+      companyId: userCompanies.companyId,
+      role: userCompanies.role,
+      isActive: userCompanies.isActive,
+      isOwner: userCompanies.isOwner,
+      createdAt: userCompanies.createdAt,
+      company: companies
+    })
+    .from(userCompanies)
+    .innerJoin(companies, eq(userCompanies.companyId, companies.id))
+    .where(and(
+      eq(userCompanies.userId, userId),
+      eq(userCompanies.isActive, true)
+    ));
+
+    return result;
+  }
+
+  async getUsersByCompany(companyId: string): Promise<(UserCompany & { user: User })[]> {
+    const result = await db.select({
+      id: userCompanies.id,
+      userId: userCompanies.userId,
+      companyId: userCompanies.companyId,
+      role: userCompanies.role,
+      isActive: userCompanies.isActive,
+      isOwner: userCompanies.isOwner,
+      createdAt: userCompanies.createdAt,
+      user: users
+    })
+    .from(userCompanies)
+    .innerJoin(users, eq(userCompanies.userId, users.id))
+    .where(and(
+      eq(userCompanies.companyId, companyId),
+      eq(userCompanies.isActive, true)
+    ));
+
+    return result;
+  }
+
+  // Company settings operations
+  async getCompanySetting(companyId: string, key: string): Promise<CompanySettings | undefined> {
+    const [setting] = await db.select().from(companySettings)
+      .where(and(eq(companySettings.companyId, companyId), eq(companySettings.key, key)));
+    return setting || undefined;
+  }
+
+  async setCompanySetting(setting: InsertCompanySettings): Promise<CompanySettings> {
+    const [created] = await db.insert(companySettings).values(setting).returning();
+    return created;
+  }
+
+  async updateCompanySetting(companyId: string, key: string, value: string): Promise<CompanySettings> {
+    const existing = await this.getCompanySetting(companyId, key);
+    
+    if (existing) {
+      const [updated] = await db.update(companySettings)
+        .set({ value, updatedAt: new Date() })
+        .where(and(eq(companySettings.companyId, companyId), eq(companySettings.key, key)))
+        .returning();
+      if (!updated) throw new Error("Company setting not found");
+      return updated;
+    } else {
+      return await this.setCompanySetting({ companyId, key, value });
+    }
+  }
+
+  async getAllCompanySettings(companyId: string): Promise<CompanySettings[]> {
+    return await db.select().from(companySettings)
+      .where(eq(companySettings.companyId, companyId))
+      .orderBy(asc(companySettings.key));
   }
 }
 

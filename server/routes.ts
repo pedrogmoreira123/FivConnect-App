@@ -17,7 +17,10 @@ import {
   insertPlanSchema,
   insertSubscriptionSchema,
   insertInvoiceSchema,
-  insertPaymentSchema
+  insertPaymentSchema,
+  insertCompanySchema,
+  insertUserCompanySchema,
+  type Company
 } from "@shared/schema";
 import { 
   authenticateUser,
@@ -2101,6 +2104,128 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Failed to delete quick reply:', error);
       res.status(500).json({ message: "Failed to delete quick reply" });
+    }
+  });
+
+  // ===== ADMIN PANEL ROUTES =====
+  // Company management routes (admin only)
+  app.get('/api/admin/companies', requireRole(['admin']), async (req, res) => {
+    try {
+      const companies = await storage.getAllCompanies();
+      res.json(companies);
+    } catch (error) {
+      console.error('Failed to fetch companies:', error);
+      res.status(500).json({ message: "Failed to fetch companies" });
+    }
+  });
+
+  app.post('/api/admin/companies', requireRole(['admin']), async (req, res) => {
+    try {
+      const companyData = insertCompanySchema.parse(req.body);
+      
+      // Ensure email is unique
+      const existingCompany = await storage.getAllCompanies();
+      if (existingCompany.find(c => c.email === companyData.email)) {
+        return res.status(400).json({ message: "A company with this email already exists" });
+      }
+
+      const company = await storage.createCompany(companyData);
+      res.json(company);
+    } catch (error) {
+      console.error('Failed to create company:', error);
+      res.status(500).json({ message: "Failed to create company" });
+    }
+  });
+
+  app.put('/api/admin/companies/:id', requireRole(['admin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body; // Partial update
+
+      const company = await storage.updateCompany(id, updates);
+      res.json(company);
+    } catch (error) {
+      console.error('Failed to update company:', error);
+      res.status(500).json({ message: "Failed to update company" });
+    }
+  });
+
+  app.delete('/api/admin/companies/:id', requireRole(['admin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteCompany(id);
+      
+      if (success) {
+        res.json({ message: "Company deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Company not found" });
+      }
+    } catch (error) {
+      console.error('Failed to delete company:', error);
+      res.status(500).json({ message: "Failed to delete company" });
+    }
+  });
+
+  // Company user management
+  app.get('/api/admin/companies/:id/users', requireRole(['admin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const users = await storage.getUsersByCompany(id);
+      res.json(users);
+    } catch (error) {
+      console.error('Failed to fetch company users:', error);
+      res.status(500).json({ message: "Failed to fetch company users" });
+    }
+  });
+
+  app.post('/api/admin/companies/:id/users', requireRole(['admin']), async (req, res) => {
+    try {
+      const { id: companyId } = req.params;
+      const userData = insertUserSchema.parse(req.body);
+      
+      // Check if user email already exists
+      const existingUser = await storage.getUserByEmail(userData.email);
+      if (existingUser) {
+        // User exists - create user-company relationship only
+        const userCompany = await storage.createUserCompany({
+          userId: existingUser.id,
+          companyId,
+          role: req.body.role || 'agent',
+          isOwner: req.body.role === 'owner' ? true : false
+        });
+        
+        const result = await storage.getUsersByCompany(companyId);
+        const newUserCompany = result.find(uc => uc.id === userCompany.id);
+        
+        return res.json(newUserCompany);
+      }
+      
+      // Hash password
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
+      const userWithHashedPassword = {
+        ...userData,
+        password: hashedPassword
+      };
+
+      // Create new user
+      const user = await storage.createUser(userWithHashedPassword);
+      
+      // Create user-company relationship
+      const userCompany = await storage.createUserCompany({
+        userId: user.id,
+        companyId,
+        role: req.body.role || 'agent',
+        isOwner: req.body.role === 'owner' ? true : false
+      });
+
+      // Return the created user with company info
+      const result = await storage.getUsersByCompany(companyId);
+      const newUserCompany = result.find(uc => uc.id === userCompany.id);
+      
+      res.json(newUserCompany);
+    } catch (error) {
+      console.error('Failed to create company user:', error);
+      res.status(500).json({ message: "Failed to create company user" });
     }
   });
 

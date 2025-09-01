@@ -64,6 +64,7 @@ export const ptBRTranslations = {
     reports: "Relatórios",
     feedback: "Feedback",
     financeiro: "Financeiro",
+    admin: "Admin",
     settings: "Configurações",
     customerService: "Atendimento ao Cliente"
   },

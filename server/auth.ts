@@ -12,7 +12,9 @@ export interface AuthPayload {
   userId: string;
   email: string;
   role: string;
+  companyId: string;
   sessionId: string;
+  isOwner?: boolean;
 }
 
 export interface LoginResult {
@@ -24,12 +26,14 @@ export interface LoginResult {
 /**
  * Generate a secure JWT token for the user
  */
-export function generateToken(user: User, sessionId: string): string {
+export function generateToken(user: User, userCompany: any, sessionId: string): string {
   const payload: AuthPayload = {
     userId: user.id,
     email: user.email,
-    role: user.role,
-    sessionId
+    role: userCompany.role,
+    companyId: userCompany.companyId,
+    sessionId,
+    isOwner: userCompany.isOwner || false
   };
 
   return jwt.sign(payload, JWT_SECRET, { 
@@ -67,16 +71,24 @@ export function decryptData(encryptedData: string): string {
 }
 
 /**
- * Authenticate user and create session
+ * Authenticate user and create session (Multi-tenant)
  */
-export async function authenticateUser(email: string, password: string, ipAddress?: string, userAgent?: string): Promise<LoginResult | null> {
-  const user = await storage.authenticateUser(email, password);
-  if (!user) return null;
+export async function authenticateUser(
+  email: string, 
+  password: string, 
+  companyId?: string,
+  ipAddress?: string, 
+  userAgent?: string
+): Promise<LoginResult | null> {
+  const result = await storage.authenticateUserMultiTenant(email, password, companyId);
+  if (!result) return null;
+
+  const { user, userCompany, company } = result;
 
   // Create session
   const sessionId = randomUUID();
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
-  const token = generateToken(user, sessionId);
+  const token = generateToken(user, userCompany, sessionId);
 
   await storage.createSession({
     userId: user.id,
@@ -90,7 +102,10 @@ export async function authenticateUser(email: string, password: string, ipAddres
   const { password: _, ...userWithoutPassword } = user;
 
   return {
-    user: userWithoutPassword,
+    user: {
+      ...userWithoutPassword,
+      company
+    },
     token,
     expiresAt
   };

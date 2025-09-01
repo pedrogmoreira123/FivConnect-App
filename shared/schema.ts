@@ -577,6 +577,7 @@ export const userCompanies = pgTable("user_companies", {
   companyId: varchar("company_id").references(() => companies.id, { onDelete: 'cascade' }).notNull(),
   role: text("role", { enum: ["owner", "admin", "supervisor", "agent"] }).notNull().default("agent"),
   isActive: boolean("is_active").default(true),
+  isOwner: boolean("is_owner").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
