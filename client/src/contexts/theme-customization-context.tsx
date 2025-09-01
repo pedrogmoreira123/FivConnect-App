@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth } from './auth-context';
 import { apiRequest } from '@/lib/queryClient';
 
 export interface ThemeColors {

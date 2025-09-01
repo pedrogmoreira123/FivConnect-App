@@ -1,9 +1,10 @@
 import { 
   type User, 
-  type UpsertUser,
   type InsertUser,
   type Client,
   type InsertClient,
+  type Session,
+  type InsertSession,
   type Announcement,
   type InsertAnnouncement,
   type Conversation,
@@ -38,6 +39,7 @@ import {
   type InsertCompanySettings,
   users,
   clients,
+  sessions,
   announcements,
   conversations,
   messages,
@@ -63,16 +65,28 @@ import { db } from "./db";
 import { eq, and, asc, desc } from "drizzle-orm";
 
 export interface IStorage {
-  // User operations (IMPORTANT) these user operations are mandatory for Replit Auth.
+  // User operations
   getUser(id: string): Promise<User | undefined>;
-  upsertUser(user: UpsertUser): Promise<User>;
-  // Legacy operations for existing app functionality
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, user: Partial<InsertUser>): Promise<User>;
   deleteUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
   
+  // Authentication operations
+  authenticateUser(email: string, password: string): Promise<User | null>;
+  authenticateUserMultiTenant(email: string, password: string, companyId?: string): Promise<{
+    user: User;
+    userCompany: UserCompany;
+    company: Company;
+  } | null>;
+  changePassword(userId: string, newPassword: string): Promise<boolean>;
+  
+  // Session operations
+  createSession(session: InsertSession): Promise<Session>;
+  getSession(token: string): Promise<Session | undefined>;
+  deleteSession(token: string): Promise<boolean>;
+  deleteUserSessions(userId: string): Promise<boolean>;
   
   // Client operations
   getClient(id: string): Promise<Client | undefined>;
@@ -213,8 +227,7 @@ export class DatabaseStorage implements IStorage {
     // Determine current environment: development when NODE_ENV is development, otherwise production
     this.currentEnvironment = process.env.NODE_ENV === 'development' ? 'development' : 'production';
     console.log(`🌍 Database Environment: ${this.currentEnvironment} (NODE_ENV: ${process.env.NODE_ENV})`);
-    // Temporarily disabled during migration to Replit Auth
-    // this.initializeDefaultData();
+    this.initializeDefaultData();
   }
 
   // Public method to get current environment (for interface)
@@ -261,12 +274,12 @@ export class DatabaseStorage implements IStorage {
       const existingUsers = await db.select().from(users).limit(1);
       if (existingUsers.length > 0) return;
 
-      // Create default admin user for Replit Auth
+      // Create default admin user with hashed password
+      const hashedPassword = await bcrypt.hash("admin123", 10);
       await db.insert(users).values({
-        id: "admin-default", // Fixed ID for default admin
+        name: "System Administrator",
         email: "admin@company.com",
-        firstName: "System",
-        lastName: "Administrator",
+        password: hashedPassword,
         role: "admin" as const,
         isOnline: true,
         environment: this.getCurrentEnvironment() as "development" | "production"
@@ -391,25 +404,100 @@ export class DatabaseStorage implements IStorage {
     // Filter by current environment
     return await db.select().from(users).where(eq(users.environment, this.getEnvironmentFilter()));
   }
-
-  // (IMPORTANT) Replit Auth mandatory user operations
-  async upsertUser(userData: UpsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values({
-        ...userData,
-        environment: this.getEnvironmentFilter(),
-        updatedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: users.id,
-        set: {
-          ...userData,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
+  
+  // Authentication operations
+  async authenticateUser(email: string, password: string): Promise<User | null> {
+    const user = await this.getUserByEmail(email);
+    if (!user) return null;
+    
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) return null;
+    
+    // Update online status
+    await this.updateUser(user.id, { isOnline: true });
     return user;
+  }
+
+  async authenticateUserMultiTenant(email: string, password: string, companyId?: string): Promise<{
+    user: User;
+    userCompany: UserCompany;
+    company: Company;
+  } | null> {
+    const user = await this.getUserByEmail(email);
+    if (!user) return null;
+    
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) return null;
+    
+    // Get user's companies
+    const userCompanies = await this.getUserCompaniesByUser(user.id);
+    if (userCompanies.length === 0) return null;
+
+    // If companyId specified, find that specific company
+    let selectedUserCompany;
+    if (companyId) {
+      selectedUserCompany = userCompanies.find(uc => uc.companyId === companyId);
+      if (!selectedUserCompany) return null;
+    } else {
+      // Use first company (or owner's company if exists)
+      const ownerCompany = userCompanies.find(uc => uc.isOwner);
+      selectedUserCompany = ownerCompany || userCompanies[0];
+    }
+
+    const company = selectedUserCompany.company;
+    
+    // Check if company is active
+    if (company.status === 'suspended' || company.status === 'canceled') {
+      return null;
+    }
+    
+    // Update online status
+    await this.updateUser(user.id, { isOnline: true });
+    
+    return {
+      user,
+      userCompany: selectedUserCompany,
+      company
+    };
+  }
+  
+  async changePassword(userId: string, newPassword: string): Promise<boolean> {
+    try {
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await this.updateUser(userId, { password: hashedPassword });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+  
+  // Session operations
+  async createSession(insertSession: InsertSession): Promise<Session> {
+    const [session] = await db.insert(sessions).values(insertSession).returning();
+    return session;
+  }
+  
+  async getSession(token: string): Promise<Session | undefined> {
+    const [session] = await db.select().from(sessions).where(eq(sessions.token, token));
+    if (!session) return undefined;
+    
+    // Check if session is expired
+    if (new Date() > session.expiresAt) {
+      await this.deleteSession(token);
+      return undefined;
+    }
+    
+    return session;
+  }
+  
+  async deleteSession(token: string): Promise<boolean> {
+    const result = await db.delete(sessions).where(eq(sessions.token, token));
+    return (result.rowCount ?? 0) > 0;
+  }
+  
+  async deleteUserSessions(userId: string): Promise<boolean> {
+    const result = await db.delete(sessions).where(eq(sessions.userId, userId));
+    return (result.rowCount ?? 0) > 0;
   }
   
   // Client operations
