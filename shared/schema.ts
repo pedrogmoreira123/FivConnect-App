@@ -19,16 +19,16 @@ export const sessions = pgTable(
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique(),
-  firstName: varchar("first_name"),
-  lastName: varchar("last_name"),
-  profileImageUrl: varchar("profile_image_url"),
-  // Fi.V App specific fields
+  firstName: text("first_name").notNull(),
+  email: text("email").notNull().unique(),
+  password: text("password"), // Optional for OAuth users
   role: text("role", { enum: ["superadmin", "admin", "supervisor", "agent"] }).notNull().default("agent"),
   isOnline: boolean("is_online").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
   customTheme: json("custom_theme"), // Store user's custom theme colors
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
-  createdAt: timestamp("created_at").defaultNow(),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
