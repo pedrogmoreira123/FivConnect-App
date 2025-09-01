@@ -8,7 +8,7 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(), // Will store hashed passwords
-  role: text("role", { enum: ["admin", "supervisor", "agent"] }).notNull().default("agent"),
+  role: text("role", { enum: ["superadmin", "admin", "supervisor", "agent"] }).notNull().default("agent"),
   isOnline: boolean("is_online").default(false),
   // Theme customization fields
   customTheme: json("custom_theme"), // Store user's custom theme colors

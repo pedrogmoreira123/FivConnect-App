@@ -39,7 +39,7 @@ const getNavigationItems = (userRole: string) => [
       { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
       { nameKey: 'navigation.feedback', href: '/feedback', icon: MessageSquare },
       { nameKey: 'navigation.financeiro', href: '/financeiro', icon: DollarSign },
-      { nameKey: 'navigation.admin', href: '/admin', icon: Building2, adminOnly: true },
+      { nameKey: 'navigation.admin', href: '/admin', icon: Building2, superadminOnly: true },
       { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
     ]
   }
@@ -79,8 +79,12 @@ export default function Sidebar() {
             </p>
             {section.items
               .filter((item) => {
-                // Filter out admin-only items for non-admin users
-                if (item.adminOnly && user?.role !== 'admin') {
+                // Filter out admin-only items for non-admin/superadmin users
+                if (item.adminOnly && user?.role !== 'admin' && user?.role !== 'superadmin') {
+                  return false;
+                }
+                // Filter out superadmin-only items for non-superadmin users
+                if (item.superadminOnly && user?.role !== 'superadmin') {
                   return false;
                 }
                 return true;
@@ -131,7 +135,8 @@ export default function Sidebar() {
               {user?.name}
             </p>
             <p className="text-xs text-muted-foreground" data-testid="text-user-role">
-              {user?.role === 'admin' ? t('users.admin') : 
+              {user?.role === 'superadmin' ? 'Super Admin' : 
+               user?.role === 'admin' ? t('users.admin') : 
                user?.role === 'supervisor' ? t('users.supervisor') : t('users.agent')}
             </p>
           </div>

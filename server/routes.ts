@@ -2109,7 +2109,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== ADMIN PANEL ROUTES =====
   // Company management routes (admin only)
-  app.get('/api/admin/companies', requireRole(['admin']), async (req, res) => {
+  app.get('/api/admin/companies', requireRole(['superadmin']), async (req, res) => {
     try {
       const companies = await storage.getAllCompanies();
       res.json(companies);
@@ -2119,7 +2119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/companies', requireRole(['admin']), async (req, res) => {
+  app.post('/api/admin/companies', requireRole(['superadmin']), async (req, res) => {
     try {
       const companyData = insertCompanySchema.parse(req.body);
       
@@ -2137,7 +2137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/companies/:id', requireRole(['admin']), async (req, res) => {
+  app.put('/api/admin/companies/:id', requireRole(['superadmin']), async (req, res) => {
     try {
       const { id } = req.params;
       const updates = req.body; // Partial update
@@ -2150,7 +2150,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/admin/companies/:id', requireRole(['admin']), async (req, res) => {
+  app.delete('/api/admin/companies/:id', requireRole(['superadmin']), async (req, res) => {
     try {
       const { id } = req.params;
       const success = await storage.deleteCompany(id);
@@ -2167,7 +2167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Company user management
-  app.get('/api/admin/companies/:id/users', requireRole(['admin']), async (req, res) => {
+  app.get('/api/admin/companies/:id/users', requireRole(['superadmin']), async (req, res) => {
     try {
       const { id } = req.params;
       const users = await storage.getUsersByCompany(id);
@@ -2178,7 +2178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/companies/:id/users', requireRole(['admin']), async (req, res) => {
+  app.post('/api/admin/companies/:id/users', requireRole(['superadmin']), async (req, res) => {
     try {
       const { id: companyId } = req.params;
       const userData = insertUserSchema.parse(req.body);
@@ -2226,6 +2226,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Failed to create company user:', error);
       res.status(500).json({ message: "Failed to create company user" });
+    }
+  });
+
+  // ===== PLANS MANAGEMENT ROUTES (SUPERADMIN ONLY) =====
+  app.get('/api/admin/plans', requireRole(['superadmin']), async (req, res) => {
+    try {
+      const plans = await storage.getAllPlans();
+      res.json(plans);
+    } catch (error) {
+      console.error('Failed to fetch plans:', error);
+      res.status(500).json({ message: "Failed to fetch plans" });
+    }
+  });
+
+  app.post('/api/admin/plans', requireRole(['superadmin']), async (req, res) => {
+    try {
+      const planData = insertPlanSchema.parse(req.body);
+      const plan = await storage.createPlan(planData);
+      res.json(plan);
+    } catch (error) {
+      console.error('Failed to create plan:', error);
+      res.status(500).json({ message: "Failed to create plan" });
+    }
+  });
+
+  app.put('/api/admin/plans/:id', requireRole(['superadmin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const plan = await storage.updatePlan(id, updates);
+      res.json(plan);
+    } catch (error) {
+      console.error('Failed to update plan:', error);
+      res.status(500).json({ message: "Failed to update plan" });
+    }
+  });
+
+  app.delete('/api/admin/plans/:id', requireRole(['superadmin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deletePlan(id);
+      
+      if (success) {
+        res.json({ message: "Plan deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Plan not found" });
+      }
+    } catch (error) {
+      console.error('Failed to delete plan:', error);
+      res.status(500).json({ message: "Failed to delete plan" });
     }
   });
 

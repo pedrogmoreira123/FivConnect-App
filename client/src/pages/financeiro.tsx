@@ -1,10 +1,22 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { 
   CreditCard, 
   DollarSign, 
@@ -16,7 +28,10 @@ import {
   Package,
   AlertCircle,
   CheckCircle,
-  Clock
+  Clock,
+  Plus,
+  Edit,
+  Trash2
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -115,8 +130,32 @@ const getStatusLabel = (status: string) => {
   return labels[status] || status;
 };
 
+// Form schema for plan creation/editing
+const planSchema = z.object({
+  name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
+  description: z.string().optional(),
+  price: z.number().min(0, "Preço deve ser maior que 0"),
+  currency: z.string().default("BRL"),
+  billingInterval: z.enum(["monthly", "yearly"]).default("monthly"),
+  maxUsers: z.number().min(1, "Deve permitir pelo menos 1 usuário").default(1),
+  maxConversations: z.number().min(1, "Deve permitir pelo menos 1 conversa").default(100),
+  storageLimit: z.number().min(1, "Limite de armazenamento deve ser maior que 0").default(1000),
+  features: z.array(z.string()).default([]),
+  isActive: z.boolean().default(true)
+});
+
+type PlanForm = z.infer<typeof planSchema>;
+
 export default function Financeiro() {
   const [activeTab, setActiveTab] = useState("overview");
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  const [newFeature, setNewFeature] = useState("");
+  
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const isSuperAdmin = user?.role === 'superadmin';
 
   // Fetch current subscription
   const { data: subscription } = useQuery<Subscription>({
@@ -127,6 +166,130 @@ export default function Financeiro() {
   const { data: plans = [] } = useQuery<Plan[]>({
     queryKey: ['/api/plans/active'],
   });
+
+  // Fetch all plans (for superadmin)
+  const { data: allPlans = [] } = useQuery<Plan[]>({
+    queryKey: ['/api/admin/plans'],
+    enabled: isSuperAdmin,
+    staleTime: 30000,
+  });
+
+  // Plan form
+  const planForm = useForm<PlanForm>({
+    resolver: zodResolver(planSchema),
+    defaultValues: {
+      name: '',
+      description: '',
+      price: 0,
+      currency: 'BRL',
+      billingInterval: 'monthly',
+      maxUsers: 1,
+      maxConversations: 100,
+      storageLimit: 1000,
+      features: [],
+      isActive: true
+    },
+  });
+
+  // Create/Update plan mutation
+  const planMutation = useMutation({
+    mutationFn: async (data: PlanForm) => {
+      const planData = {
+        ...data,
+        price: data.price * 100, // Convert to cents
+      };
+      
+      if (editingPlan) {
+        return await apiRequest(`/api/admin/plans/${editingPlan.id}`, 'PUT', planData);
+      }
+      return await apiRequest('/api/admin/plans', 'POST', planData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/plans'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/plans/active'] });
+      setShowPlanModal(false);
+      setEditingPlan(null);
+      planForm.reset();
+      toast({
+        title: "Sucesso",
+        description: editingPlan ? "Plano atualizado com sucesso" : "Plano criado com sucesso",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao salvar plano",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete plan mutation
+  const deletePlanMutation = useMutation({
+    mutationFn: async (planId: string) => {
+      return await apiRequest(`/api/admin/plans/${planId}`, 'DELETE');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/plans'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/plans/active'] });
+      toast({
+        title: "Sucesso",
+        description: "Plano removido com sucesso",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao remover plano",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCreatePlan = () => {
+    setEditingPlan(null);
+    planForm.reset();
+    setShowPlanModal(true);
+  };
+
+  const handleEditPlan = (plan: Plan) => {
+    setEditingPlan(plan);
+    planForm.reset({
+      name: plan.name,
+      description: plan.description || '',
+      price: plan.price / 100, // Convert from cents
+      currency: plan.currency,
+      billingInterval: plan.billingInterval as 'monthly' | 'yearly',
+      maxUsers: plan.maxUsers || 1,
+      maxConversations: plan.maxConversations || 100,
+      storageLimit: plan.storageLimit || 1000,
+      features: plan.features || [],
+      isActive: plan.isActive,
+    });
+    setShowPlanModal(true);
+  };
+
+  const handleDeletePlan = (plan: Plan) => {
+    if (confirm(`Tem certeza que deseja remover o plano "${plan.name}"? Esta ação não pode ser desfeita.`)) {
+      deletePlanMutation.mutate(plan.id);
+    }
+  };
+
+  const addFeature = () => {
+    if (newFeature.trim()) {
+      const currentFeatures = planForm.getValues('features');
+      planForm.setValue('features', [...currentFeatures, newFeature.trim()]);
+      setNewFeature('');
+    }
+  };
+
+  const removeFeature = (index: number) => {
+    const currentFeatures = planForm.getValues('features');
+    const updatedFeatures = currentFeatures.filter((_, i) => i !== index);
+    planForm.setValue('features', updatedFeatures);
+  };
+
+  const displayPlans = isSuperAdmin ? allPlans : plans;
 
   // Fetch open invoices
   const { data: openInvoices = [] } = useQuery<Invoice[]>({
@@ -322,15 +485,27 @@ export default function Financeiro() {
         {/* Plans Tab */}
         <TabsContent value="plans" className="space-y-6">
           <Card>
-            <CardHeader>
-              <CardTitle>Planos Disponíveis</CardTitle>
-              <CardDescription>
-                Escolha o plano que melhor atende às suas necessidades
-              </CardDescription>
+            <CardHeader className={isSuperAdmin ? "flex flex-row items-center justify-between" : ""}>
+              <div>
+                <CardTitle>Planos Disponíveis</CardTitle>
+                <CardDescription>
+                  Escolha o plano que melhor atende às suas necessidades
+                </CardDescription>
+              </div>
+              {isSuperAdmin && (
+                <Button 
+                  onClick={handleCreatePlan}
+                  className="flex items-center space-x-2"
+                  data-testid="button-create-plan"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Criar Plano</span>
+                </Button>
+              )}
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {plans.map((plan) => (
+                {displayPlans.map((plan) => (
                   <Card key={plan.id} className={`relative ${
                     plan.id === subscription?.planId ? 'border-primary' : ''
                   }`} data-testid={`card-plan-${plan.id}`}>
@@ -376,14 +551,36 @@ export default function Financeiro() {
                         ))}
                       </div>
                       
-                      <Button
-                        className="w-full"
-                        variant={plan.id === subscription?.planId ? "outline" : "default"}
-                        disabled={plan.id === subscription?.planId}
-                        data-testid={`button-select-plan-${plan.id}`}
-                      >
-                        {plan.id === subscription?.planId ? 'Plano Atual' : 'Selecionar Plano'}
-                      </Button>
+                      <div className="flex space-x-2">
+                        <Button
+                          className="flex-1"
+                          variant={plan.id === subscription?.planId ? "outline" : "default"}
+                          disabled={plan.id === subscription?.planId}
+                          data-testid={`button-select-plan-${plan.id}`}
+                        >
+                          {plan.id === subscription?.planId ? 'Plano Atual' : 'Selecionar Plano'}
+                        </Button>
+                        {isSuperAdmin && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditPlan(plan)}
+                              data-testid={`button-edit-plan-${plan.id}`}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeletePlan(plan)}
+                              data-testid={`button-delete-plan-${plan.id}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
@@ -481,6 +678,276 @@ export default function Financeiro() {
         </TabsContent>
 
       </Tabs>
+
+      {/* Plan Creation/Edit Modal */}
+      {isSuperAdmin && (
+        <Dialog open={showPlanModal} onOpenChange={setShowPlanModal}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {editingPlan ? 'Editar Plano' : 'Criar Novo Plano'}
+              </DialogTitle>
+              <DialogDescription>
+                {editingPlan 
+                  ? 'Atualize as informações do plano selecionado'
+                  : 'Crie um novo plano de assinatura para seus clientes'
+                }
+              </DialogDescription>
+            </DialogHeader>
+            
+            <Form {...planForm}>
+              <form 
+                onSubmit={planForm.handleSubmit((data) => planMutation.mutate(data))}
+                className="space-y-6"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={planForm.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nome do Plano *</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Ex: Plano Básico" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={planForm.control}
+                    name="price"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Preço (em reais) *</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            step="0.01"
+                            placeholder="99.90"
+                            {...field} 
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={planForm.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Descrição</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          placeholder="Descreva os benefícios do plano..."
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={planForm.control}
+                    name="billingInterval"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Intervalo de Cobrança *</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione o intervalo" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="monthly">Mensal</SelectItem>
+                            <SelectItem value="yearly">Anual</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={planForm.control}
+                    name="currency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Moeda</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione a moeda" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="BRL">BRL (Real)</SelectItem>
+                            <SelectItem value="USD">USD (Dólar)</SelectItem>
+                            <SelectItem value="EUR">EUR (Euro)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormField
+                    control={planForm.control}
+                    name="maxUsers"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Máximo de Usuários *</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            min="1"
+                            placeholder="5"
+                            {...field} 
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={planForm.control}
+                    name="maxConversations"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Máximo de Conversas *</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            min="1"
+                            placeholder="100"
+                            {...field} 
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 100)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={planForm.control}
+                    name="storageLimit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Armazenamento (MB) *</FormLabel>
+                        <FormControl>
+                          <Input 
+                            type="number" 
+                            min="1"
+                            placeholder="1000"
+                            {...field} 
+                            onChange={(e) => field.onChange(parseInt(e.target.value) || 1000)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div>
+                  <FormLabel>Recursos Incluídos</FormLabel>
+                  <div className="space-y-3 mt-2">
+                    {planForm.watch('features').map((feature, index) => (
+                      <div key={index} className="flex items-center space-x-2">
+                        <Input value={feature} readOnly className="flex-1" />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removeFeature(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    
+                    <div className="flex space-x-2">
+                      <Input
+                        placeholder="Adicione um novo recurso..."
+                        value={newFeature}
+                        onChange={(e) => setNewFeature(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addFeature();
+                          }
+                        }}
+                      />
+                      <Button type="button" onClick={addFeature} variant="outline">
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <FormField
+                  control={planForm.control}
+                  name="isActive"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>
+                          Plano Ativo
+                        </FormLabel>
+                        <FormDescription>
+                          Apenas planos ativos ficam visíveis para os usuários
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                <div className="flex justify-end space-x-2">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => {
+                      setShowPlanModal(false);
+                      setEditingPlan(null);
+                      planForm.reset();
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button 
+                    type="submit"
+                    disabled={planMutation.isPending}
+                  >
+                    {planMutation.isPending 
+                      ? (editingPlan ? 'Atualizando...' : 'Criando...') 
+                      : (editingPlan ? 'Atualizar Plano' : 'Criar Plano')
+                    }
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
