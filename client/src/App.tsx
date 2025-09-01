@@ -4,10 +4,9 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/contexts/theme-context";
-import { AuthProvider } from "@/contexts/auth-context";
 import { SettingsProvider } from "@/contexts/settings-context";
 import { ThemeCustomizationProvider } from "@/contexts/theme-customization-context";
-import LoginPage from "@/pages/login";
+import LandingPage from "@/pages/landing";
 import DashboardPage from "@/pages/dashboard";
 import ConversationsPage from "@/pages/conversations";
 import TicketsPage from "@/pages/tickets";
@@ -25,7 +24,7 @@ import FinanceiroPage from "@/pages/financeiro";
 import AdminPage from "@/pages/admin";
 import MainLayout from "@/components/layout/main-layout";
 import NotFound from "@/pages/not-found";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth } from "@/hooks/useAuth";
 import { useInstanceStatus } from "@/hooks/use-instance-status";
 import { InstanceLockScreen } from "@/components/instance/instance-lock-screen";
 import { PaymentNotificationBanner } from "@/components/instance/payment-notification-banner";
@@ -42,7 +41,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   
   // First check authentication
   if (!isAuthenticated) {
-    return <LoginPage />;
+    return <LandingPage />;
   }
   
   // Show loading while checking instance status
@@ -85,7 +84,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function Router() {
   return (
     <Switch>
-      <Route path="/login" component={LoginPage} />
       <Route path="/">
         <ProtectedRoute>
           <DashboardPage />
@@ -167,16 +165,14 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <AuthProvider>
-          <ThemeCustomizationProvider>
-            <SettingsProvider>
-              <TooltipProvider>
-                <Toaster />
-                <Router />
-              </TooltipProvider>
-            </SettingsProvider>
-          </ThemeCustomizationProvider>
-        </AuthProvider>
+        <ThemeCustomizationProvider>
+          <SettingsProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Router />
+            </TooltipProvider>
+          </SettingsProvider>
+        </ThemeCustomizationProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

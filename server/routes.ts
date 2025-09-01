@@ -22,15 +22,7 @@ import {
   insertUserCompanySchema,
   type Company
 } from "@shared/schema";
-import { 
-  authenticateUser,
-  logoutUser,
-  requireAuth,
-  requireRole,
-  encryptData,
-  decryptData,
-  validateWebhookSignature
-} from "./auth";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { Logger } from "./logger";
@@ -41,92 +33,28 @@ const loginSchema = z.object({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Authentication routes
-  app.post('/api/auth/login', async (req, res) => {
-    const requestContext = {
-      ip: req.ip,
-      userAgent: req.get('User-Agent'),
-      endpoint: req.originalUrl,
-      method: req.method
-    };
-    
-    try {
-      const { email, password } = loginSchema.parse(req.body);
-      
-      Logger.auth(`Login attempt for: ${email}`, {
-        ...requestContext,
-        email,
-        environment: storage.getCurrentEnvironment()
-      });
-      
-      const result = await authenticateUser(
-        email, 
-        password, 
-        undefined, // companyId - let it auto-select
-        req.ip,
-        req.get('User-Agent')
-      );
-      
-      if (!result) {
-        Logger.warn(`Login failed for: ${email} - Invalid credentials or no company association`, {
-          ...requestContext,
-          email,
-          reason: 'invalid_credentials_or_no_company'
-        });
-        return res.status(401).json({ message: "Invalid email or password" });
-      }
+  // Auth middleware
+  await setupAuth(app);
 
-      Logger.success(`Login successful for: ${email}`, {
-        ...requestContext,
-        email,
-        userId: result.user.id,
-        companyId: (result.user as any)?.company?.id,
-        companyName: (result.user as any)?.company?.name
-      });
-      
-      res.json({
-        message: "Login successful",
-        user: result.user,
-        token: result.token,
-        expiresAt: result.expiresAt
-      });
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
     } catch (error) {
-      Logger.error('Login error occurred', error, {
-        ...requestContext,
-        errorType: error instanceof Error ? error.name : 'unknown'
-      });
-      res.status(500).json({ message: "Login failed" });
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
     }
   });
 
-  app.post('/api/auth/logout', requireAuth, async (req, res) => {
-    const requestContext = Logger.createRequestContext(req);
-    
-    try {
-      const authHeader = req.headers.authorization;
-      const token = authHeader?.substring(7); // Remove 'Bearer ' prefix
-      
-      if (token && req.user) {
-        await logoutUser(token);
-        // Update user offline status
-        await storage.updateUser(req.user.id, { isOnline: false });
-        
-        Logger.info('User logged out successfully', requestContext);
-      }
-      
-      res.json({ message: "Logged out successfully" });
-    } catch (error) {
-      Logger.error('Logout failed', error, requestContext);
-      res.status(500).json({ message: "Logout failed" });
-    }
-  });
-  
-  // Get current user profile
-  app.get('/api/auth/me', requireAuth, async (req, res) => {
+  // Get current user profile (Legacy endpoint for existing frontend)
+  app.get('/api/auth/me', isAuthenticated, async (req: any, res) => {
     res.json({ user: req.user });
   });
   
-  // Change password
+  // Change password (disabled during migration to Replit Auth)
+  /*
   app.post('/api/auth/change-password', requireAuth, async (req, res) => {
     const requestContext = Logger.createRequestContext(req);
     
@@ -164,8 +92,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Password change failed" });
     }
   });
+  */
 
-  // User management routes (protected)
+  // User management routes (disabled during migration to Replit Auth)
+  /*
   app.get('/api/users', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
     try {
       const users = await storage.getAllUsers();

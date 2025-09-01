@@ -1,20 +1,35 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, json, integer, serial, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, json, integer, serial, numeric, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Session storage table for Replit Auth.
+// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: json("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// User storage table for Replit Auth.
+// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  email: text("email").notNull().unique(),
-  password: text("password").notNull(), // Will store hashed passwords
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  // Fi.V App specific fields
   role: text("role", { enum: ["superadmin", "admin", "supervisor", "agent"] }).notNull().default("agent"),
   isOnline: boolean("is_online").default(false),
-  // Theme customization fields
   customTheme: json("custom_theme"), // Store user's custom theme colors
-  // Environment field to separate test from production data
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // WhatsApp Connections table (must be defined before conversations that reference it)
@@ -101,16 +116,6 @@ export const clients = pgTable("clients", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Session management table
-export const sessions = pgTable("sessions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  token: text("token").notNull(),
-  ipAddress: text("ip_address"),
-  userAgent: text("user_agent"),
-  expiresAt: timestamp("expires_at").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
 
 // Announcements table
 export const announcements = pgTable("announcements", {
@@ -234,9 +239,14 @@ export const payments = pgTable("payments", {
 });
 
 // Insert schemas
+// Replit Auth types
+export type UpsertUser = typeof users.$inferInsert;
+export type User = typeof users.$inferSelect;
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
 });
 
 export const insertClientSchema = createInsertSchema(clients).omit({
@@ -245,10 +255,6 @@ export const insertClientSchema = createInsertSchema(clients).omit({
   updatedAt: true,
 });
 
-export const insertSessionSchema = createInsertSchema(sessions).omit({
-  id: true,
-  createdAt: true,
-});
 
 export const insertAnnouncementSchema = createInsertSchema(announcements).omit({
   id: true,
@@ -316,12 +322,9 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
 });
 
 // Types
-export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Client = typeof clients.$inferSelect;
 export type InsertClient = z.infer<typeof insertClientSchema>;
-export type Session = typeof sessions.$inferSelect;
-export type InsertSession = z.infer<typeof insertSessionSchema>;
 export type Announcement = typeof announcements.$inferSelect;
 export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
 export type Conversation = typeof conversations.$inferSelect;
@@ -348,7 +351,6 @@ export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   assignedConversations: many(conversations),
-  sessions: many(sessions),
   announcements: many(announcements),
   sentMessages: many(messages),
   submittedFeedbacks: many(feedbacks, { relationName: "submittedFeedbacks" }),
@@ -361,12 +363,6 @@ export const clientsRelations = relations(clients, ({ many }) => ({
   conversations: many(conversations),
 }));
 
-export const sessionsRelations = relations(sessions, ({ one }) => ({
-  user: one(users, {
-    fields: [sessions.userId],
-    references: [users.id],
-  }),
-}));
 
 export const announcementsRelations = relations(announcements, ({ one }) => ({
   author: one(users, {

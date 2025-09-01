@@ -40,6 +40,7 @@ args = "npm run dev"
 waitForPort = 5000
 
 [agent]
+integrations = ["javascript_database==1.0.0", "javascript_log_in_with_replit==1.0.0"]
 
 [objectStorage]
 defaultBucketID = "replit-objstore-aa5f498c-1624-49e6-b5c2-dc00909047de"
