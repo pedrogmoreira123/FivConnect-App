@@ -418,41 +418,21 @@ export class DatabaseStorage implements IStorage {
     userCompany: UserCompany;
     company: Company;
   } | null> {
-    console.log(`🔍 Authenticating user: ${email} in environment: ${this.currentEnvironment}`);
-    
     const user = await this.getUserByEmail(email);
-    if (!user) {
-      console.log(`❌ User not found: ${email}`);
-      return null;
-    }
-    
-    console.log(`✅ User found: ${user.email}, environment: ${user.environment}, role: ${user.role}`);
+    if (!user) return null;
     
     const isValidPassword = await bcrypt.compare(password, user.password);
-    if (!isValidPassword) {
-      console.log(`❌ Invalid password for user: ${email}`);
-      return null;
-    }
-    
-    console.log(`✅ Password valid for user: ${email}`);
+    if (!isValidPassword) return null;
     
     // Get user's companies
     const userCompanies = await this.getUserCompaniesByUser(user.id);
-    console.log(`📋 Found ${userCompanies.length} companies for user ${email}`);
-    
-    if (userCompanies.length === 0) {
-      console.log(`❌ No companies found for user: ${email}`);
-      return null;
-    }
+    if (userCompanies.length === 0) return null;
 
     // If companyId specified, find that specific company
     let selectedUserCompany;
     if (companyId) {
       selectedUserCompany = userCompanies.find(uc => uc.companyId === companyId);
-      if (!selectedUserCompany) {
-        console.log(`❌ Specific company ${companyId} not found for user: ${email}`);
-        return null;
-      }
+      if (!selectedUserCompany) return null;
     } else {
       // Use first company (or owner's company if exists)
       const ownerCompany = userCompanies.find(uc => uc.isOwner);
@@ -460,18 +440,14 @@ export class DatabaseStorage implements IStorage {
     }
 
     const company = selectedUserCompany.company;
-    console.log(`🏢 Selected company: ${company.name}, status: ${company.status}, environment: ${company.environment}`);
     
     // Check if company is active
     if (company.status === 'suspended' || company.status === 'canceled') {
-      console.log(`❌ Company ${company.name} is ${company.status}`);
       return null;
     }
     
     // Update online status
     await this.updateUser(user.id, { isOnline: true });
-    
-    console.log(`✅ Authentication successful for ${email} with company ${company.name}`);
     
     return {
       user,
