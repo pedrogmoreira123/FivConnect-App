@@ -236,7 +236,7 @@ export default function ConversationsPage() {
   const filteredData = getFilteredData();
 
   return (
-    <div className="h-full flex bg-background">
+    <div className="h-screen flex bg-background overflow-hidden">
       {/* Contact List - Left Panel */}
       {(!isMobile || !showChat) && (
         <div className="w-full md:w-80 border-r border-border flex flex-col bg-background">
@@ -470,7 +470,7 @@ export default function ConversationsPage() {
 
       {/* Chat Area - Right Panel */}
       {(!isMobile || showChat) && selectedConversation && (
-        <div className="flex-1 flex flex-col bg-background">
+        <div className="flex-1 flex flex-col bg-background h-full">
           {/* Chat Header */}
           <div className="p-3 sm:p-4 border-b border-border bg-background">
             <div className="flex items-center justify-between">
@@ -508,7 +508,7 @@ export default function ConversationsPage() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-auto p-3 sm:p-4 space-y-3 sm:space-y-4" data-testid="chat-messages">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 space-y-3 sm:space-y-4 min-h-0" data-testid="chat-messages">
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -535,28 +535,29 @@ export default function ConversationsPage() {
           </div>
 
           {/* Message Input */}
-          <div className="p-3 sm:p-4 border-t border-border bg-background">
-            <div className="flex items-center space-x-1 sm:space-x-2">
-              <Button variant="ghost" size="sm" data-testid="button-emoji">
-                <Smile className="h-5 w-5" />
+          <div className="flex-shrink-0 p-3 sm:p-4 border-t border-border bg-background">
+            <div className="flex items-center space-x-1 sm:space-x-2 w-full">
+              <Button variant="ghost" size="sm" className="flex-shrink-0" data-testid="button-emoji">
+                <Smile className="h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
-              <Button variant="ghost" size="sm" data-testid="button-attachment">
-                <Paperclip className="h-5 w-5" />
+              <Button variant="ghost" size="sm" className="flex-shrink-0" data-testid="button-attachment">
+                <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
               <Input
                 placeholder="Digite uma mensagem..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                className="flex-1"
+                className="flex-1 min-w-0"
                 data-testid="input-message"
               />
               <Button
                 onClick={handleSendMessage}
                 disabled={!newMessage.trim()}
+                className="flex-shrink-0"
                 data-testid="button-send-message"
               >
-                <Send className="h-5 w-5" />
+                <Send className="h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
             </div>
           </div>
