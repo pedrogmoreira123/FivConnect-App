@@ -184,33 +184,36 @@ export default function ColorPicker() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
             {colorPresets.map((preset) => (
               <Button
                 key={preset.name}
                 variant="outline"
-                className="h-auto p-3 flex flex-col items-center space-y-2"
+                className="h-auto p-3 flex flex-col items-center space-y-2 hover:shadow-md transition-all duration-200 min-h-[80px] touch-manipulation"
                 onClick={() => handlePresetApply(preset)}
                 data-testid={`preset-${preset.name.toLowerCase().replace(/\s+/g, '-')}`}
               >
                 <div className="flex space-x-1">
                   <div
-                    className="w-4 h-4 rounded"
+                    className="w-5 h-5 rounded-md shadow-sm border border-border/20"
                     style={{ backgroundColor: `hsl(${preset.colors.primary})` }}
                   />
                   <div
-                    className="w-4 h-4 rounded"
+                    className="w-5 h-5 rounded-md shadow-sm border border-border/20"
                     style={{ backgroundColor: `hsl(${preset.colors.secondary})` }}
                   />
                   <div
-                    className="w-4 h-4 rounded"
+                    className="w-5 h-5 rounded-md shadow-sm border border-border/20"
                     style={{ backgroundColor: `hsl(${preset.colors.foreground})` }}
                   />
                 </div>
-                <span className="text-xs font-medium">{preset.name}</span>
+                <span className="text-xs font-medium text-center leading-tight">{preset.name}</span>
               </Button>
             ))}
           </div>
+          <p className="text-xs text-muted-foreground mt-3 text-center">
+            Clique em um tema para aplicar instantaneamente
+          </p>
         </CardContent>
       </Card>
 
@@ -247,31 +250,48 @@ export default function ColorPicker() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-between pt-4 border-t">
-            <div className="flex items-center space-x-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t">
+            <div className="flex items-center justify-center sm:justify-start">
               {previewMode && (
                 <Badge variant="secondary" className="flex items-center space-x-1">
                   <Eye className="h-3 w-3" />
-                  <span>Modo Visualização</span>
+                  <span className="text-xs">Modo Visualização</span>
                 </Badge>
               )}
             </div>
             
-            <div className="flex space-x-2">
-              <Button variant="outline" onClick={resetToDefault} data-testid="button-reset-theme">
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <Button 
+                variant="outline" 
+                onClick={resetToDefault} 
+                data-testid="button-reset-theme"
+                className="w-full sm:w-auto touch-manipulation"
+              >
                 <RotateCcw className="h-4 w-4 mr-2" />
-                Restaurar Padrão
+                <span className="hidden sm:inline">Restaurar Padrão</span>
+                <span className="sm:hidden">Resetar</span>
               </Button>
               
               {previewMode ? (
-                <Button onClick={handleSaveChanges} data-testid="button-save-theme">
+                <Button 
+                  onClick={handleSaveChanges} 
+                  data-testid="button-save-theme"
+                  className="w-full sm:w-auto touch-manipulation"
+                >
                   <Save className="h-4 w-4 mr-2" />
-                  Salvar Alterações
+                  <span className="hidden sm:inline">Salvar Alterações</span>
+                  <span className="sm:hidden">Salvar</span>
                 </Button>
               ) : (
-                <Button onClick={() => setPreviewMode(true)} variant="outline" data-testid="button-preview-theme">
+                <Button 
+                  onClick={() => setPreviewMode(true)} 
+                  variant="outline" 
+                  data-testid="button-preview-theme"
+                  className="w-full sm:w-auto touch-manipulation"
+                >
                   <Eye className="h-4 w-4 mr-2" />
-                  Modo Visualização
+                  <span className="hidden sm:inline">Modo Visualização</span>
+                  <span className="sm:hidden">Preview</span>
                 </Button>
               )}
             </div>

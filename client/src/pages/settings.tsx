@@ -126,46 +126,54 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center space-x-2">
-            <Settings className="h-6 w-6" />
+    <div className="p-3 sm:p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center space-x-2">
+            <Settings className="h-5 w-5 sm:h-6 sm:w-6" />
             <span>Configurações</span>
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-sm sm:text-base text-muted-foreground">
             Configure as preferências, aparência e integrações da plataforma
           </p>
         </div>
-        <Button onClick={handleSave} data-testid="button-save-settings">
+        <Button onClick={handleSave} data-testid="button-save-settings" className="w-full sm:w-auto">
           <Save className="h-4 w-4 mr-2" />
-          Salvar Configurações
+          <span className="hidden sm:inline">Salvar Configurações</span>
+          <span className="sm:hidden">Salvar</span>
         </Button>
       </div>
 
       <Tabs defaultValue="appearance" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="appearance" className="flex items-center space-x-2">
-            <Palette className="h-4 w-4" />
-            <span>Personalização</span>
-          </TabsTrigger>
-          <TabsTrigger value="notifications" className="flex items-center space-x-2">
-            <Bell className="h-4 w-4" />
-            <span>Notificações</span>
-          </TabsTrigger>
-          <TabsTrigger value="whatsapp" className="flex items-center space-x-2">
-            <MessageSquare className="h-4 w-4" />
-            <span>WhatsApp</span>
-          </TabsTrigger>
-          <TabsTrigger value="quick-replies" className="flex items-center space-x-2">
-            <Zap className="h-4 w-4" />
-            <span>Respostas Rápidas</span>
-          </TabsTrigger>
-          <TabsTrigger value="apis" className="flex items-center space-x-2">
-            <Link className="h-4 w-4" />
-            <span>APIs Externas</span>
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto">
+          <TabsList className="grid w-full min-w-fit grid-cols-5 h-auto p-1">
+            <TabsTrigger value="appearance" className="flex items-center justify-center space-x-1 p-2 sm:space-x-2 sm:px-4">
+              <Palette className="h-4 w-4 flex-shrink-0" />
+              <span className="hidden sm:inline">Personalização</span>
+              <span className="sm:hidden text-xs">Tema</span>
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="flex items-center justify-center space-x-1 p-2 sm:space-x-2 sm:px-4">
+              <Bell className="h-4 w-4 flex-shrink-0" />
+              <span className="hidden sm:inline">Notificações</span>
+              <span className="sm:hidden text-xs">Notif</span>
+            </TabsTrigger>
+            <TabsTrigger value="whatsapp" className="flex items-center justify-center space-x-1 p-2 sm:space-x-2 sm:px-4">
+              <MessageSquare className="h-4 w-4 flex-shrink-0" />
+              <span className="hidden sm:inline">WhatsApp</span>
+              <span className="sm:hidden text-xs">WA</span>
+            </TabsTrigger>
+            <TabsTrigger value="quick-replies" className="flex items-center justify-center space-x-1 p-2 sm:space-x-2 sm:px-4">
+              <Zap className="h-4 w-4 flex-shrink-0" />
+              <span className="hidden sm:inline">Respostas Rápidas</span>
+              <span className="sm:hidden text-xs">Resp</span>
+            </TabsTrigger>
+            <TabsTrigger value="apis" className="flex items-center justify-center space-x-1 p-2 sm:space-x-2 sm:px-4">
+              <Link className="h-4 w-4 flex-shrink-0" />
+              <span className="hidden sm:inline">APIs Externas</span>
+              <span className="sm:hidden text-xs">APIs</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* Appearance Tab */}
         <TabsContent value="appearance" className="space-y-6">
@@ -191,88 +199,94 @@ export default function SettingsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="company-name">Nome da Empresa</Label>
-                    <Input
-                      id="company-name"
-                      value={localSettings.companyName}
-                      onChange={(e) => setLocalSettings(prev => ({
-                        ...prev,
-                        companyName: e.target.value
-                      }))}
-                      placeholder="Digite o nome da empresa"
-                      data-testid="input-company-name"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="company-logo">Logo da Empresa</Label>
-                    <div className="flex items-center space-x-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="company-name">Nome da Empresa</Label>
                       <Input
-                        id="company-logo"
-                        value={localSettings.theme.companyLogo}
+                        id="company-name"
+                        value={localSettings.companyName}
                         onChange={(e) => setLocalSettings(prev => ({
                           ...prev,
-                          theme: { ...prev.theme, companyLogo: e.target.value }
+                          companyName: e.target.value
                         }))}
-                        placeholder="URL do logo ou upload"
-                        data-testid="input-company-logo"
+                        placeholder="Digite o nome da empresa"
+                        data-testid="input-company-name"
+                        className="w-full"
                       />
-                      <Button variant="outline" size="sm">
-                        <Upload className="h-4 w-4" />
-                      </Button>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Recomendado: 200x50px, formato PNG ou SVG
-                    </p>
-                  </div>
-                </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="favicon">Favicon</Label>
-                    <div className="flex items-center space-x-2">
-                      <Input
-                        id="favicon"
-                        value={localSettings.theme.favicon}
-                        onChange={(e) => setLocalSettings(prev => ({
-                          ...prev,
-                          theme: { ...prev.theme, favicon: e.target.value }
-                        }))}
-                        placeholder="URL do favicon"
-                        data-testid="input-favicon"
-                      />
-                      <Button variant="outline" size="sm">
-                        <Upload className="h-4 w-4" />
-                      </Button>
+                    <div className="space-y-2">
+                      <Label htmlFor="company-logo">Logo da Empresa</Label>
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                        <Input
+                          id="company-logo"
+                          value={localSettings.theme.companyLogo}
+                          onChange={(e) => setLocalSettings(prev => ({
+                            ...prev,
+                            theme: { ...prev.theme, companyLogo: e.target.value }
+                          }))}
+                          placeholder="URL do logo ou upload"
+                          data-testid="input-company-logo"
+                          className="flex-1"
+                        />
+                        <Button variant="outline" size="sm" className="flex-shrink-0 w-full sm:w-auto">
+                          <Upload className="h-4 w-4 mr-2 sm:mr-0" />
+                          <span className="sm:hidden">Upload</span>
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Recomendado: 200x50px, formato PNG ou SVG
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Formato ICO, PNG ou SVG, 32x32px
-                    </p>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="primary-color">Cor Primária</Label>
-                    <div className="flex items-center space-x-2">
-                      <div 
-                        className="w-10 h-10 rounded border border-border"
-                        style={{ backgroundColor: localSettings.theme.primaryColor }}
-                      />
-                      <Input
-                        id="primary-color"
-                        value={localSettings.theme.primaryColor}
-                        onChange={(e) => setLocalSettings(prev => ({
-                          ...prev,
-                          theme: { ...prev.theme, primaryColor: e.target.value }
-                        }))}
-                        placeholder="#6366f1"
-                        data-testid="input-primary-color"
-                      />
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="favicon">Favicon</Label>
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                        <Input
+                          id="favicon"
+                          value={localSettings.theme.favicon}
+                          onChange={(e) => setLocalSettings(prev => ({
+                            ...prev,
+                            theme: { ...prev.theme, favicon: e.target.value }
+                          }))}
+                          placeholder="URL do favicon"
+                          data-testid="input-favicon"
+                          className="flex-1"
+                        />
+                        <Button variant="outline" size="sm" className="flex-shrink-0 w-full sm:w-auto">
+                          <Upload className="h-4 w-4 mr-2 sm:mr-0" />
+                          <span className="sm:hidden">Upload</span>
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Formato ICO, PNG ou SVG, 32x32px
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="primary-color">Cor Primária</Label>
+                      <div className="flex items-center space-x-3">
+                        <div 
+                          className="w-10 h-10 rounded-lg border border-border flex-shrink-0 shadow-sm"
+                          style={{ backgroundColor: localSettings.theme.primaryColor }}
+                        />
+                        <Input
+                          id="primary-color"
+                          value={localSettings.theme.primaryColor}
+                          onChange={(e) => setLocalSettings(prev => ({
+                            ...prev,
+                            theme: { ...prev.theme, primaryColor: e.target.value }
+                          }))}
+                          placeholder="#6366f1"
+                          data-testid="input-primary-color"
+                          className="flex-1"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
               </div>
 
               <Separator />

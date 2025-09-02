@@ -1,11 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useT } from '@/hooks/use-translation';
 import { useMobile } from '@/hooks/use-mobile';
 import { useSound } from '@/hooks/use-sound';
+import { useQuery } from '@tanstack/react-query';
 import { 
   MessageCircle, 
   Search, 
@@ -18,7 +21,13 @@ import {
   Users,
   Plus,
   Volume2,
-  VolumeX
+  VolumeX,
+  Zap,
+  X,
+  FileImage,
+  File,
+  CheckCircle2,
+  Circle
 } from 'lucide-react';
 
 // Mock data
@@ -172,6 +181,8 @@ export default function ConversationsPage() {
   const [showChat, setShowChat] = useState(!isMobile);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('conversations');
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [fileUpload, setFileUpload] = useState<File | null>(null);
   
   const { 
     playNotificationSound, 
@@ -180,6 +191,21 @@ export default function ConversationsPage() {
     soundSettings,
     updateSoundSettings 
   } = useSound();
+
+  // Fetch quick replies
+  const { data: quickReplies = [] } = useQuery({
+    queryKey: ['/api/quick-replies'],
+    queryFn: async () => {
+      const token = localStorage.getItem('authToken');
+      const response = await fetch('/api/quick-replies', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) throw new Error('Failed to fetch quick replies');
+      return response.json();
+    },
+  });
 
   const handleSelectConversation = (conversation: typeof mockConversations[0]) => {
     setSelectedConversation(conversation);
@@ -199,17 +225,54 @@ export default function ConversationsPage() {
     if (newMessage.trim()) {
       // Handle send message logic here
       setNewMessage('');
+      setShowQuickReplies(false);
       // Play notification sound for sent message
       playNotificationSound('conversation');
     }
+  };
+
+  const handleQuickReply = (message: string) => {
+    setNewMessage(message);
+    setShowQuickReplies(false);
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setFileUpload(file);
+      // Handle file upload logic here
+      console.log('File selected:', file.name);
+    }
+  };
+
+  const toggleMessageRead = (messageId: string) => {
+    // Toggle message read/unread status
+    console.log('Toggle message read status:', messageId);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
+    } else if (e.key === '/' && newMessage === '') {
+      e.preventDefault();
+      setShowQuickReplies(true);
+    } else if (e.key === 'Escape') {
+      setShowQuickReplies(false);
     }
   };
+
+  // Close quick replies when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (showQuickReplies) {
+        setShowQuickReplies(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showQuickReplies]);
 
   const getFilteredData = () => {
     let data = [];
@@ -512,22 +575,42 @@ export default function ConversationsPage() {
             {messages.map((message) => (
               <div
                 key={message.id}
-                className={`flex ${message.direction === 'outgoing' ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${message.direction === 'outgoing' ? 'justify-end' : 'justify-start'} group`}
                 data-testid={`message-${message.id}`}
               >
-                <div
-                  className={`max-w-[85%] sm:max-w-xs lg:max-w-md px-3 sm:px-4 py-2 rounded-lg ${
-                    message.direction === 'outgoing'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-foreground'
-                  }`}
-                >
-                  <p className="text-sm">{message.content}</p>
-                  <div className="flex items-center justify-end mt-1 space-x-1">
-                    <span className="text-xs opacity-70">{message.timestamp}</span>
-                    {message.direction === 'outgoing' && (
-                      <div className="text-xs opacity-70">✓✓</div>
-                    )}
+                <div className={`relative max-w-[85%] sm:max-w-xs lg:max-w-md`}>
+                  <div
+                    className={`px-3 sm:px-4 py-3 rounded-2xl shadow-sm transition-all duration-200 group-hover:shadow-md ${
+                      message.direction === 'outgoing'
+                        ? 'bg-primary text-primary-foreground rounded-br-md'
+                        : 'bg-card text-card-foreground border border-border rounded-bl-md'
+                    }`}
+                  >
+                    <p className="text-sm leading-relaxed">{message.content}</p>
+                    <div className="flex items-center justify-end mt-2 space-x-2">
+                      <span className="text-xs opacity-70">{message.timestamp}</span>
+                      {message.direction === 'outgoing' && (
+                        <div className="flex items-center space-x-1">
+                          {message.status === 'read' ? (
+                            <CheckCircle2 className="h-3 w-3 opacity-70" />
+                          ) : (
+                            <Circle className="h-3 w-3 opacity-70" />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Message actions - visible on hover */}
+                  <div className={`absolute top-0 ${message.direction === 'outgoing' ? 'left-0 -translate-x-full' : 'right-0 translate-x-full'} opacity-0 group-hover:opacity-100 transition-opacity`}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 ml-2"
+                      onClick={() => toggleMessageRead(message.id)}
+                    >
+                      {message.status === 'read' ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-3 w-3" />}
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -535,30 +618,142 @@ export default function ConversationsPage() {
           </div>
 
           {/* Message Input */}
-          <div className="flex-shrink-0 p-3 sm:p-4 border-t border-border bg-background">
-            <div className="flex items-center space-x-1 sm:space-x-2 w-full">
-              <Button variant="ghost" size="sm" className="flex-shrink-0" data-testid="button-emoji">
-                <Smile className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-              <Button variant="ghost" size="sm" className="flex-shrink-0" data-testid="button-attachment">
-                <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-              <Input
-                placeholder="Digite uma mensagem..."
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                className="flex-1 min-w-0"
-                data-testid="input-message"
-              />
-              <Button
-                onClick={handleSendMessage}
-                disabled={!newMessage.trim()}
-                className="flex-shrink-0"
-                data-testid="button-send-message"
-              >
-                <Send className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
+          <div className="flex-shrink-0 border-t border-border bg-background relative">
+            {/* Quick replies dropdown */}
+            {showQuickReplies && quickReplies.length > 0 && (
+              <div className="absolute bottom-full left-0 right-0 z-10 mb-1">
+                <Card className="mx-3 sm:mx-4 shadow-lg">
+                  <CardContent className="p-2">
+                    <div className="flex items-center justify-between mb-2 px-2">
+                      <div className="flex items-center space-x-2">
+                        <Zap className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">Respostas Rápidas</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => setShowQuickReplies(false)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <ScrollArea className="max-h-32">
+                      <div className="space-y-1">
+                        {quickReplies.slice(0, 5).map((reply: any) => (
+                          <button
+                            key={reply.id}
+                            onClick={() => handleQuickReply(reply.message)}
+                            className="w-full text-left p-2 rounded-md hover:bg-accent transition-colors"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <Badge variant="secondary" className="text-xs font-mono">/{reply.shortcut}</Badge>
+                              <span className="text-sm truncate">{reply.message}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+            
+            {/* Input area */}
+            <div className="p-3 sm:p-4">
+              {/* File preview */}
+              {fileUpload && (
+                <div className="mb-3 p-3 bg-accent rounded-lg flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    {fileUpload.type.startsWith('image/') ? (
+                      <FileImage className="h-4 w-4 text-primary" />
+                    ) : (
+                      <File className="h-4 w-4 text-primary" />
+                    )}
+                    <span className="text-sm font-medium">{fileUpload.name}</span>
+                    <span className="text-xs text-muted-foreground">({(fileUpload.size / 1024).toFixed(1)} KB)</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => setFileUpload(null)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              
+              {/* Input row */}
+              <div className="flex items-end space-x-2 w-full">
+                <div className="flex space-x-1 flex-shrink-0">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-10 w-10 p-0 touch-manipulation min-h-[48px] sm:min-h-[unset] sm:h-10 sm:w-10" 
+                    data-testid="button-emoji"
+                  >
+                    <Smile className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </Button>
+                  
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-10 w-10 p-0 touch-manipulation min-h-[48px] sm:min-h-[unset] sm:h-10 sm:w-10" 
+                    data-testid="button-attachment"
+                    onClick={() => document.getElementById('file-input')?.click()}
+                  >
+                    <Paperclip className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </Button>
+                  <input
+                    id="file-input"
+                    type="file"
+                    className="hidden"
+                    accept="image/*,audio/*,video/*,.pdf,.doc,.docx"
+                    onChange={handleFileUpload}
+                  />
+                  
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-10 w-10 p-0 touch-manipulation min-h-[48px] sm:min-h-[unset] sm:h-10 sm:w-10"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowQuickReplies(!showQuickReplies);
+                    }}
+                    data-testid="button-quick-replies"
+                  >
+                    <Zap className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </Button>
+                </div>
+                
+                <div className="flex-1 min-w-0">
+                  <Input
+                    placeholder="Digite uma mensagem ou / para respostas rápidas..."
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    className="min-h-[48px] sm:min-h-[unset]"
+                    data-testid="input-message"
+                  />
+                </div>
+                
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={!newMessage.trim() && !fileUpload}
+                  className="h-10 w-10 p-0 flex-shrink-0 touch-manipulation min-h-[48px] sm:min-h-[unset] sm:h-10 sm:w-10"
+                  data-testid="button-send-message"
+                >
+                  <Send className="h-4 w-4 sm:h-5 sm:w-5" />
+                </Button>
+              </div>
+              
+              {/* Helper text */}
+              {newMessage === '' && (
+                <p className="text-xs text-muted-foreground mt-2 px-1">
+                  Digite "/" para respostas rápidas
+                </p>
+              )}
             </div>
           </div>
         </div>

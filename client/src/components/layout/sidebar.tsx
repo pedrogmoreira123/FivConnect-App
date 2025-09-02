@@ -34,11 +34,10 @@ const getNavigationItems = (userRole: string) => [
   {
     sectionKey: 'navigation.management',
     items: [
-      { nameKey: 'navigation.users', href: '/users', icon: Users },
+      { nameKey: 'navigation.users', href: '/users', icon: Users, adminOnly: true },
       { nameKey: 'navigation.chatBot', href: '/ai-agent', icon: Bot },
       { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
       { nameKey: 'navigation.financeiro', href: '/financeiro', icon: DollarSign },
-      { nameKey: 'navigation.admin', href: '/admin', icon: Building2, superadminOnly: true },
       { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
     ]
   }
@@ -49,6 +48,7 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
   const { settings } = useSettings();
   const { t } = useT();
+  const { shouldShowNotifications, pendingCount } = useFeedbackNotifications();
 
   const navigationItems = getNavigationItems(user?.role || 'agent');
 
@@ -69,20 +69,20 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-1 sidebar-nav">
+      <nav className="flex-1 p-4 space-y-6 sidebar-nav">
         {navigationItems.map((section) => (
-          <div key={section.sectionKey} className="mb-4">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+          <div key={section.sectionKey}>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
               {t(section.sectionKey)}
             </p>
             {section.items
               .filter((item) => {
                 // Filter out admin-only items for non-admin/superadmin users
-                if (item.adminOnly && user?.role !== 'admin' && user?.role !== 'superadmin') {
+                if ('adminOnly' in item && item.adminOnly && user?.role !== 'admin' && user?.role !== 'superadmin') {
                   return false;
                 }
                 // Filter out superadmin-only items for non-superadmin users
-                if (item.superadminOnly && user?.role !== 'superadmin') {
+                if ('superadminOnly' in item && item.superadminOnly && user?.role !== 'superadmin') {
                   return false;
                 }
                 return true;
@@ -97,15 +97,15 @@ export default function Sidebar() {
                 <Link
                   key={item.nameKey}
                   href={item.href}
-                  className={`flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  className={`flex items-center justify-between px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 group ${
                     isActive 
-                      ? 'active bg-sidebar-primary text-sidebar-primary-foreground' 
-                      : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                      ? 'active bg-sidebar-primary text-sidebar-primary-foreground shadow-sm' 
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:translate-x-1'
                   }`}
                   data-testid={`link-${(itemName || '').toLowerCase().replace(/\s+/g, '-')}`}
                 >
                   <div className="flex items-center">
-                    <Icon className="mr-3 w-5 h-5" />
+                    <Icon className={`mr-3 w-5 h-5 transition-transform ${isActive ? 'scale-110' : 'group-hover:scale-105'}`} />
                     {itemName}
                   </div>
                   {item.href === '/feedback' && shouldShowNotifications && pendingCount > 0 && (
@@ -133,8 +133,7 @@ export default function Sidebar() {
               {user?.name}
             </p>
             <p className="text-xs text-muted-foreground" data-testid="text-user-role">
-              {user?.role === 'superadmin' ? 'Super Admin' : 
-               user?.role === 'admin' ? t('users.admin') : 
+              {user?.role === 'admin' ? t('users.admin') : 
                user?.role === 'supervisor' ? t('users.supervisor') : t('users.agent')}
             </p>
           </div>
