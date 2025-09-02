@@ -51,7 +51,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
             onClick={() => setMobileMenuOpen(false)}
           />
           <div className="fixed inset-y-0 left-0 z-50 w-64 md:hidden">
-            <MobileSidebar onClose={() => setMobileMenuOpen(false)} />
+            <MobileSidebar onClose={() => setMobileMenuOpen(false)} isOpen={mobileMenuOpen} />
           </div>
         </>
       )}
