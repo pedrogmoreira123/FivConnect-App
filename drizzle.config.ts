@@ -1,14 +1,14 @@
-import { defineConfig } from "drizzle-kit";
+import type { Config } from "drizzle-kit";
+import * as dotenv from "dotenv";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL, ensure the database is provisioned");
-}
+dotenv.config();
 
-export default defineConfig({
-  out: "./migrations",
+export default {
   schema: "./shared/schema.ts",
-  dialect: "postgresql",
+  out: "./drizzle",
+  dialect: "postgresql", // 👈 aqui estava faltando
   dbCredentials: {
-    url: process.env.DATABASE_URL,
+    url: process.env.DATABASE_URL!, // 👈 use "url" e não "connectionString"
   },
-});
+} satisfies Config;
+
