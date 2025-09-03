@@ -2,7 +2,7 @@ module.exports = {
     apps: [
       {
         name: "fiv-backend",
-        script: "dist/server.js",            // Arquivo principal do backend compilado
+        script: "dist/index.js",            // Arquivo principal do backend compilado
         cwd: "/srv/apps/Fi.VApp-Replit",     // Caminho absoluto do projeto
         env: {
           NODE_ENV: "production",
