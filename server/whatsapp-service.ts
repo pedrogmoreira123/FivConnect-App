@@ -66,6 +66,9 @@ export class WhatsAppService {
     
     console.log(`🔄 Creating session for connection: ${connection.name} (ID: ${connection.id})`);
 
+    // Get WebSocket URL from environment variable
+    const websocketUrl = process.env.WEBSOCKET_URL || 'wss://fivconnect.net/v2';
+
     // Create WhatsApp client with LocalAuth for session persistence
     const client = new Client({
       authStrategy: new LocalAuth({
@@ -84,6 +87,11 @@ export class WhatsAppService {
           '--disable-gpu'
         ],
         headless: true
+      },
+      webVersion: '2.2412.54', // Specify a stable web version
+      webVersionCache: {
+        type: 'remote',
+        remotePath: `${websocketUrl}/check-update?version=2.2412.54&platform=web&eta=E30%3D`
       }
     });
 
