@@ -34,7 +34,17 @@ export default function Header({ title }: HeaderProps) {
   return (
     <>
       <header className="bg-card border-b border-border px-6 py-4 flex items-center justify-between">
-        <div>
+        <div className="flex items-center space-x-4">
+          {/* Logo */}
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <span className="text-primary-foreground font-bold text-sm">F</span>
+            </div>
+            <span className="font-bold text-lg text-foreground">Fi.V App</span>
+          </div>
+
+          {/* Page Title */}
+          <div className="h-6 w-px bg-border"></div>
           <h1 className="text-xl font-semibold text-foreground" data-testid="text-page-title">
             {title}
           </h1>

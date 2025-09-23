@@ -19,7 +19,12 @@ const pageTitleKeys: Record<string, string> = {
   '/users': 'users.title',
   '/ai-agent': 'navigation.aiAgent',
   '/reports': 'navigation.reports',
-  '/settings': 'navigation.settings'
+  '/settings': 'navigation.settings',
+  '/admin': 'navigation.admin',
+  '/financeiro': 'navigation.financeiro',
+  '/tickets': 'navigation.tickets',
+  '/clients': 'navigation.clients',
+  '/enhanced-reports': 'navigation.reports'
 };
 
 export default function MainLayout({ children }: MainLayoutProps) {

@@ -1521,8 +1521,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== ADMIN PANEL ROUTES =====
-  // Company management routes (admin only)
-  app.get('/api/admin/companies', requireRole(['superadmin']), async (req, res) => {
+  // Company management routes (admin and superadmin)
+  app.get('/api/admin/companies', requireRole(['admin', 'superadmin']), async (req, res) => {
     try {
       const companies = await storage.getAllCompanies();
       res.json(companies);
