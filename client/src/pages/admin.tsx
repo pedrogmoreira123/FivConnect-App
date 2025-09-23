@@ -12,15 +12,16 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslation } from 'react-i18next';
 import { apiRequest } from '@/lib/queryClient';
 import { formatDistanceToNow } from 'date-fns';
-import { 
-  Building2, 
-  Users, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  UserPlus, 
+import {
+  Building2,
+  Users,
+  Plus,
+  Edit,
+  Trash2,
+  UserPlus,
   Eye,
   Mail,
   Phone,
@@ -58,12 +59,13 @@ interface CompanyWithStats extends Company {
 }
 
 export default function AdminPanel() {
+  const { t } = useTranslation();
   const [selectedCompany, setSelectedCompany] = useState<CompanyWithStats | null>(null);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
-  
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -233,7 +235,7 @@ export default function AdminPanel() {
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-            <p className="text-muted-foreground">Loading companies...</p>
+            <p className="text-muted-foreground">{t('admin.loadingCompanies')}</p>
           </div>
         </div>
       </div>
@@ -245,15 +247,15 @@ export default function AdminPanel() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Admin Panel</h1>
-          <p className="text-muted-foreground">Manage companies and their users</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t('admin.title')}</h1>
+          <p className="text-muted-foreground">{t('admin.subtitle')}</p>
         </div>
-        <Button 
+        <Button
           onClick={handleCreateCompany}
           data-testid="button-create-company"
         >
           <Plus className="mr-2 h-4 w-4" />
-          New Company
+          {t('admin.newCompany')}
         </Button>
       </div>
 
@@ -264,19 +266,19 @@ export default function AdminPanel() {
             <div className="flex items-center">
               <Building2 className="h-4 w-4 text-muted-foreground" />
               <div className="ml-2">
-                <p className="text-sm font-medium text-muted-foreground">Total Companies</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('admin.stats.totalCompanies')}</p>
                 <p className="text-2xl font-bold">{companies.length}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center">
               <TrendingUp className="h-4 w-4 text-green-600" />
               <div className="ml-2">
-                <p className="text-sm font-medium text-muted-foreground">Active</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('admin.stats.active')}</p>
                 <p className="text-2xl font-bold text-green-600">
                   {companies.filter((c: Company) => c.status === 'active').length}
                 </p>
@@ -290,7 +292,7 @@ export default function AdminPanel() {
             <div className="flex items-center">
               <AlertCircle className="h-4 w-4 text-blue-600" />
               <div className="ml-2">
-                <p className="text-sm font-medium text-muted-foreground">Trial</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('admin.stats.trial')}</p>
                 <p className="text-2xl font-bold text-blue-600">
                   {companies.filter((c: Company) => c.status === 'trial').length}
                 </p>
@@ -304,7 +306,7 @@ export default function AdminPanel() {
             <div className="flex items-center">
               <AlertCircle className="h-4 w-4 text-yellow-600" />
               <div className="ml-2">
-                <p className="text-sm font-medium text-muted-foreground">Issues</p>
+                <p className="text-sm font-medium text-muted-foreground">{t('admin.stats.issues')}</p>
                 <p className="text-2xl font-bold text-yellow-600">
                   {companies.filter((c: Company) => c.status === 'suspended' || c.status === 'canceled').length}
                 </p>
@@ -371,15 +373,15 @@ export default function AdminPanel() {
 
               <div className="grid grid-cols-3 gap-2 pt-2 border-t">
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Users</p>
+                  <p className="text-xs text-muted-foreground">{t('admin.companyCard.users')}</p>
                   <p className="font-semibold">{company.userCount || 0}/{company.maxUsers}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Connections</p>
+                  <p className="text-xs text-muted-foreground">{t('admin.companyCard.connections')}</p>
                   <p className="font-semibold">{company.connectionCount || 0}/{company.maxConnections}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Queues</p>
+                  <p className="text-xs text-muted-foreground">{t('admin.companyCard.queues')}</p>
                   <p className="font-semibold">0/{company.maxQueues}</p>
                 </div>
               </div>
@@ -393,7 +395,7 @@ export default function AdminPanel() {
                   data-testid={`button-view-users-${company.id}`}
                 >
                   <Eye className="mr-2 h-3 w-3" />
-                  Users
+                  {t('admin.companyCard.viewUsers')}
                 </Button>
                 <Button
                   variant="outline"
@@ -403,7 +405,7 @@ export default function AdminPanel() {
                   data-testid={`button-add-user-${company.id}`}
                 >
                   <UserPlus className="mr-2 h-3 w-3" />
-                  Add User
+                  {t('admin.companyCard.addUser')}
                 </Button>
               </div>
             </CardContent>
@@ -416,12 +418,12 @@ export default function AdminPanel() {
         <DialogContent className="sm:max-w-[600px]" data-testid="dialog-company-form">
           <DialogHeader>
             <DialogTitle>
-              {editingCompany ? 'Edit Company' : 'Create New Company'}
+              {editingCompany ? t('admin.companyModal.editTitle') : t('admin.companyModal.createTitle')}
             </DialogTitle>
             <DialogDescription>
-              {editingCompany 
-                ? 'Update company information and settings' 
-                : 'Add a new company to the system'
+              {editingCompany
+                ? t('admin.companyModal.editDescription')
+                : t('admin.companyModal.createDescription')
               }
             </DialogDescription>
           </DialogHeader>
@@ -434,11 +436,11 @@ export default function AdminPanel() {
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Company Name</FormLabel>
+                      <FormLabel>{t('admin.companyForm.name')}</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="Acme Corp" 
-                          {...field} 
+                        <Input
+                          placeholder={t('admin.companyForm.namePlaceholder')}
+                          {...field}
                           data-testid="input-company-name"
                         />
                       </FormControl>
@@ -452,12 +454,12 @@ export default function AdminPanel() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Company Email</FormLabel>
+                      <FormLabel>{t('admin.companyForm.email')}</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="contact@acme.com" 
-                          type="email" 
-                          {...field} 
+                        <Input
+                          placeholder={t('admin.companyForm.emailPlaceholder')}
+                          type="email"
+                          {...field}
                           data-testid="input-company-email"
                         />
                       </FormControl>
@@ -473,11 +475,11 @@ export default function AdminPanel() {
                   name="phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Phone (Optional)</FormLabel>
+                      <FormLabel>{t('admin.companyForm.phone')}</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="+1 (555) 123-4567" 
-                          {...field} 
+                        <Input
+                          placeholder={t('admin.companyForm.phonePlaceholder')}
+                          {...field}
                           data-testid="input-company-phone"
                         />
                       </FormControl>
@@ -491,11 +493,11 @@ export default function AdminPanel() {
                   name="document"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Document (Optional)</FormLabel>
+                      <FormLabel>{t('admin.companyForm.document')}</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="CNPJ/CPF" 
-                          {...field} 
+                        <Input
+                          placeholder={t('admin.companyForm.documentPlaceholder')}
+                          {...field}
                           data-testid="input-company-document"
                         />
                       </FormControl>
@@ -510,18 +512,18 @@ export default function AdminPanel() {
                 name="status"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Status</FormLabel>
+                    <FormLabel>{t('admin.companyForm.status')}</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger data-testid="select-company-status">
-                          <SelectValue placeholder="Select status" />
+                          <SelectValue placeholder={t('admin.companyForm.statusPlaceholder')} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="trial">Trial</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="suspended">Suspended</SelectItem>
-                        <SelectItem value="canceled">Canceled</SelectItem>
+                        <SelectItem value="trial">{t('admin.companyForm.statusOptions.trial')}</SelectItem>
+                        <SelectItem value="active">{t('admin.companyForm.statusOptions.active')}</SelectItem>
+                        <SelectItem value="suspended">{t('admin.companyForm.statusOptions.suspended')}</SelectItem>
+                        <SelectItem value="canceled">{t('admin.companyForm.statusOptions.canceled')}</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -535,12 +537,13 @@ export default function AdminPanel() {
                   name="maxUsers"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Max Users</FormLabel>
+                      <FormLabel>{t('admin.companyForm.maxUsers')}</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          min="1" 
-                          {...field} 
+                        <Input
+                          type="number"
+                          min="1"
+                          placeholder={t('admin.companyForm.maxUsersPlaceholder')}
+                          {...field}
                           onChange={(e) => field.onChange(parseInt(e.target.value))}
                           data-testid="input-max-users"
                         />
@@ -555,12 +558,13 @@ export default function AdminPanel() {
                   name="maxConnections"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Max Connections</FormLabel>
+                      <FormLabel>{t('admin.companyForm.maxConnections')}</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          min="1" 
-                          {...field} 
+                        <Input
+                          type="number"
+                          min="1"
+                          placeholder={t('admin.companyForm.maxConnectionsPlaceholder')}
+                          {...field}
                           onChange={(e) => field.onChange(parseInt(e.target.value))}
                           data-testid="input-max-connections"
                         />
@@ -575,12 +579,13 @@ export default function AdminPanel() {
                   name="maxQueues"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Max Queues</FormLabel>
+                      <FormLabel>{t('admin.companyForm.maxQueues')}</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          min="1" 
-                          {...field} 
+                        <Input
+                          type="number"
+                          min="1"
+                          placeholder={t('admin.companyForm.maxQueuesPlaceholder')}
+                          {...field}
                           onChange={(e) => field.onChange(parseInt(e.target.value))}
                           data-testid="input-max-queues"
                         />
@@ -598,14 +603,14 @@ export default function AdminPanel() {
                   onClick={() => setShowCompanyModal(false)}
                   data-testid="button-cancel-company"
                 >
-                  Cancel
+                  {t('admin.companyModal.cancelButton')}
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={companyMutation.isPending}
                   data-testid="button-save-company"
                 >
-                  {companyMutation.isPending ? 'Saving...' : (editingCompany ? 'Update' : 'Create')}
+                  {companyMutation.isPending ? t('admin.companyModal.savingButton') : (editingCompany ? t('admin.companyModal.updateButton') : t('admin.companyModal.createButton'))}
                 </Button>
               </div>
             </form>
@@ -617,9 +622,9 @@ export default function AdminPanel() {
       <Dialog open={showUsersModal} onOpenChange={setShowUsersModal}>
         <DialogContent className="sm:max-w-[700px]" data-testid="dialog-company-users">
           <DialogHeader>
-            <DialogTitle>Company Users - {selectedCompany?.name}</DialogTitle>
+            <DialogTitle>{t('admin.usersModal.title', { companyName: selectedCompany?.name })}</DialogTitle>
             <DialogDescription>
-              Manage users for this company
+              {t('admin.usersModal.description')}
             </DialogDescription>
           </DialogHeader>
 
@@ -627,8 +632,8 @@ export default function AdminPanel() {
             {companyUsers.length === 0 ? (
               <div className="text-center py-8">
                 <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No users found</p>
-                <Button 
+                <p className="text-muted-foreground">{t('admin.usersModal.noUsersFound')}</p>
+                <Button
                   className="mt-4"
                   onClick={() => {
                     setShowUsersModal(false);
@@ -636,7 +641,7 @@ export default function AdminPanel() {
                   }}
                 >
                   <UserPlus className="mr-2 h-4 w-4" />
-                  Add First User
+                  {t('admin.usersModal.addFirstUser')}
                 </Button>
               </div>
             ) : (
@@ -776,14 +781,14 @@ export default function AdminPanel() {
                   onClick={() => setShowUserModal(false)}
                   data-testid="button-cancel-user"
                 >
-                  Cancel
+                  {t('admin.userModal.cancelButton')}
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={userMutation.isPending}
                   data-testid="button-save-user"
                 >
-                  {userMutation.isPending ? 'Adding...' : 'Add User'}
+                  {userMutation.isPending ? t('admin.userModal.addingButton') : t('admin.userModal.addButton')}
                 </Button>
               </div>
             </form>

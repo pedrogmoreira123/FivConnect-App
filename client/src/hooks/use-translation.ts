@@ -1,8 +1,14 @@
 import { useTranslation } from 'react-i18next';
 
-export const useT = () => {
+type UseTResult = {
+  readonly t: ReturnType<typeof useTranslation>['t'];
+  readonly language: string;
+  readonly changeLanguage: ReturnType<typeof useTranslation>['i18n']['changeLanguage'];
+};
+
+export const useT = (): UseTResult => {
   const { t, i18n } = useTranslation();
-  
+
   return {
     t,
     language: i18n.language,
