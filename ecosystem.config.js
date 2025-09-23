@@ -18,7 +18,10 @@ module.exports = {
           JWT_SECRET: "a45d21e802e31bb98d119b77938bbfa3",
   
           // Redis (se você ativar)
-          REDIS_URL: "redis://localhost:6379"
+          REDIS_URL: "redis://localhost:6379",
+
+          //WEBSOCKET
+          WEBSOCKET_URL: "wss://fivconnect.net/v2"
         }
       }
     ]
