@@ -135,8 +135,9 @@ export default function Sidebar() {
               {user?.name}
             </p>
             <p className="text-xs text-muted-foreground" data-testid="text-user-role">
-              {user?.role === 'admin' ? t('users.admin') : 
-               user?.role === 'supervisor' ? t('users.supervisor') : t('users.agent')}
+              {user?.role === 'admin' ? t('users.admin') :
+               user?.role === 'supervisor' ? t('users.supervisor') :
+               user?.role === 'superadmin' ? 'Superadmin' : t('users.agent')}
             </p>
           </div>
         </div>

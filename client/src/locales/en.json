@@ -52,7 +52,7 @@
   },
   "navigation": {
     "main": "Main",
-    "management": "Management", 
+    "management": "Management",
     "dashboard": "Dashboard",
     "conversations": "Conversations",
     "queues": "Queues",
@@ -60,6 +60,7 @@
     "aiAgent": "A.I. Agent",
     "reports": "Reports",
     "settings": "Settings",
+    "admin": "Administration",
     "customerService": "Customer Service"
   },
   "dashboard": {
