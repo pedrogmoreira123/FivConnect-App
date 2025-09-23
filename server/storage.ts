@@ -1087,8 +1087,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllCompanies(): Promise<Company[]> {
+    // For admin panel, return companies from both environments to avoid missing data
+    // This ensures admin can see all companies regardless of environment filtering
     return await db.select().from(companies)
-      .where(eq(companies.environment, this.getEnvironmentFilter()))
       .orderBy(desc(companies.createdAt));
   }
 
