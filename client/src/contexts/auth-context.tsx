@@ -55,18 +55,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = localStorage.getItem('authToken');
       if (token) {
         // Call logout API to invalidate session
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
+        await apiRequest('POST', '/api/auth/logout');
       }
     } catch (error) {
-      ClientLogger.error('Logout failed', error, { 
+      ClientLogger.error('Logout failed', error, {
         component: 'AuthContext',
-        userId: user?.id 
+        userId: user?.id
       });
     } finally {
       setUser(null);
