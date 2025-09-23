@@ -36,7 +36,7 @@ export interface UserRole {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'supervisor' | 'agent';
+  role: 'admin' | 'supervisor' | 'agent' | 'superadmin';
   isOnline: boolean;
   initials: string;
 }

@@ -39,6 +39,8 @@ const getNavigationItems = (userRole: string) => [
       { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
       { nameKey: 'navigation.financeiro', href: '/financeiro', icon: DollarSign },
       { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
+      // 👇 ADICIONE ESTA LINHA ABAIXO 👇
+      { nameKey: 'navigation.admin', href: '/admin', icon: Building2, superadminOnly: true },
     ]
   }
 ];
