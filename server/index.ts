@@ -37,14 +37,15 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Initialize WhatsApp service
-  try {
-    const { whatsappService } = await import('./whatsapp-service');
-    await whatsappService.initialize();
-  } catch (error) {
-    console.warn('⚠️  WhatsApp service initialization failed:', error);
-    console.log('💡 WhatsApp features will be unavailable until properly configured');
-  }
+  // 🚫 Temporarily disabled WhatsApp service
+    console.log("⚠️ WhatsApp service disabled temporarily");
+  // try {
+  //   const { whatsappService } = await import('./whatsapp-service');
+  //   await whatsappService.initialize();
+  // } catch (error) {
+  //   console.warn('⚠️  WhatsApp service initialization failed:', error);
+  //   console.log('💡 WhatsApp features will be unavailable until properly configured');
+  // }
 
   const server = await registerRoutes(app);
 
