@@ -227,7 +227,7 @@ export default function Financeiro() {
   // Delete plan mutation
   const deletePlanMutation = useMutation({
     mutationFn: async (planId: string) => {
-      return await apiRequest(`/api/admin/plans/${planId}`, 'DELETE');
+      return await apiRequest('DELETE', `/api/admin/plans/${planId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/plans'] });

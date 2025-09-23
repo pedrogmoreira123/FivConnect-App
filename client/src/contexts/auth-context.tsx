@@ -20,7 +20,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
-      const response = await apiRequest('POST', '/api/auth/login', { username, password });
+      const response = await apiRequest('/api/auth/login', 'POST', { username, password });
       const data = await response.json();
       
       if (data.user && data.token) {
@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = localStorage.getItem('authToken');
       if (token) {
         // Call logout API to invalidate session
-        await apiRequest('POST', '/api/auth/logout');
+        await apiRequest('/api/auth/logout', 'POST');
       }
     } catch (error) {
       ClientLogger.error('Logout failed', error, {

@@ -85,8 +85,8 @@ export default function FeedbackManagement() {
 
   // Update feedback mutation
   const updateFeedbackMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => 
-      apiRequest('PUT', `/api/feedbacks/${id}`, data),
+    mutationFn: ({ id, data }: { id: string; data: any }) =>
+      apiRequest(`/api/feedbacks/${id}`, 'PUT', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feedbacks"] });
       toast({
