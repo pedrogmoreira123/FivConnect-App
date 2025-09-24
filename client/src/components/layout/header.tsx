@@ -37,9 +37,15 @@ export default function Header({ title }: HeaderProps) {
         <div className="flex items-center space-x-4">
           {/* Logo */}
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">F</span>
-            </div>
+            <img
+              src="/Fiv logo tela principal-Kittl.svg"
+              alt="Fi.V App"
+              className="h-8 w-auto"
+              onError={(e) => {
+                const el = e.currentTarget as HTMLImageElement;
+                el.style.display = 'none';
+              }}
+            />
             <span className="font-bold text-lg text-foreground">Fi.V App</span>
           </div>
 

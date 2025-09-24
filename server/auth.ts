@@ -253,6 +253,24 @@ export function requireRole(roles: string[]) {
   };
 }
 
+// Enhance requireAuth by attaching decoded JWT payload for downstream access to companyId
+// Note: We keep existing behavior but enrich req with auth payload.
+export async function attachAuthPayload(req: any, _res: any, next: any) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return next();
+    const token = authHeader.substring(7);
+    const payload = verifyToken(token);
+    if (payload) {
+      req.auth = payload;
+    }
+  } catch (_e) {
+    // ignore
+  } finally {
+    next();
+  }
+}
+
 /**
  * Generate a secure password
  */
