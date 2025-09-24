@@ -24,7 +24,9 @@ const pageTitleKeys: Record<string, string> = {
   '/financeiro': 'navigation.financeiro',
   '/tickets': 'navigation.tickets',
   '/clients': 'navigation.clients',
-  '/enhanced-reports': 'navigation.reports'
+  '/enhanced-reports': 'navigation.reports',
+  '/announcements': 'navigation.announcements',
+  '/whatsapp-settings': 'navigation.whatsappSettings'
 };
 
 export default function MainLayout({ children }: MainLayoutProps) {

@@ -149,7 +149,7 @@ export default function SettingsPage() {
 
       <Tabs defaultValue="appearance" className="space-y-6">
         <div className="overflow-x-auto">
-          <TabsList className="grid w-full min-w-fit grid-cols-5 h-auto p-1">
+          <TabsList className="grid w-full min-w-fit grid-cols-4 h-auto p-1">
             <TabsTrigger value="appearance" className="flex items-center justify-center space-x-1 p-2 sm:space-x-2 sm:px-4">
               <Palette className="h-4 w-4 flex-shrink-0" />
               <span className="hidden sm:inline">Personalização</span>
@@ -159,11 +159,6 @@ export default function SettingsPage() {
               <Bell className="h-4 w-4 flex-shrink-0" />
               <span className="hidden sm:inline">Notificações</span>
               <span className="sm:hidden text-xs">Notif</span>
-            </TabsTrigger>
-            <TabsTrigger value="whatsapp" className="flex items-center justify-center space-x-1 p-2 sm:space-x-2 sm:px-4">
-              <MessageSquare className="h-4 w-4 flex-shrink-0" />
-              <span className="hidden sm:inline">WhatsApp</span>
-              <span className="sm:hidden text-xs">WA</span>
             </TabsTrigger>
             <TabsTrigger value="quick-replies" className="flex items-center justify-center space-x-1 p-2 sm:space-x-2 sm:px-4">
               <Zap className="h-4 w-4 flex-shrink-0" />
@@ -459,78 +454,6 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* WhatsApp Tab */}
-        <TabsContent value="whatsapp" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <MessageSquare className="h-5 w-5" />
-                <span>Conexão WhatsApp Business</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {!localSettings.whatsapp.connected ? (
-                <div className="text-center py-8 space-y-4">
-                  <QrCode className="h-16 w-16 text-muted-foreground mx-auto" />
-                  <div>
-                    <h3 className="text-lg font-semibold">WhatsApp não conectado</h3>
-                    <p className="text-muted-foreground">
-                      Conecte sua conta do WhatsApp Business para começar
-                    </p>
-                  </div>
-                  <Button onClick={handleWhatsAppConnect} data-testid="button-connect-whatsapp">
-                    Conectar WhatsApp
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2 p-4 bg-green-50 dark:bg-green-950 rounded-lg">
-                    <CheckCircle className="h-5 w-5 text-green-600" />
-                    <span className="font-medium text-green-800 dark:text-green-200">
-                      WhatsApp conectado com sucesso
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">Resposta Automática</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Enviar mensagens automáticas para novos contatos
-                      </p>
-                    </div>
-                    <Switch
-                      checked={localSettings.whatsapp.autoReply}
-                      onCheckedChange={(value) => 
-                        setLocalSettings(prev => ({
-                          ...prev,
-                          whatsapp: { ...prev.whatsapp, autoReply: value }
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">Horário Comercial</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Aplicar regras de horário de funcionamento
-                      </p>
-                    </div>
-                    <Switch
-                      checked={localSettings.whatsapp.businessHours}
-                      onCheckedChange={(value) => 
-                        setLocalSettings(prev => ({
-                          ...prev,
-                          whatsapp: { ...prev.whatsapp, businessHours: value }
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         {/* APIs Externas Tab */}
         <TabsContent value="apis" className="space-y-6">

@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,10 +14,23 @@ import {
 } from '@/components/ui/dropdown-menu';
 import ProfileModal from '@/components/modals/profile-modal';
 import SettingsModal from '@/components/modals/settings-modal';
-import { ChevronDown, User, Settings, LogOut, Bell } from 'lucide-react';
+import { ChevronDown, User, Settings, LogOut, Bell, Calendar, User as UserIcon } from 'lucide-react';
 
 interface HeaderProps {
   title: string;
+}
+
+interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  priority: 'low' | 'medium' | 'high';
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  author?: {
+    name: string;
+  };
 }
 
 export default function Header({ title }: HeaderProps) {
@@ -22,7 +38,25 @@ export default function Header({ title }: HeaderProps) {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isAnnouncementsOpen, setIsAnnouncementsOpen] = useState(false);
-  const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(true);
+  const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
+
+  // Fetch announcements
+  const { data: announcements = [] } = useQuery({
+    queryKey: ['announcements'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/announcements');
+      return response.json();
+    }
+  });
+
+  // Check for unread announcements
+  useEffect(() => {
+    const hasUnread = announcements.some((announcement: Announcement) => 
+      announcement.isActive && 
+      new Date(announcement.createdAt) > new Date(Date.now() - 24 * 60 * 60 * 1000) // Last 24 hours
+    );
+    setHasUnreadAnnouncements(hasUnread);
+  }, [announcements]);
 
   const handleLogout = () => {
     if (window.confirm('Tem certeza que deseja sair?')) {
@@ -91,63 +125,85 @@ export default function Header({ title }: HeaderProps) {
                 <p className="text-sm text-muted-foreground">Informações importantes da equipe</p>
               </div>
               <div className="max-h-96 overflow-y-auto">
-                {/* Sample announcements */}
-                <div className="p-4 border-b border-border hover:bg-accent cursor-pointer">
-                  <div className="flex items-start space-x-3">
-                    <div className="w-2 h-2 bg-red-500 rounded-full mt-2 flex-shrink-0"></div>
-                    <div className="flex-1">
-                      <h4 className="font-medium text-foreground text-sm">
-                        Atualização do Sistema - Versão 2.1.0
-                      </h4>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Nova versão disponível com melhorias de performance e correção de bugs.
-                      </p>
-                      <span className="text-xs text-muted-foreground">Há 2 horas</span>
-                    </div>
+                {announcements.length === 0 ? (
+                  <div className="p-4 text-center text-muted-foreground">
+                    <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Nenhum aviso ativo</p>
                   </div>
-                </div>
-                <div className="p-4 border-b border-border hover:bg-accent cursor-pointer">
-                  <div className="flex items-start space-x-3">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                    <div className="flex-1">
-                      <h4 className="font-medium text-foreground text-sm">
-                        Manutenção Programada
-                      </h4>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Sistema ficará indisponível das 02:00 às 04:00 para manutenção.
-                      </p>
-                      <span className="text-xs text-muted-foreground">Ontem</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="p-4 border-b border-border hover:bg-accent cursor-pointer">
-                  <div className="flex items-start space-x-3">
-                    <div className="w-2 h-2 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
-                    <div className="flex-1">
-                      <h4 className="font-medium text-foreground text-sm">
-                        Nova Funcionalidade: Relatórios Avançados
-                      </h4>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Agora você pode gerar relatórios mais detalhados sobre seus atendimentos.
-                      </p>
-                      <span className="text-xs text-muted-foreground">2 dias atrás</span>
-                    </div>
-                  </div>
-                </div>
+                ) : (
+                  announcements
+                    .filter((announcement: Announcement) => announcement.isActive)
+                    .slice(0, 5)
+                    .map((announcement: Announcement) => {
+                      const getPriorityColor = (priority: string) => {
+                        switch (priority) {
+                          case 'high': return 'bg-red-500';
+                          case 'medium': return 'bg-yellow-500';
+                          case 'low': return 'bg-green-500';
+                          default: return 'bg-blue-500';
+                        }
+                      };
+
+                      const getTimeAgo = (date: string) => {
+                        const now = new Date();
+                        const announcementDate = new Date(date);
+                        const diffInHours = Math.floor((now.getTime() - announcementDate.getTime()) / (1000 * 60 * 60));
+                        
+                        if (diffInHours < 1) return 'Agora';
+                        if (diffInHours < 24) return `Há ${diffInHours}h`;
+                        const diffInDays = Math.floor(diffInHours / 24);
+                        if (diffInDays < 7) return `Há ${diffInDays} dias`;
+                        return announcementDate.toLocaleDateString('pt-BR');
+                      };
+
+                      return (
+                        <div key={announcement.id} className="p-4 border-b border-border hover:bg-accent cursor-pointer">
+                          <div className="flex items-start space-x-3">
+                            <div className={`w-2 h-2 ${getPriorityColor(announcement.priority)} rounded-full mt-2 flex-shrink-0`}></div>
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <h4 className="font-medium text-foreground text-sm">
+                                  {announcement.title}
+                                </h4>
+                                <Badge variant={announcement.priority === 'high' ? 'destructive' : announcement.priority === 'medium' ? 'default' : 'secondary'} className="text-xs">
+                                  {announcement.priority === 'high' ? 'Alta' : announcement.priority === 'medium' ? 'Média' : 'Baixa'}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                {announcement.content}
+                              </p>
+                              <div className="flex items-center space-x-3 mt-2">
+                                <div className="flex items-center space-x-1 text-xs text-muted-foreground">
+                                  <UserIcon className="h-3 w-3" />
+                                  <span>{announcement.author?.name || 'Sistema'}</span>
+                                </div>
+                                <div className="flex items-center space-x-1 text-xs text-muted-foreground">
+                                  <Calendar className="h-3 w-3" />
+                                  <span>{getTimeAgo(announcement.createdAt)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                )}
               </div>
-              <div className="p-3 border-t border-border">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="w-full"
-                  onClick={() => {
-                    setHasUnreadAnnouncements(false);
-                    setIsAnnouncementsOpen(false);
-                  }}
-                >
-                  Marcar todas como lidas
-                </Button>
-              </div>
+              {announcements.length > 0 && (
+                <div className="p-3 border-t border-border">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="w-full"
+                    onClick={() => {
+                      setHasUnreadAnnouncements(false);
+                      setIsAnnouncementsOpen(false);
+                    }}
+                  >
+                    Marcar todas como lidas
+                  </Button>
+                </div>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 

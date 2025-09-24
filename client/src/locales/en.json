@@ -61,7 +61,9 @@
     "reports": "Reports",
     "settings": "Settings",
     "admin": "Administration",
-    "customerService": "Customer Service"
+    "customerService": "Customer Service",
+    "announcements": "Announcements",
+    "whatsappSettings": "WhatsApp Connection"
   },
   "dashboard": {
     "title": "Dashboard",

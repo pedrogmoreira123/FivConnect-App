@@ -201,8 +201,8 @@ export default function ConversationsPage() {
     }
     
     return data.filter(item =>
-      item.contactName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.contactPhone.includes(searchQuery)
+      item.contactName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.contactPhone.includes(searchTerm)
     );
   };
   
