@@ -24,6 +24,7 @@ import FeedbackPage from "@/pages/feedback";
 import FinanceiroPage from "@/pages/financeiro";
 import AdminPage from "@/pages/admin";
 import AnnouncementsPage from "@/pages/announcements";
+import WhatsAppSettingsPage from "@/pages/whatsapp-settings";
 import MainLayout from "@/components/layout/main-layout";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/use-auth";
@@ -161,6 +162,11 @@ function Router() {
       <Route path="/announcements">
         <ProtectedRoute>
           <AnnouncementsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/whatsapp-settings">
+        <ProtectedRoute>
+          <WhatsAppSettingsPage />
         </ProtectedRoute>
       </Route>
       

@@ -8,7 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useT } from '@/hooks/use-translation';
 import { useMobile } from '@/hooks/use-mobile';
 import { useSound } from '@/hooks/use-sound';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   MessageCircle, 
   Search, 
@@ -34,6 +34,7 @@ import {
 export default function ConversationsPage() {
   const { t } = useT();
   const isMobile = useMobile();
+  const queryClient = useQueryClient();
   // Fetch real conversations data
   const { data: conversations = [], isLoading } = useQuery({
     queryKey: ['conversations'],
@@ -111,13 +112,32 @@ export default function ConversationsPage() {
     setShowChat(false);
   };
 
-  const handleSendMessage = () => {
-    if (newMessage.trim()) {
-      // Handle send message logic here
-      setNewMessage('');
-      setShowQuickReplies(false);
-      // Play notification sound for sent message
-      playNotificationSound('conversation');
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !selectedConversation) return;
+
+    try {
+      // Send message via WhatsApp API
+      const response = await apiRequest('POST', `/api/conversations/${selectedConversation.id}/send-message`, {
+        text: newMessage.trim(),
+        to: selectedConversation.contactPhone
+      });
+
+      if (response.ok) {
+        // Clear input and close quick replies
+        setNewMessage('');
+        setShowQuickReplies(false);
+        
+        // Play notification sound for sent message
+        playNotificationSound('conversation');
+        
+        // Refresh messages to show the sent message
+        queryClient.invalidateQueries({ queryKey: ['messages', selectedConversation.id] });
+      } else {
+        throw new Error('Failed to send message');
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      // You could add a toast notification here for user feedback
     }
   };
 

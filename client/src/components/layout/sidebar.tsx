@@ -18,7 +18,8 @@ import {
   AlertCircle,
   MessageSquare,
   DollarSign,
-  Bell
+  Bell,
+  MessageSquare
 } from 'lucide-react';
 
 const getNavigationItems = (userRole: string) => [
@@ -40,6 +41,7 @@ const getNavigationItems = (userRole: string) => [
       { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
       { nameKey: 'navigation.financeiro', href: '/financeiro', icon: DollarSign },
       { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
+      { nameKey: 'navigation.whatsappSettings', href: '/whatsapp-settings', icon: MessageSquare },
       { nameKey: 'navigation.announcements', href: '/announcements', icon: Bell, superadminOnly: true },
       { nameKey: 'navigation.admin', href: '/admin', icon: Building2, superadminOnly: true },
     ]

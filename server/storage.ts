@@ -1228,6 +1228,32 @@ export class DatabaseStorage implements IStorage {
       .where(eq(announcements.id, id));
     return result.rowCount > 0;
   }
+
+  // WhatsApp-related methods
+  async getConversationByPhone(phone: string): Promise<Conversation | null> {
+    const [conversation] = await db.select()
+      .from(conversations)
+      .where(eq(conversations.contactPhone, phone))
+      .limit(1);
+    return conversation || null;
+  }
+
+  async getConversation(id: string): Promise<Conversation | null> {
+    const [conversation] = await db.select()
+      .from(conversations)
+      .where(eq(conversations.id, id))
+      .limit(1);
+    return conversation || null;
+  }
+
+  async updateConversation(id: string, updates: Partial<InsertConversation>): Promise<Conversation> {
+    const [conversation] = await db.update(conversations)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(conversations.id, id))
+      .returning();
+    if (!conversation) throw new Error("Conversation not found");
+    return conversation;
+  }
 }
 
 export const storage = new DatabaseStorage();

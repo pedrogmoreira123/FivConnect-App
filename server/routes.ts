@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import "./types"; // Import type extensions
 import { storage } from "./storage";
+import { setupWhatsAppRoutes } from "./whatsapp.routes";
 import { 
   insertUserSchema,
   insertClientSchema,
@@ -1794,6 +1795,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch announcements" });
     }
   });
+
+  // Setup WhatsApp routes
+  setupWhatsAppRoutes(app);
 
   const httpServer = createServer(app);
   return httpServer;
