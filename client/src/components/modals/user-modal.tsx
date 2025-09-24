@@ -22,9 +22,10 @@ interface UserModalProps {
   isOpen: boolean;
   onClose: () => void;
   user?: UserRole;
+  onSave?: (data: { name: string; username: string; email: string; role: 'admin' | 'supervisor' | 'agent'; password?: string }) => void;
 }
 
-export default function UserModal({ isOpen, onClose, user }: UserModalProps) {
+export default function UserModal({ isOpen, onClose, user, onSave }: UserModalProps) {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -55,9 +56,9 @@ export default function UserModal({ isOpen, onClose, user }: UserModalProps) {
       role,
       ...(password && { password })
     };
-    
-    console.log(user ? 'Atualizando usuário:' : 'Criando usuário:', userData);
-    // Em uma aplicação real, isso chamaria a API para salvar o usuário
+    if (onSave) {
+      onSave(userData);
+    }
     onClose();
   };
 

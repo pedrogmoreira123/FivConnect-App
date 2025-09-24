@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/use-auth';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -18,21 +20,27 @@ interface ProfileModalProps {
 
 export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = () => {
-    const profileData = {
-      name,
-      email,
-      ...(currentPassword && newPassword && { currentPassword, newPassword })
-    };
-    
-    console.log('Updating profile:', profileData);
-    // In a real app, this would call the API to update the profile
-    onClose();
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      if (currentPassword && newPassword) {
+        await apiRequest('POST', '/api/auth/change-password', { currentPassword, newPassword });
+        toast({ title: 'Senha atualizada', description: 'Sua senha foi alterada com sucesso.' });
+      }
+      // Profile name/email update would be implemented here if supported by backend
+      onClose();
+    } catch (e: any) {
+      toast({ title: 'Erro ao atualizar', description: e.message || 'Falha ao atualizar perfil/senha', variant: 'destructive' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleClose = () => {
@@ -48,9 +56,9 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[425px]" data-testid="modal-profile">
         <DialogHeader>
-          <DialogTitle>My Profile</DialogTitle>
+          <DialogTitle>Meu Perfil</DialogTitle>
           <DialogDescription>
-            Update your personal information and change your password.
+            Atualize suas informações pessoais e altere sua senha.
           </DialogDescription>
         </DialogHeader>
         
@@ -62,12 +70,12 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
               </span>
             </div>
             <Button variant="link" className="text-primary hover:text-primary/80 text-sm font-medium">
-              Change Avatar
+              Alterar Avatar
             </Button>
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="profileName">Name</Label>
+            <Label htmlFor="profileName">Nome</Label>
             <Input
               id="profileName"
               value={name}
@@ -77,7 +85,7 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="profileEmail">Email</Label>
+            <Label htmlFor="profileEmail">E-mail</Label>
             <Input
               id="profileEmail"
               type="email"
@@ -88,11 +96,11 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="currentPassword">Current Password</Label>
+            <Label htmlFor="currentPassword">Senha Atual</Label>
             <Input
               id="currentPassword"
               type="password"
-              placeholder="Enter current password"
+              placeholder="Digite a senha atual"
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
               data-testid="input-current-password"
@@ -100,11 +108,11 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
           </div>
           
           <div className="space-y-2">
-            <Label htmlFor="newPassword">New Password</Label>
+            <Label htmlFor="newPassword">Nova Senha</Label>
             <Input
               id="newPassword"
               type="password"
-              placeholder="Enter new password"
+              placeholder="Digite a nova senha"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               data-testid="input-new-password"
@@ -114,10 +122,10 @@ export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
         
         <div className="flex justify-end space-x-3">
           <Button variant="outline" onClick={handleClose} data-testid="button-cancel-profile">
-            Cancel
+            Cancelar
           </Button>
-          <Button onClick={handleSave} data-testid="button-save-profile">
-            Update Profile
+          <Button onClick={handleSave} data-testid="button-save-profile" disabled={isSaving}>
+            {isSaving ? 'Salvando...' : 'Atualizar Perfil'}
           </Button>
         </div>
       </DialogContent>

@@ -27,198 +27,29 @@ import {
   Trash2,
   MessageCircle
 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 
 interface Client {
   id: string;
   name: string;
-  company: string;
+  company?: string;
   phone: string;
-  email: string;
-  address: string;
+  email?: string;
+  address?: string;
   status: 'active' | 'inactive';
-  lastActivity: string;
-  totalTickets: number;
-  avatar: string;
-  bgColor: string;
-  allowWebApp: boolean;
+  lastActivity?: string;
+  totalTickets?: number;
+  avatar?: string;
+  bgColor?: string;
+  allowWebApp?: boolean;
 }
-
-// Mock data based on the reference image
-const mockClients: Client[] = [
-  {
-    id: 'CD',
-    name: 'Churras Do Gu',
-    company: 'Nome Empresa',
-    phone: '551194500997',
-    email: 'churras@example.com',
-    address: 'Endereço (opcional)',
-    status: 'active',
-    lastActivity: '28/08/2024',
-    totalTickets: 5,
-    avatar: 'CD',
-    bgColor: 'bg-pink-500',
-    allowWebApp: true
-  },
-  {
-    id: 'KP',
-    name: 'Kauã Pk',
-    company: 'Kauã Enterprises',
-    phone: '551308870072',
-    email: 'kaua@example.com',
-    address: 'São Paulo, SP',
-    status: 'active',
-    lastActivity: '27/08/2024',
-    totalTickets: 3,
-    avatar: 'KP',
-    bgColor: 'bg-red-500',
-    allowWebApp: false
-  },
-  {
-    id: 'T',
-    name: 'Tay - bela Demo',
-    company: 'Bela Demo Corp',
-    phone: '551856542156',
-    email: 'tay@belademo.com',
-    address: 'Rio de Janeiro, RJ',
-    status: 'active',
-    lastActivity: '26/08/2024',
-    totalTickets: 8,
-    avatar: 'T',
-    bgColor: 'bg-green-500',
-    allowWebApp: true
-  },
-  {
-    id: 'MB',
-    name: 'Mateus Borralotto',
-    company: 'Borralotto LTDA',
-    phone: '551955520007',
-    email: 'mateus@borralotto.com',
-    address: 'Brasília, DF',
-    status: 'inactive',
-    lastActivity: '25/08/2024',
-    totalTickets: 1,
-    avatar: 'MB',
-    bgColor: 'bg-purple-500',
-    allowWebApp: false
-  },
-  {
-    id: 'GD',
-    name: 'QUITANDA DA VILLA',
-    company: 'Villa Quitanda',
-    phone: '551389320662',
-    email: 'contato@villaquitanda.com',
-    address: 'Minas Gerais, MG',
-    status: 'active',
-    lastActivity: '24/08/2024',
-    totalTickets: 12,
-    avatar: 'GD',
-    bgColor: 'bg-pink-500',
-    allowWebApp: true
-  },
-  {
-    id: 'T2',
-    name: 'TROPICAL - Roman Bravo',
-    company: 'Tropical Foods',
-    phone: '551971745647',
-    email: 'roman@tropical.com',
-    address: 'Salvador, BA',
-    status: 'active',
-    lastActivity: '23/08/2024',
-    totalTickets: 6,
-    avatar: 'T',
-    bgColor: 'bg-green-500',
-    allowWebApp: false
-  },
-  {
-    id: 'B',
-    name: 'Bia - MAMÃO!',
-    company: 'Mamão Industries',
-    phone: '551971843572',
-    email: 'bia@mamao.com',
-    address: 'Fortaleza, CE',
-    status: 'active',
-    lastActivity: '22/08/2024',
-    totalTickets: 4,
-    avatar: 'B',
-    bgColor: 'bg-pink-500',
-    allowWebApp: true
-  },
-  {
-    id: 'AM',
-    name: 'Adri Madeira',
-    company: 'Madeiras Adri',
-    phone: '555686264664',
-    email: 'adri@madeiras.com',
-    address: 'Curitiba, PR',
-    status: 'active',
-    lastActivity: '21/08/2024',
-    totalTickets: 9,
-    avatar: 'AM',
-    bgColor: 'bg-purple-500',
-    allowWebApp: false
-  },
-  {
-    id: 'T3',
-    name: 'TROPICAL - Elisie Eli',
-    company: 'Tropical Express',
-    phone: '551185791883',
-    email: 'elisie@tropicalexpress.com',
-    address: 'Porto Alegre, RS',
-    status: 'inactive',
-    lastActivity: '20/08/2024',
-    totalTickets: 2,
-    avatar: 'T',
-    bgColor: 'bg-green-500',
-    allowWebApp: true
-  },
-  {
-    id: 'V',
-    name: 'Vitória - Live Pizza',
-    company: 'Live Pizza',
-    phone: '551994680920',
-    email: 'vitoria@livepizza.com',
-    address: 'Recife, PE',
-    status: 'active',
-    lastActivity: '19/08/2024',
-    totalTickets: 7,
-    avatar: 'V',
-    bgColor: 'bg-orange-500',
-    allowWebApp: false
-  },
-  {
-    id: 'A',
-    name: 'Aline - PastRão',
-    company: 'PastRão',
-    phone: '555840772270',
-    email: 'aline@pastrao.com',
-    address: 'Goiânia, GO',
-    status: 'active',
-    lastActivity: '18/08/2024',
-    totalTickets: 3,
-    avatar: 'A',
-    bgColor: 'bg-pink-500',
-    allowWebApp: true
-  },
-  {
-    id: 'AV',
-    name: 'Ana Vitória - Paseta',
-    company: 'Paseta Foods',
-    phone: '551871177103',
-    email: 'ana@paseta.com',
-    address: 'Manaus, AM',
-    status: 'active',
-    lastActivity: '17/08/2024',
-    totalTickets: 5,
-    avatar: 'AV',
-    bgColor: 'bg-blue-500',
-    allowWebApp: false
-  }
-];
 
 export default function ClientsPage() {
   const { t } = useT();
   const isMobile = useMobile();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -234,13 +65,32 @@ export default function ClientsPage() {
     status: 'active' as 'active' | 'inactive'
   });
 
-  const [clients, setClients] = useState<Client[]>(mockClients);
+  const { data: clients = [], isLoading } = useQuery<Client[]>({
+    queryKey: ['/api/clients'],
+    staleTime: 30000,
+  });
+
+  const createClient = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await apiRequest('POST', '/api/clients', payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
+      toast({ title: 'Cliente criado!', description: `${newClient.name} foi adicionado com sucesso.` });
+      setNewClient({ name: '', company: '', phone: '', email: '', address: '', observations: '', status: 'active' });
+      setShowNewClientModal(false);
+    },
+    onError: (e: any) => {
+      toast({ title: 'Erro', description: e.message || 'Falha ao criar cliente', variant: 'destructive' });
+    }
+  });
 
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (client.company || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     client.phone.includes(searchQuery) ||
-    client.email.toLowerCase().includes(searchQuery.toLowerCase())
+    (client.email || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleSelectClient = (client: Client) => {
@@ -248,16 +98,12 @@ export default function ClientsPage() {
   };
 
   const handleToggleWebApp = (clientId: string, enabled: boolean) => {
-    setClients(prev => prev.map(client => 
-      client.id === clientId ? { ...client, allowWebApp: enabled } : client
-    ));
-    
+    // Placeholder: would PATCH a client setting when backend supports
     if (selectedClient?.id === clientId) {
       setSelectedClient(prev => prev ? { ...prev, allowWebApp: enabled } : null);
     }
-    
     toast({
-      title: "Permissões atualizadas",
+      title: 'Permissões atualizadas',
       description: `App Web ${enabled ? 'habilitado' : 'desabilitado'} para o cliente.`,
     });
   };
@@ -265,50 +111,18 @@ export default function ClientsPage() {
   const handleCreateClient = () => {
     if (!newClient.name || !newClient.phone) {
       toast({
-        variant: "destructive",
-        title: "Erro",
-        description: "Nome e telefone são obrigatórios.",
+        variant: 'destructive',
+        title: 'Erro',
+        description: 'Nome e telefone são obrigatórios.',
       });
       return;
     }
-
-    const clientId = newClient.name.split(' ').map(n => n[0]).join('').toUpperCase();
-    const colors = ['bg-pink-500', 'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-red-500'];
-    const randomColor = colors[Math.floor(Math.random() * colors.length)];
-    
-    const newClientData: Client = {
-      id: clientId,
+    createClient.mutate({
       name: newClient.name,
-      company: newClient.company || 'Empresa não informada',
       phone: newClient.phone,
-      email: newClient.email || '',
-      address: newClient.address || '',
-      status: newClient.status,
-      lastActivity: new Date().toLocaleDateString('pt-BR'),
-      totalTickets: 0,
-      avatar: clientId,
-      bgColor: randomColor,
-      allowWebApp: false
-    };
-
-    setClients(prev => [...prev, newClientData]);
-
-    toast({
-      title: "Cliente criado!",
-      description: `${newClient.name} foi adicionado com sucesso.`,
+      email: newClient.email || undefined,
+      notes: newClient.observations || undefined,
     });
-
-    // Reset form
-    setNewClient({
-      name: '',
-      company: '',
-      phone: '',
-      email: '',
-      address: '',
-      observations: '',
-      status: 'active'
-    });
-    setShowNewClientModal(false);
   };
 
   const handleExportExcel = async () => {
@@ -588,40 +402,44 @@ export default function ClientsPage() {
 
         {/* Client List */}
         <div className="flex-1 overflow-auto">
-          {filteredClients.map((client) => (
-            <div
-              key={client.id}
-              onClick={() => handleSelectClient(client)}
-              className={`p-4 border-b border-border cursor-pointer hover:bg-accent transition-colors ${
-                selectedClient?.id === client.id ? 'bg-accent border-l-4 border-l-primary' : ''
-              }`}
-              data-testid={`client-${client.id}`}
-            >
-              <div className="flex items-center space-x-3">
-                <div className={`w-12 h-12 ${client.bgColor} rounded-full flex items-center justify-center flex-shrink-0`}>
-                  <span className="text-white font-semibold text-sm">
-                    {client.avatar}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-foreground truncate">
-                    {client.name}
-                  </h3>
-                  <p className="text-sm text-muted-foreground truncate">
-                    {client.phone}
-                  </p>
-                  <div className="flex items-center justify-between mt-1">
-                    <Badge variant={client.status === 'active' ? 'default' : 'secondary'}>
-                      {client.status === 'active' ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {client.totalTickets} tickets
+          {isLoading ? (
+            <div className="p-4">Carregando clientes...</div>
+          ) : (
+            filteredClients.map((client) => (
+              <div
+                key={client.id}
+                onClick={() => handleSelectClient(client)}
+                className={`p-4 border-b border-border cursor-pointer hover:bg-accent transition-colors ${
+                  selectedClient?.id === client.id ? 'bg-accent border-l-4 border-l-primary' : ''
+                }`}
+                data-testid={`client-${client.id}`}
+              >
+                <div className="flex items-center space-x-3">
+                  <div className={`w-12 h-12 ${client.bgColor} rounded-full flex items-center justify-center flex-shrink-0`}>
+                    <span className="text-white font-semibold text-sm">
+                      {client.avatar}
                     </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-foreground truncate">
+                      {client.name}
+                    </h3>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {client.phone}
+                    </p>
+                    <div className="flex items-center justify-between mt-1">
+                      <Badge variant={client.status === 'active' ? 'default' : 'secondary'}>
+                        {client.status === 'active' ? 'Ativo' : 'Inativo'}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {client.totalTickets} tickets
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
 
