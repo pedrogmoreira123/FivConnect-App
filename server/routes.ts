@@ -176,7 +176,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/users', requireAuth, requireRole(['admin']), async (req, res) => {
+  app.post('/api/users', requireAuth, requireRole(['admin', 'superadmin']), async (req, res) => {
     try {
       const userData = insertUserSchema.parse(req.body);
       // Hash password before creating user
