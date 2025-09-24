@@ -233,7 +233,7 @@ export default function AdminPanel() {
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-            <p className="text-muted-foreground">Loading companies...</p>
+            <p className="text-muted-foreground">Carregando empresas...</p>
           </div>
         </div>
       </div>
@@ -245,15 +245,15 @@ export default function AdminPanel() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Admin Panel</h1>
-          <p className="text-muted-foreground">Manage companies and their users</p>
+          <h1 className="text-3xl font-bold tracking-tight">Painel do Administrador</h1>
+          <p className="text-muted-foreground">Gerencie as empresas e seus usuários</p>
         </div>
         <Button 
           onClick={handleCreateCompany}
           data-testid="button-create-company"
         >
           <Plus className="mr-2 h-4 w-4" />
-          New Company
+          Nova Empresa
         </Button>
       </div>
 
@@ -264,7 +264,7 @@ export default function AdminPanel() {
             <div className="flex items-center">
               <Building2 className="h-4 w-4 text-muted-foreground" />
               <div className="ml-2">
-                <p className="text-sm font-medium text-muted-foreground">Total Companies</p>
+                <p className="text-sm font-medium text-muted-foreground">Total de Empresas</p>
                 <p className="text-2xl font-bold">{companies.length}</p>
               </div>
             </div>
@@ -276,7 +276,7 @@ export default function AdminPanel() {
             <div className="flex items-center">
               <TrendingUp className="h-4 w-4 text-green-600" />
               <div className="ml-2">
-                <p className="text-sm font-medium text-muted-foreground">Active</p>
+                <p className="text-sm font-medium text-muted-foreground">Ativas</p>
                 <p className="text-2xl font-bold text-green-600">
                   {companies.filter((c: Company) => c.status === 'active').length}
                 </p>
@@ -290,7 +290,7 @@ export default function AdminPanel() {
             <div className="flex items-center">
               <AlertCircle className="h-4 w-4 text-blue-600" />
               <div className="ml-2">
-                <p className="text-sm font-medium text-muted-foreground">Trial</p>
+                <p className="text-sm font-medium text-muted-foreground">Em Teste</p>
                 <p className="text-2xl font-bold text-blue-600">
                   {companies.filter((c: Company) => c.status === 'trial').length}
                 </p>
@@ -304,7 +304,7 @@ export default function AdminPanel() {
             <div className="flex items-center">
               <AlertCircle className="h-4 w-4 text-yellow-600" />
               <div className="ml-2">
-                <p className="text-sm font-medium text-muted-foreground">Issues</p>
+                <p className="text-sm font-medium text-muted-foreground">Com Problemas</p>
                 <p className="text-2xl font-bold text-yellow-600">
                   {companies.filter((c: Company) => c.status === 'suspended' || c.status === 'canceled').length}
                 </p>
@@ -365,21 +365,21 @@ export default function AdminPanel() {
                 )}
                 <div className="flex items-center text-muted-foreground">
                   <Calendar className="mr-2 h-3 w-3" />
-                  <span>Created {formatDistanceToNow(new Date(company.createdAt!))} ago</span>
+                  <span>Criada há {formatDistanceToNow(new Date(company.createdAt!))}</span>
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 pt-2 border-t">
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Users</p>
+                  <p className="text-xs text-muted-foreground">Usuários</p>
                   <p className="font-semibold">{company.userCount || 0}/{company.maxUsers}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Connections</p>
+                  <p className="text-xs text-muted-foreground">Conexões</p>
                   <p className="font-semibold">{company.connectionCount || 0}/{company.maxConnections}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Queues</p>
+                  <p className="text-xs text-muted-foreground">Filas</p>
                   <p className="font-semibold">0/{company.maxQueues}</p>
                 </div>
               </div>
@@ -393,7 +393,7 @@ export default function AdminPanel() {
                   data-testid={`button-view-users-${company.id}`}
                 >
                   <Eye className="mr-2 h-3 w-3" />
-                  Users
+                  Ver Usuários
                 </Button>
                 <Button
                   variant="outline"
@@ -403,7 +403,7 @@ export default function AdminPanel() {
                   data-testid={`button-add-user-${company.id}`}
                 >
                   <UserPlus className="mr-2 h-3 w-3" />
-                  Add User
+                  Adicionar Usuário
                 </Button>
               </div>
             </CardContent>
@@ -416,12 +416,12 @@ export default function AdminPanel() {
         <DialogContent className="sm:max-w-[600px]" data-testid="dialog-company-form">
           <DialogHeader>
             <DialogTitle>
-              {editingCompany ? 'Edit Company' : 'Create New Company'}
+              {editingCompany ? 'Editar Empresa' : 'Criar Nova Empresa'}
             </DialogTitle>
             <DialogDescription>
               {editingCompany 
-                ? 'Update company information and settings' 
-                : 'Add a new company to the system'
+                ? 'Atualize as informações e configurações da empresa' 
+                : 'Adicione uma nova empresa ao sistema'
               }
             </DialogDescription>
           </DialogHeader>
@@ -434,7 +434,7 @@ export default function AdminPanel() {
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Company Name</FormLabel>
+                      <FormLabel>Nome da Empresa</FormLabel>
                       <FormControl>
                         <Input 
                           placeholder="Acme Corp" 
@@ -452,10 +452,10 @@ export default function AdminPanel() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Company Email</FormLabel>
+                      <FormLabel>E-mail da Empresa</FormLabel>
                       <FormControl>
                         <Input 
-                          placeholder="contact@acme.com" 
+                          placeholder="contato@acme.com" 
                           type="email" 
                           {...field} 
                           data-testid="input-company-email"
@@ -473,10 +473,10 @@ export default function AdminPanel() {
                   name="phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Phone (Optional)</FormLabel>
+                      <FormLabel>Telefone (Opcional)</FormLabel>
                       <FormControl>
                         <Input 
-                          placeholder="+1 (555) 123-4567" 
+                          placeholder="+55 (11) 99999-9999" 
                           {...field} 
                           data-testid="input-company-phone"
                         />
@@ -491,7 +491,7 @@ export default function AdminPanel() {
                   name="document"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Document (Optional)</FormLabel>
+                      <FormLabel>Documento (Opcional)</FormLabel>
                       <FormControl>
                         <Input 
                           placeholder="CNPJ/CPF" 
@@ -514,14 +514,14 @@ export default function AdminPanel() {
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger data-testid="select-company-status">
-                          <SelectValue placeholder="Select status" />
+                          <SelectValue placeholder="Selecione o status" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="trial">Trial</SelectItem>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="suspended">Suspended</SelectItem>
-                        <SelectItem value="canceled">Canceled</SelectItem>
+                        <SelectItem value="trial">Teste</SelectItem>
+                        <SelectItem value="active">Ativa</SelectItem>
+                        <SelectItem value="suspended">Suspensa</SelectItem>
+                        <SelectItem value="canceled">Cancelada</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -535,7 +535,7 @@ export default function AdminPanel() {
                   name="maxUsers"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Max Users</FormLabel>
+                      <FormLabel>Máx. Usuários</FormLabel>
                       <FormControl>
                         <Input 
                           type="number" 
@@ -555,7 +555,7 @@ export default function AdminPanel() {
                   name="maxConnections"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Max Connections</FormLabel>
+                      <FormLabel>Máx. Conexões</FormLabel>
                       <FormControl>
                         <Input 
                           type="number" 
@@ -575,7 +575,7 @@ export default function AdminPanel() {
                   name="maxQueues"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Max Queues</FormLabel>
+                      <FormLabel>Máx. Filas</FormLabel>
                       <FormControl>
                         <Input 
                           type="number" 
@@ -598,14 +598,14 @@ export default function AdminPanel() {
                   onClick={() => setShowCompanyModal(false)}
                   data-testid="button-cancel-company"
                 >
-                  Cancel
+                  Cancelar
                 </Button>
                 <Button 
                   type="submit" 
                   disabled={companyMutation.isPending}
                   data-testid="button-save-company"
                 >
-                  {companyMutation.isPending ? 'Saving...' : (editingCompany ? 'Update' : 'Create')}
+                  {companyMutation.isPending ? 'Salvando...' : (editingCompany ? 'Atualizar' : 'Criar')}
                 </Button>
               </div>
             </form>
@@ -617,9 +617,9 @@ export default function AdminPanel() {
       <Dialog open={showUsersModal} onOpenChange={setShowUsersModal}>
         <DialogContent className="sm:max-w-[700px]" data-testid="dialog-company-users">
           <DialogHeader>
-            <DialogTitle>Company Users - {selectedCompany?.name}</DialogTitle>
+            <DialogTitle>Usuários da Empresa - {selectedCompany?.name}</DialogTitle>
             <DialogDescription>
-              Manage users for this company
+              Gerencie os usuários desta empresa
             </DialogDescription>
           </DialogHeader>
 
@@ -627,7 +627,7 @@ export default function AdminPanel() {
             {companyUsers.length === 0 ? (
               <div className="text-center py-8">
                 <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No users found</p>
+                <p className="text-muted-foreground">Nenhum usuário encontrado</p>
                 <Button 
                   className="mt-4"
                   onClick={() => {
@@ -636,7 +636,7 @@ export default function AdminPanel() {
                   }}
                 >
                   <UserPlus className="mr-2 h-4 w-4" />
-                  Add First User
+                  Adicionar Primeiro Usuário
                 </Button>
               </div>
             ) : (
@@ -675,9 +675,9 @@ export default function AdminPanel() {
       <Dialog open={showUserModal} onOpenChange={setShowUserModal}>
         <DialogContent className="sm:max-w-[500px]" data-testid="dialog-add-user">
           <DialogHeader>
-            <DialogTitle>Add User to {selectedCompany?.name}</DialogTitle>
+            <DialogTitle>Adicionar Usuário à {selectedCompany?.name}</DialogTitle>
             <DialogDescription>
-              Create a new user or add an existing user to this company
+              Crie um novo usuário ou adicione um usuário existente a esta empresa
             </DialogDescription>
           </DialogHeader>
 
@@ -688,10 +688,10 @@ export default function AdminPanel() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Full Name</FormLabel>
+                    <FormLabel>Nome Completo</FormLabel>
                     <FormControl>
                       <Input 
-                        placeholder="John Doe" 
+                        placeholder="João da Silva" 
                         {...field} 
                         data-testid="input-user-name"
                       />
@@ -706,17 +706,17 @@ export default function AdminPanel() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>E-mail</FormLabel>
                     <FormControl>
                       <Input 
-                        placeholder="john@example.com" 
+                        placeholder="joao@exemplo.com" 
                         type="email" 
                         {...field} 
                         data-testid="input-user-email"
                       />
                     </FormControl>
                     <FormDescription>
-                      If user already exists, they'll be added to the company
+                      Se o usuário já existir, ele será adicionado à empresa
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -728,7 +728,7 @@ export default function AdminPanel() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <FormLabel>Senha</FormLabel>
                     <FormControl>
                       <Input 
                         type="password" 
@@ -738,7 +738,7 @@ export default function AdminPanel() {
                       />
                     </FormControl>
                     <FormDescription>
-                      Only used for new users (ignored if user exists)
+                      Usado apenas para novos usuários (ignorado se o usuário existir)
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -750,18 +750,18 @@ export default function AdminPanel() {
                 name="role"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Role</FormLabel>
+                    <FormLabel>Função</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger data-testid="select-user-role">
-                          <SelectValue placeholder="Select role" />
+                          <SelectValue placeholder="Selecione a função" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="agent">Agent</SelectItem>
+                        <SelectItem value="agent">Agente</SelectItem>
                         <SelectItem value="supervisor">Supervisor</SelectItem>
-                        <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="owner">Owner</SelectItem>
+                        <SelectItem value="admin">Administrador</SelectItem>
+                        <SelectItem value="owner">Proprietário</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -776,14 +776,14 @@ export default function AdminPanel() {
                   onClick={() => setShowUserModal(false)}
                   data-testid="button-cancel-user"
                 >
-                  Cancel
+                  Cancelar
                 </Button>
                 <Button 
                   type="submit" 
                   disabled={userMutation.isPending}
                   data-testid="button-save-user"
                 >
-                  {userMutation.isPending ? 'Adding...' : 'Add User'}
+                  {userMutation.isPending ? 'Adicionando...' : 'Adicionar Usuário'}
                 </Button>
               </div>
             </form>

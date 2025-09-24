@@ -20,7 +20,7 @@ const pageTitleKeys: Record<string, string> = {
   '/ai-agent': 'navigation.aiAgent',
   '/reports': 'navigation.reports',
   '/settings': 'navigation.settings',
-  '/admin': 'navigation.admin',
+  '/admin': 'admin.title',
   '/financeiro': 'navigation.financeiro',
   '/tickets': 'navigation.tickets',
   '/clients': 'navigation.clients',

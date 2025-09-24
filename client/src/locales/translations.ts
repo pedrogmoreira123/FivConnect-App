@@ -302,5 +302,8 @@ export const ptBRTranslations = {
     newMessage: "Nova mensagem recebida",
     conversationAssigned: "Conversa atribuída a você",
     conversationCompleted: "Conversa finalizada"
+  },
+  admin: {
+    title: "Painel do Administrador"
   }
 };
