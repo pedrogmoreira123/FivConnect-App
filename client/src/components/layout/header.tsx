@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,12 @@ export default function Header({ title }: HeaderProps) {
 
   const companyLogo = (user as any)?.company?.logoUrl as string | undefined;
   const logoSrc = companyLogo || '/logo.svg';
+  const [logoSrcState, setLogoSrcState] = useState(logoSrc);
+
+  // Update logo when user changes
+  useEffect(() => {
+    setLogoSrcState(logoSrc);
+  }, [logoSrc]);
 
   return (
     <>
@@ -41,12 +47,13 @@ export default function Header({ title }: HeaderProps) {
           <div className="flex items-center space-x-3">
             <div className="p-2 rounded-lg bg-primary/10 shadow-sm">
               <img
-                src={logoSrc}
+                src={logoSrcState}
                 alt="Fi.V App"
                 className="h-6 w-auto"
-                onError={(e) => {
-                  const el = e.currentTarget as HTMLImageElement;
-                  el.style.display = 'none';
+                onError={() => {
+                  if (logoSrcState !== '/logo.svg') {
+                    setLogoSrcState('/logo.svg');
+                  }
                 }}
               />
             </div>

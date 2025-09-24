@@ -23,6 +23,7 @@ import BackofficePage from "@/pages/backoffice";
 import FeedbackPage from "@/pages/feedback";
 import FinanceiroPage from "@/pages/financeiro";
 import AdminPage from "@/pages/admin";
+import AnnouncementsPage from "@/pages/announcements";
 import MainLayout from "@/components/layout/main-layout";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/use-auth";
@@ -155,6 +156,11 @@ function Router() {
       <Route path="/admin">
         <ProtectedRoute>
           <AdminPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/announcements">
+        <ProtectedRoute>
+          <AnnouncementsPage />
         </ProtectedRoute>
       </Route>
       

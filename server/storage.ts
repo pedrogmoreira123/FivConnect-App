@@ -1194,6 +1194,40 @@ export class DatabaseStorage implements IStorage {
       .where(eq(companySettings.companyId, companyId))
       .orderBy(asc(companySettings.key));
   }
+
+  // Announcements methods
+  async getAnnouncements(): Promise<Announcement[]> {
+    return await db.select().from(announcements)
+      .orderBy(desc(announcements.createdAt));
+  }
+
+  async getActiveAnnouncements(): Promise<Announcement[]> {
+    return await db.select().from(announcements)
+      .where(eq(announcements.isActive, true))
+      .orderBy(desc(announcements.createdAt));
+  }
+
+  async createAnnouncement(data: InsertAnnouncement): Promise<Announcement> {
+    const [announcement] = await db.insert(announcements)
+      .values(data)
+      .returning();
+    return announcement;
+  }
+
+  async updateAnnouncement(id: string, updates: Partial<InsertAnnouncement>): Promise<Announcement> {
+    const [announcement] = await db.update(announcements)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(announcements.id, id))
+      .returning();
+    if (!announcement) throw new Error("Announcement not found");
+    return announcement;
+  }
+
+  async deleteAnnouncement(id: string): Promise<boolean> {
+    const result = await db.delete(announcements)
+      .where(eq(announcements.id, id));
+    return result.rowCount > 0;
+  }
 }
 
 export const storage = new DatabaseStorage();

@@ -11,14 +11,74 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import QueueModal from '@/components/modals/queue-modal';
-import { mockQueues } from '@/lib/mock-data';
 import { QueueData } from '@/types';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 import { Plus, Edit, Trash2 } from 'lucide-react';
 
 export default function QueuesPage() {
-  const [queues] = useState<QueueData[]>(mockQueues);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [isQueueModalOpen, setIsQueueModalOpen] = useState(false);
   const [selectedQueue, setSelectedQueue] = useState<QueueData | undefined>();
+
+  // Fetch queues data
+  const { data: queues = [], isLoading } = useQuery({
+    queryKey: ['queues'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/queues');
+      return response.json();
+    }
+  });
+
+  // Create/Update queue mutation
+  const queueMutation = useMutation({
+    mutationFn: async (data: QueueData) => {
+      if (selectedQueue) {
+        return await apiRequest('PUT', `/api/queues/${selectedQueue.id}`, data);
+      } else {
+        return await apiRequest('POST', '/api/queues', data);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['queues'] });
+      setIsQueueModalOpen(false);
+      setSelectedQueue(undefined);
+      toast({
+        title: "Sucesso",
+        description: selectedQueue ? "Fila atualizada com sucesso!" : "Fila criada com sucesso!",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro",
+        description: error.message || "Falha ao salvar fila",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Delete queue mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (queueId: string) => {
+      return await apiRequest('DELETE', `/api/queues/${queueId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['queues'] });
+      toast({
+        title: "Sucesso",
+        description: "Fila excluída com sucesso!",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro",
+        description: error.message || "Falha ao excluir fila",
+        variant: "destructive"
+      });
+    }
+  });
 
   const handleEditQueue = (queue: QueueData) => {
     setSelectedQueue(queue);
@@ -27,8 +87,7 @@ export default function QueuesPage() {
 
   const handleDeleteQueue = (queueId: string) => {
     if (window.confirm('Tem certeza que deseja excluir esta fila?')) {
-      console.log('Delete queue:', queueId);
-      // Em uma aplicação real, isso chamaria a API para excluir a fila
+      deleteMutation.mutate(queueId);
     }
   };
 
@@ -116,11 +175,15 @@ export default function QueuesPage() {
         </Card>
       </div>
 
-      <QueueModal
-        isOpen={isQueueModalOpen}
-        onClose={() => setIsQueueModalOpen(false)}
-        queue={selectedQueue}
-      />
+        <QueueModal
+          isOpen={isQueueModalOpen}
+          onClose={() => {
+            setIsQueueModalOpen(false);
+            setSelectedQueue(undefined);
+          }}
+          queue={selectedQueue}
+          onSave={(data) => queueMutation.mutate(data)}
+        />
     </>
   );
 }

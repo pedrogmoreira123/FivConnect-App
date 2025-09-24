@@ -1729,6 +1729,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Announcements endpoints
+  app.get('/api/admin/announcements', requireAuth, requireRole(['superadmin']), async (req, res) => {
+    try {
+      const announcements = await storage.getAnnouncements();
+      res.json(announcements);
+    } catch (error) {
+      console.error('Failed to fetch announcements:', error);
+      res.status(500).json({ message: "Failed to fetch announcements" });
+    }
+  });
+
+  app.post('/api/admin/announcements', requireAuth, requireRole(['superadmin']), async (req, res) => {
+    try {
+      const announcementData = {
+        ...req.body,
+        authorId: req.user.id
+      };
+      
+      const announcement = await storage.createAnnouncement(announcementData);
+      res.json(announcement);
+    } catch (error) {
+      console.error('Failed to create announcement:', error);
+      res.status(500).json({ message: "Failed to create announcement" });
+    }
+  });
+
+  app.put('/api/admin/announcements/:id', requireAuth, requireRole(['superadmin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const announcement = await storage.updateAnnouncement(id, updates);
+      res.json(announcement);
+    } catch (error) {
+      console.error('Failed to update announcement:', error);
+      res.status(500).json({ message: "Failed to update announcement" });
+    }
+  });
+
+  app.delete('/api/admin/announcements/:id', requireAuth, requireRole(['superadmin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deleteAnnouncement(id);
+      
+      if (success) {
+        res.json({ message: "Announcement deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Announcement not found" });
+      }
+    } catch (error) {
+      console.error('Failed to delete announcement:', error);
+      res.status(500).json({ message: "Failed to delete announcement" });
+    }
+  });
+
+  // Public endpoint for active announcements
+  app.get('/api/announcements', async (req, res) => {
+    try {
+      const announcements = await storage.getActiveAnnouncements();
+      res.json(announcements);
+    } catch (error) {
+      console.error('Failed to fetch active announcements:', error);
+      res.status(500).json({ message: "Failed to fetch announcements" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

@@ -23,9 +23,10 @@ interface QueueModalProps {
   isOpen: boolean;
   onClose: () => void;
   queue?: QueueData;
+  onSave?: (data: QueueData) => void;
 }
 
-export default function QueueModal({ isOpen, onClose, queue }: QueueModalProps) {
+export default function QueueModal({ isOpen, onClose, queue, onSave }: QueueModalProps) {
   const [queueName, setQueueName] = useState('');
   const [workingDays, setWorkingDays] = useState('monday');
   const [workingHours, setWorkingHours] = useState('09:00-18:00');
@@ -50,6 +51,7 @@ export default function QueueModal({ isOpen, onClose, queue }: QueueModalProps) 
 
   const handleSave = () => {
     const queueData = {
+      id: queue?.id,
       name: queueName,
       workingDays,
       workingHours,
@@ -57,9 +59,12 @@ export default function QueueModal({ isOpen, onClose, queue }: QueueModalProps) 
       messageOutsideHours
     };
     
-    console.log(queue ? 'Atualizando fila:' : 'Criando fila:', queueData);
-    // Em uma aplicação real, isso chamaria a API para salvar a fila
-    onClose();
+    if (onSave) {
+      onSave(queueData);
+    } else {
+      console.log(queue ? 'Atualizando fila:' : 'Criando fila:', queueData);
+      onClose();
+    }
   };
 
   const handleClose = () => {

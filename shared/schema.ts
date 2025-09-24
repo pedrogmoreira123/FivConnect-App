@@ -559,3 +559,4 @@ export type InsertUserCompany = z.infer<typeof insertUserCompanySchema>;
 
 export type CompanySettings = typeof companySettings.$inferSelect;
 export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;
+

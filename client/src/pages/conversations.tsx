@@ -97,7 +97,7 @@ export default function ConversationsPage() {
     },
   });
 
-  const handleSelectConversation = (conversation: typeof mockConversations[0]) => {
+  const handleSelectConversation = (conversation: any) => {
     setSelectedConversation(conversation);
     if (isMobile) {
       setShowChat(true);
@@ -168,16 +168,16 @@ export default function ConversationsPage() {
     let data = [];
     switch (activeTab) {
       case 'conversations':
-        data = mockConversations;
+        data = conversations;
         break;
       case 'waiting':
-        data = mockWaitingConversations;
+        data = conversations.filter(conv => conv.type === 'waiting');
         break;
       case 'contacts':
-        data = mockContacts;
+        data = conversations.filter(conv => conv.type === 'contact');
         break;
       default:
-        data = mockConversations;
+        data = conversations;
     }
     
     return data.filter(item =>
@@ -238,9 +238,9 @@ export default function ConversationsPage() {
                 <MessageCircle className="h-3 w-3 mr-1" />
                 <span className="hidden sm:inline text-xs">CONVERSAS</span>
                 <span className="sm:hidden text-xs">CONV</span>
-                {mockConversations.length > 0 && (
+                {conversations.length > 0 && (
                   <Badge variant="secondary" className="ml-1 text-xs">
-                    {mockConversations.length}
+                    {conversations.length}
                   </Badge>
                 )}
               </TabsTrigger>
@@ -248,9 +248,9 @@ export default function ConversationsPage() {
                 <Clock className="h-3 w-3 mr-1" />
                 <span className="hidden sm:inline text-xs">ESPERA</span>
                 <span className="sm:hidden text-xs">ESP</span>
-                {mockWaitingConversations.length > 0 && (
+                {conversations.filter(conv => conv.type === 'waiting').length > 0 && (
                   <Badge variant="destructive" className="ml-1 text-xs">
-                    {mockWaitingConversations.length}
+                    {conversations.filter(conv => conv.type === 'waiting').length}
                   </Badge>
                 )}
               </TabsTrigger>
@@ -258,9 +258,9 @@ export default function ConversationsPage() {
                 <Users className="h-3 w-3 mr-1" />
                 <span className="hidden sm:inline text-xs">CONTATOS</span>
                 <span className="sm:hidden text-xs">CONT</span>
-                {mockContacts.length > 0 && (
+                {conversations.filter(conv => conv.type === 'contact').length > 0 && (
                   <Badge variant="outline" className="ml-1 text-xs">
-                    {mockContacts.length}
+                    {conversations.filter(conv => conv.type === 'contact').length}
                   </Badge>
                 )}
               </TabsTrigger>

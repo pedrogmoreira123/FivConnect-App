@@ -1,6 +1,7 @@
 import { Card, CardContent } from '@/components/ui/card';
 import QueueVolumeChart from '@/components/charts/queue-volume-chart';
 import WeeklyPerformanceChart from '@/components/charts/weekly-performance-chart';
+import AnnouncementsCard from '@/components/announcements/announcements-card';
 import { useT } from '@/hooks/use-translation';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -174,6 +175,26 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Announcements */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+        <div className="lg:col-span-2">
+          <Card>
+            <CardContent className="p-3 sm:p-4 md:p-6">
+              <h3 className="text-base sm:text-lg font-semibold text-foreground mb-3 md:mb-4">
+                {t('dashboard.weeklyPerformance')}
+              </h3>
+              <div className="h-48 sm:h-64 md:h-auto">
+                <WeeklyPerformanceChart data={chartData.weeklyPerformance} />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+        
+        <div>
+          <AnnouncementsCard />
+        </div>
       </div>
     </div>
   );

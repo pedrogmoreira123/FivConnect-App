@@ -137,7 +137,7 @@ export default function AdminPanel() {
   // Create user mutation
   const userMutation = useMutation({
     mutationFn: async (data: UserForm) => {
-      return await apiRequest('POST', `/api/admin/companies/${selectedCompany?.id}/users`, data);
+      return await apiRequest('POST', '/api/users', { ...data, companyId: selectedCompany?.id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ 
