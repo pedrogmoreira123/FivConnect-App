@@ -26,10 +26,13 @@ export default function Header({ title }: HeaderProps) {
   const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(true);
 
   const handleLogout = () => {
-    if (window.confirm('Are you sure you want to logout?')) {
+    if (window.confirm('Tem certeza que deseja sair?')) {
       logout();
     }
   };
+
+  const companyLogo = (user as any)?.company?.logoUrl as string | undefined;
+  const logoSrc = companyLogo || '/Fiv logo tela principal-Kittl.svg';
 
   return (
     <>
@@ -38,7 +41,7 @@ export default function Header({ title }: HeaderProps) {
           {/* Logo */}
           <div className="flex items-center space-x-2">
             <img
-              src="/Fiv logo tela principal-Kittl.svg"
+              src={logoSrc}
               alt="Fi.V App"
               className="h-8 w-auto"
               onError={(e) => {
@@ -174,16 +177,16 @@ export default function Header({ title }: HeaderProps) {
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem onClick={() => setIsProfileModalOpen(true)} data-testid="menu-item-profile">
                 <User className="mr-2 h-4 w-4" />
-                My Profile
+                Meu Perfil
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setIsSettingsModalOpen(true)} data-testid="menu-item-settings">
                 <Settings className="mr-2 h-4 w-4" />
-                Settings
+                Configurações
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} data-testid="menu-item-logout">
                 <LogOut className="mr-2 h-4 w-4" />
-                Logout
+                Sair
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

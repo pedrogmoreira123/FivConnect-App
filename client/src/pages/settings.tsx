@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useSound } from '@/hooks/use-sound';
 import ColorPicker from '@/components/theme-customization/color-picker';
 import { authenticatedGet, authenticatedPost, authenticatedPut, authenticatedDelete } from '@/lib/api-client';
+import { apiRequest } from '@/lib/queryClient';
 import { 
   Settings, 
   Bell, 
@@ -230,11 +231,47 @@ export default function SettingsPage() {
                           data-testid="input-company-logo"
                           className="flex-1"
                         />
-                        <Button variant="outline" size="sm" className="flex-shrink-0 w-full sm:w-auto">
-                          <Upload className="h-4 w-4 mr-2 sm:mr-0" />
-                          <span className="sm:hidden">Upload</span>
-                        </Button>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = async () => {
+                              try {
+                                const base64 = reader.result as string;
+                                const res = await apiRequest('POST', '/api/company/logo', { base64 });
+                                const data = await res.json();
+                                setLocalSettings(prev => ({
+                                  ...prev,
+                                  theme: { ...prev.theme, companyLogo: data.logoUrl }
+                                }));
+                                updateSettings({ companyName: localSettings.companyName });
+                                toast({ title: 'Logo atualizado', description: 'O logo da empresa foi atualizado com sucesso.' });
+                              } catch (error: any) {
+                                toast({ title: 'Erro', description: error.message || 'Falha ao enviar logo', variant: 'destructive' });
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                          className="hidden"
+                          id="file-input-logo"
+                        />
+                        <Label htmlFor="file-input-logo">
+                          <Button asChild variant="outline" size="sm" className="flex-shrink-0 w-full sm:w-auto cursor-pointer">
+                            <span>
+                              <Upload className="h-4 w-4 mr-2 sm:mr-0" />
+                              <span className="sm:hidden">Upload</span>
+                            </span>
+                          </Button>
+                        </Label>
                       </div>
+                      {localSettings.theme.companyLogo && (
+                        <div className="mt-2">
+                          <img src={localSettings.theme.companyLogo} alt="Logo Preview" className="h-10 w-auto" />
+                        </div>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         Recomendado: 200x50px, formato PNG ou SVG
                       </p>

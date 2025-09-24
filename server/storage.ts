@@ -212,6 +212,7 @@ export interface IStorage {
   updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company>;
   deleteCompany(id: string): Promise<boolean>;
   getAllCompanies(): Promise<Company[]>;
+  setCompanyLogoUrl(companyId: string, logoUrl: string): Promise<Company>;
 
   // User-Company operations
   getUserCompany(userId: string, companyId: string): Promise<UserCompany | undefined>;
@@ -1091,6 +1092,10 @@ export class DatabaseStorage implements IStorage {
     // This ensures admin can see all companies regardless of environment filtering
     return await db.select().from(companies)
       .orderBy(desc(companies.createdAt));
+  }
+
+  async setCompanyLogoUrl(companyId: string, logoUrl: string): Promise<Company> {
+    return await this.updateCompany(companyId, { logoUrl });
   }
 
   // User-Company operations

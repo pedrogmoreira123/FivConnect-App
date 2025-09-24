@@ -30,21 +30,21 @@ export default function LoginPage() {
       if (success) {
         setLocation('/');
         toast({
-          title: "Welcome back!",
-          description: "You have successfully logged in.",
+          title: t('auth.welcomeBack'),
+          description: t('auth.loginSuccess'),
         });
       } else {
         toast({
           variant: "destructive",
-          title: "Login failed",
-          description: "Invalid username or password.",
+          title: t('auth.loginFailed'),
+          description: t('auth.invalidCredentials'),
         });
       }
     } catch (error) {
       toast({
         variant: "destructive",
-        title: "Error",
-        description: "An error occurred during login.",
+        title: t('auth.loginError'),
+        description: t('auth.loginErrorDescription'),
       });
     } finally {
       setIsLoading(false);
@@ -111,7 +111,7 @@ export default function LoginPage() {
               disabled={isLoading}
               data-testid="button-signin"
             >
-              {isLoading ? "Signing In..." : "Sign In"}
+              {isLoading ? "Entrando..." : t('auth.login')}
             </Button>
           </form>
         </CardContent>

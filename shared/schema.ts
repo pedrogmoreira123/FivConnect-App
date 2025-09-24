@@ -497,6 +497,7 @@ export const companies = pgTable("companies", {
   email: text("email").notNull(),
   phone: text("phone"),
   document: text("document"), // CNPJ/CPF for Brazilian companies
+  logoUrl: text("logo_url"),
   planId: varchar("plan_id").references(() => plans.id),
   status: text("status", { enum: ["active", "suspended", "canceled", "trial"] }).notNull().default("trial"),
   maxUsers: integer("max_users").default(1),

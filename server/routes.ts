@@ -1642,6 +1642,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Company Logo Upload
+  app.post('/api/company/logo', requireAuth, async (req: any, res) => {
+    try {
+      // Expect base64 or URL in body for simplicity in this environment
+      // Prefer: { logoUrl: string } or { base64: string }
+      const { logoUrl, base64 } = req.body || {};
+      if (!req.user?.company?.id) {
+        return res.status(400).json({ message: 'Company context not found' });
+      }
+
+      let finalUrl = logoUrl as string | undefined;
+      if (!finalUrl && base64) {
+        // Persist base64 to a file in public storage (fallback simple approach)
+        const fs = await import('fs');
+        const path = await import('path');
+        const { nanoid } = await import('nanoid');
+        const buffer = Buffer.from(base64.replace(/^data:image\/[a-zA-Z]+;base64,/, ''), 'base64');
+        const filename = `company-logo-${nanoid()}.png`;
+        const publicDir = path.resolve(import.meta.dirname, 'public', 'uploads');
+        if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
+        const filepath = path.join(publicDir, filename);
+        fs.writeFileSync(filepath, buffer);
+        finalUrl = `/uploads/${filename}`;
+      }
+
+      if (!finalUrl) {
+        return res.status(400).json({ message: 'No logo provided' });
+      }
+
+      const updated = await storage.setCompanyLogoUrl(req.user.company.id, finalUrl);
+      res.json({ logoUrl: updated.logoUrl });
+    } catch (error) {
+      res.status(500).json({ message: 'Failed to upload logo' });
+    }
+  });
+
   // ===== PLANS MANAGEMENT ROUTES (SUPERADMIN ONLY) =====
   app.get('/api/admin/plans', requireAuth, requireRole(['superadmin']), async (req, res) => {
     try {

@@ -52,6 +52,9 @@ export default function Sidebar() {
   const { t } = useT();
   const { shouldShowNotifications, pendingCount } = useFeedbackNotifications();
 
+  const companyLogo = (user as any)?.company?.logoUrl as string | undefined;
+  const logoSrc = companyLogo || '/Fiv logo tela principal-Kittl.svg';
+
   const navigationItems = getNavigationItems(user?.role || 'agent');
 
   const handleLogout = () => {
@@ -65,7 +68,7 @@ export default function Sidebar() {
       {/* Company Header */}
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center space-x-2 mb-2">
-          <img src="/Fiv logo tela principal-Kittl.svg" alt="Fi.V App" className="h-8 w-auto" />
+          <img src={logoSrc} alt="Fi.V App" className="h-8 w-auto" />
         </div>
         <h2 className="text-xl font-bold text-sidebar-foreground" data-testid="text-company-name">
           {settings.companyName}
