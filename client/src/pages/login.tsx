@@ -52,11 +52,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-accent/5">
-      <Card className="w-full max-w-md mx-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-accent/5 p-4">
+      <Card className="w-full max-w-md shadow-xl border-0 bg-card/95 backdrop-blur-sm">
         <CardContent className="p-8">
           <div className="text-center mb-8">
-            <img src="/Fiv logo tela principal-Kittl.svg" alt="Fi.V App" className="h-10 w-auto mx-auto mb-3" />
+            <div className="p-4 rounded-2xl bg-primary/10 shadow-sm mb-4 inline-block">
+              <img src="/logo.svg" alt="Fi.V App" className="h-8 w-auto" />
+            </div>
             <h1 className="text-2xl font-bold text-foreground mb-2" data-testid="text-company-name">
               {settings.companyName}
             </h1>
@@ -65,7 +67,7 @@ export default function LoginPage() {
           
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="username">Usuário</Label>
+              <Label htmlFor="username" className="text-sm font-medium">Usuário</Label>
               <Input
                 id="username"
                 type="text"
@@ -74,11 +76,12 @@ export default function LoginPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 data-testid="input-username"
+                className="h-11 shadow-sm"
               />
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="password">{t('common.password')}</Label>
+              <Label htmlFor="password" className="text-sm font-medium">{t('common.password')}</Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -88,11 +91,11 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   data-testid="input-password"
-                  className="pr-10"
+                  className="pr-10 h-11 shadow-sm"
                 />
                 <button
                   type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center hover:bg-accent/50 rounded-r-md transition-colors"
                   onClick={() => setShowPassword(!showPassword)}
                   data-testid="button-toggle-password"
                 >
@@ -107,7 +110,7 @@ export default function LoginPage() {
             
             <Button 
               type="submit" 
-              className="w-full" 
+              className="w-full h-11 shadow-sm" 
               disabled={isLoading}
               data-testid="button-signin"
             >

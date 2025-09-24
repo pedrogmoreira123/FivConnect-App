@@ -44,6 +44,7 @@ const companySchema = z.object({
 
 const userSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
+  username: z.string().min(3, "Username must be at least 3 characters"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   role: z.enum(["owner", "admin", "supervisor", "agent"]).default("agent"),
@@ -110,9 +111,9 @@ export default function AdminPanel() {
   const companyMutation = useMutation({
     mutationFn: async (data: CompanyForm) => {
       if (editingCompany) {
-        return await apiRequest(`/api/admin/companies/${editingCompany.id}`, 'PUT', data);
+        return await apiRequest('PUT', `/api/admin/companies/${editingCompany.id}`, data);
       }
-      return await apiRequest('/api/admin/companies', 'POST', data);
+      return await apiRequest('POST', '/api/admin/companies', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/companies'] });
@@ -136,7 +137,7 @@ export default function AdminPanel() {
   // Create user mutation
   const userMutation = useMutation({
     mutationFn: async (data: UserForm) => {
-      return await apiRequest(`/api/admin/companies/${selectedCompany?.id}/users`, 'POST', data);
+      return await apiRequest('POST', `/api/admin/companies/${selectedCompany?.id}/users`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ 
@@ -161,7 +162,7 @@ export default function AdminPanel() {
   // Delete company mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      return await apiRequest(`/api/admin/companies/${id}`, 'DELETE');
+      return await apiRequest('DELETE', `/api/admin/companies/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/companies'] });
@@ -694,6 +695,24 @@ export default function AdminPanel() {
                         placeholder="João da Silva" 
                         {...field} 
                         data-testid="input-user-name"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={userForm.control}
+                name="username"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome de Usuário</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="joao.silva" 
+                        {...field} 
+                        data-testid="input-user-username"
                       />
                     </FormControl>
                     <FormMessage />

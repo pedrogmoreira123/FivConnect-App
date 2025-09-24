@@ -72,21 +72,12 @@ export default function FeedbackManagement() {
   // Query feedbacks (admin can see all)
   const { data: feedbacks = [], isLoading } = useQuery({
     queryKey: ["/api/feedbacks"],
-    queryFn: async () => {
-      const response = await fetch("/api/feedbacks", {
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("authToken")}`
-        }
-      });
-      if (!response.ok) throw new Error("Failed to fetch feedbacks");
-      return response.json();
-    }
   });
 
   // Update feedback mutation
   const updateFeedbackMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) =>
-      apiRequest(`/api/feedbacks/${id}`, 'PUT', data),
+      apiRequest('PUT', `/api/feedbacks/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/feedbacks"] });
       toast({

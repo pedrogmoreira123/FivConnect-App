@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import ProfileModal from '@/components/modals/profile-modal';
 import SettingsModal from '@/components/modals/settings-modal';
-import { Moon, Sun, ChevronDown, User, Settings, LogOut, Bell } from 'lucide-react';
+import { ChevronDown, User, Settings, LogOut, Bell } from 'lucide-react';
 
 interface HeaderProps {
   title: string;
@@ -19,7 +19,6 @@ interface HeaderProps {
 
 export default function Header({ title }: HeaderProps) {
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isAnnouncementsOpen, setIsAnnouncementsOpen] = useState(false);
@@ -32,23 +31,25 @@ export default function Header({ title }: HeaderProps) {
   };
 
   const companyLogo = (user as any)?.company?.logoUrl as string | undefined;
-  const logoSrc = companyLogo || '/Fiv logo tela principal-Kittl.svg';
+  const logoSrc = companyLogo || '/logo.svg';
 
   return (
     <>
-      <header className="bg-card border-b border-border px-6 py-4 flex items-center justify-between">
+      <header className="bg-card/95 backdrop-blur-sm border-b border-border/50 px-6 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center space-x-4">
           {/* Logo */}
-          <div className="flex items-center space-x-2">
-            <img
-              src={logoSrc}
-              alt="Fi.V App"
-              className="h-8 w-auto"
-              onError={(e) => {
-                const el = e.currentTarget as HTMLImageElement;
-                el.style.display = 'none';
-              }}
-            />
+          <div className="flex items-center space-x-3">
+            <div className="p-2 rounded-lg bg-primary/10 shadow-sm">
+              <img
+                src={logoSrc}
+                alt="Fi.V App"
+                className="h-6 w-auto"
+                onError={(e) => {
+                  const el = e.currentTarget as HTMLImageElement;
+                  el.style.display = 'none';
+                }}
+              />
+            </div>
             <span className="font-bold text-lg text-foreground">Fi.V App</span>
           </div>
 
@@ -66,12 +67,12 @@ export default function Header({ title }: HeaderProps) {
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="relative"
+                className="relative hover:bg-accent/50 transition-colors"
                 data-testid="button-announcements"
               >
                 <Bell className="h-5 w-5" />
                 {hasUnreadAnnouncements && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center">
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full flex items-center justify-center shadow-sm">
                     <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
                   </div>
                 )}
@@ -143,29 +144,15 @@ export default function Header({ title }: HeaderProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Theme Toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleTheme}
-            data-testid="button-theme-toggle"
-          >
-            {theme === 'dark' ? (
-              <Sun className="h-5 w-5" />
-            ) : (
-              <Moon className="h-5 w-5" />
-            )}
-          </Button>
-          
           {/* Profile Dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button 
                 variant="ghost" 
-                className="flex items-center space-x-2"
+                className="flex items-center space-x-2 hover:bg-accent/50 transition-colors rounded-lg"
                 data-testid="button-profile-dropdown"
               >
-                <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-sm">
                   <span className="text-primary-foreground text-sm font-medium">
                     {user?.initials}
                   </span>

@@ -30,157 +30,49 @@ import {
   Circle
 } from 'lucide-react';
 
-// Mock data
-const mockConversations = [
-  {
-    id: '1',
-    contactName: 'Pedrito Pão Quente',
-    initials: 'PP',
-    contactPhone: '551199012500',
-    lastMessage: 'Oi',
-    timestamp: '28/08/2024 13:08',
-    status: 'Atendendo',
-    unreadCount: 1,
-    bgColor: 'bg-pink-500',
-    type: 'active'
-  },
-  {
-    id: '2',
-    contactName: 'Kãitã Sartori',
-    initials: 'KS',
-    contactPhone: '551129404727',
-    lastMessage: 'Lúcas',
-    timestamp: '28/08/2024 16:40',
-    status: 'Suporte Técnico',
-    unreadCount: 0,
-    bgColor: 'bg-blue-500',
-    type: 'active'
-  },
-  {
-    id: '3',
-    contactName: 'Everton - Impeotto',
-    initials: 'EI',
-    contactPhone: '551199012500',
-    lastMessage: 'Foto',
-    timestamp: '28/08/2024 16:44',
-    status: 'Atendendo',
-    unreadCount: 0,
-    bgColor: 'bg-orange-500',
-    type: 'active'
-  },
-  {
-    id: '4',
-    contactName: 'Tatiana - Biasa Confeitaria',
-    initials: 'TB',
-    contactPhone: '551790235576',
-    lastMessage: 'conversa iniciada por Guilherme',
-    timestamp: '29/08/2024 16:40',
-    status: 'Atendendo',
-    unreadCount: 0,
-    bgColor: 'bg-pink-500',
-    type: 'active'
-  },
-  {
-    id: '5',
-    contactName: 'Paulo - PastRão',
-    initials: 'PP',
-    contactPhone: '555599201585',
-    lastMessage: 'Bom dia',
-    timestamp: '29/08/2024 10:09',
-    status: 'Atendendo',
-    unreadCount: 0,
-    bgColor: 'bg-pink-500',
-    type: 'active'
-  }
-];
-
-const mockWaitingConversations = [
-  {
-    id: '6',
-    contactName: 'Ana Silva',
-    initials: 'AS',
-    contactPhone: '551187654321',
-    lastMessage: 'Aguardando atendimento...',
-    timestamp: '29/08/2024 15:30',
-    status: 'Em Espera',
-    unreadCount: 2,
-    bgColor: 'bg-amber-500',
-    type: 'waiting'
-  },
-  {
-    id: '7',
-    contactName: 'Carlos Santos',
-    initials: 'CS',
-    contactPhone: '551198765432',
-    lastMessage: 'Preciso de ajuda urgente',
-    timestamp: '29/08/2024 14:45',
-    status: 'Em Espera',
-    unreadCount: 1,
-    bgColor: 'bg-red-500',
-    type: 'waiting'
-  }
-];
-
-const mockContacts = [
-  {
-    id: '8',
-    contactName: 'Maria Oliveira',
-    initials: 'MO',
-    contactPhone: '551123456789',
-    lastMessage: '',
-    timestamp: '',
-    status: 'Inativo',
-    unreadCount: 0,
-    bgColor: 'bg-gray-500',
-    type: 'contact'
-  },
-  {
-    id: '9',
-    contactName: 'João Pereira',
-    initials: 'JP',
-    contactPhone: '551987654321',
-    lastMessage: '',
-    timestamp: '',
-    status: 'Inativo',
-    unreadCount: 0,
-    bgColor: 'bg-gray-500',
-    type: 'contact'
-  }
-];
-
-const mockMessages = [
-  {
-    id: '1',
-    content: 'Olá! Como posso ajudá-lo hoje?',
-    direction: 'outgoing' as const,
-    timestamp: '14:30',
-    status: 'read'
-  },
-  {
-    id: '2', 
-    content: 'Oi, gostaria de informações sobre os produtos',
-    direction: 'incoming' as const,
-    timestamp: '14:32',
-    status: 'read'
-  },
-  {
-    id: '3',
-    content: 'Claro! Temos várias opções disponíveis. Que tipo de produto você está procurando?',
-    direction: 'outgoing' as const,
-    timestamp: '14:33',
-    status: 'read'
-  }
-];
-
+// Real data integration
 export default function ConversationsPage() {
   const { t } = useT();
   const isMobile = useMobile();
-  const [selectedConversation, setSelectedConversation] = useState(mockConversations[0]);
-  const [messages] = useState(mockMessages);
+  const { soundSettings } = useSound();
+  
+  // Fetch real conversations data
+  const { data: conversations = [], isLoading } = useQuery({
+    queryKey: ['conversations'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/conversations');
+      return response.json();
+    }
+  });
+
+  // State for UI
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('active');
   const [newMessage, setNewMessage] = useState('');
-  const [showChat, setShowChat] = useState(!isMobile);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('conversations');
+  const [showNewConversation, setShowNewConversation] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+
+  // Filter conversations based on search and tab
+  const filteredConversations = conversations.filter(conv => {
+    const matchesSearch = conv.contactName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         conv.contactPhone.includes(searchTerm);
+    const matchesTab = activeTab === 'active' ? conv.type === 'active' :
+                      activeTab === 'waiting' ? conv.type === 'waiting' :
+                      activeTab === 'contacts' ? conv.type === 'contact' : true;
+    return matchesSearch && matchesTab;
+  });
+
+  // Fetch messages for selected conversation
+  const { data: messages = [] } = useQuery({
+    queryKey: ['messages', selectedConversation?.id],
+    queryFn: async () => {
+      if (!selectedConversation?.id) return [];
+      const response = await apiRequest('GET', `/api/conversations/${selectedConversation.id}/messages`);
+      return response.json();
+    },
+    enabled: !!selectedConversation?.id
+  });
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [fileUpload, setFileUpload] = useState<File | null>(null);
   

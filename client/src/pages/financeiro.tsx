@@ -200,9 +200,9 @@ export default function Financeiro() {
       };
       
       if (editingPlan) {
-        return await apiRequest(`/api/admin/plans/${editingPlan.id}`, 'PUT', planData);
+        return await apiRequest('PUT', `/api/admin/plans/${editingPlan.id}`, planData);
       }
-      return await apiRequest('/api/admin/plans', 'POST', planData);
+      return await apiRequest('POST', '/api/admin/plans', planData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/plans'] });

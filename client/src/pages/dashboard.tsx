@@ -1,15 +1,38 @@
 import { Card, CardContent } from '@/components/ui/card';
 import QueueVolumeChart from '@/components/charts/queue-volume-chart';
 import WeeklyPerformanceChart from '@/components/charts/weekly-performance-chart';
-import { mockKPIData, mockRecentActivity, mockChartData } from '@/lib/mock-data';
 import { useT } from '@/hooks/use-translation';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
 import { MessageCircle, UserCheck, Clock, CheckCircle, User, Check, Plus } from 'lucide-react';
 
 export default function DashboardPage() {
   const { t } = useT();
-  const kpiData = mockKPIData;
-  const recentActivity = mockRecentActivity;
-  const chartData = mockChartData;
+  
+  // Fetch real dashboard data
+  const { data: kpiData = { openConversations: 0, onlineAgents: 0, avgWaitingTime: '0min', completedConversations: 0 } } = useQuery({
+    queryKey: ['dashboard-kpis'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/dashboard/kpis');
+      return response.json();
+    }
+  });
+
+  const { data: recentActivity = [] } = useQuery({
+    queryKey: ['dashboard-activity'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/dashboard/activity');
+      return response.json();
+    }
+  });
+
+  const { data: chartData = { queueVolume: [], weeklyPerformance: [] } } = useQuery({
+    queryKey: ['dashboard-charts'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/dashboard/charts');
+      return response.json();
+    }
+  });
 
   const kpiCards = [
     {

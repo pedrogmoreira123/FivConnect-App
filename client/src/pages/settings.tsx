@@ -127,18 +127,20 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="p-3 sm:p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <h1 className="text-xl sm:text-2xl font-bold text-foreground flex items-center space-x-2">
-            <Settings className="h-5 w-5 sm:h-6 sm:w-6" />
+            <div className="p-2 rounded-lg bg-primary/10 shadow-sm">
+              <Settings className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+            </div>
             <span>Configurações</span>
           </h1>
           <p className="text-sm sm:text-base text-muted-foreground">
             Configure as preferências, aparência e integrações da plataforma
           </p>
         </div>
-        <Button onClick={handleSave} data-testid="button-save-settings" className="w-full sm:w-auto">
+        <Button onClick={handleSave} data-testid="button-save-settings" className="w-full sm:w-auto shadow-sm">
           <Save className="h-4 w-4 mr-2" />
           <span className="hidden sm:inline">Salvar Configurações</span>
           <span className="sm:hidden">Salvar</span>
@@ -179,10 +181,12 @@ export default function SettingsPage() {
         {/* Appearance Tab */}
         <TabsContent value="appearance" className="space-y-6">
           {/* Theme Customization */}
-          <Card>
+          <Card className="shadow-sm border-0 bg-card/50">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <Palette className="h-5 w-5" />
+                <div className="p-2 rounded-lg bg-primary/10 shadow-sm">
+                  <Palette className="h-5 w-5 text-primary" />
+                </div>
                 <span>Personalização de Cores</span>
               </CardTitle>
             </CardHeader>
@@ -192,161 +196,104 @@ export default function SettingsPage() {
           </Card>
 
           {/* Branding */}
-          <Card>
+          <Card className="shadow-sm border-0 bg-card/50">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <Monitor className="h-5 w-5" />
+                <div className="p-2 rounded-lg bg-primary/10 shadow-sm">
+                  <Monitor className="h-5 w-5 text-primary" />
+                </div>
                 <span>Identidade Visual</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="company-name">Nome da Empresa</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="company-logo">Logo da Empresa</Label>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                       <Input
-                        id="company-name"
-                        value={localSettings.companyName}
+                        id="company-logo"
+                        value={localSettings.theme.companyLogo}
                         onChange={(e) => setLocalSettings(prev => ({
                           ...prev,
-                          companyName: e.target.value
+                          theme: { ...prev.theme, companyLogo: e.target.value }
                         }))}
-                        placeholder="Digite o nome da empresa"
-                        data-testid="input-company-name"
-                        className="w-full"
+                        placeholder="URL do logo ou upload"
+                        data-testid="input-company-logo"
+                        className="flex-1"
+                      />
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = async () => {
+                            try {
+                              const base64 = reader.result as string;
+                              const res = await apiRequest('POST', '/api/company/logo', { base64 });
+                              const data = await res.json();
+                              setLocalSettings(prev => ({
+                                ...prev,
+                                theme: { ...prev.theme, companyLogo: data.logoUrl }
+                              }));
+                              updateSettings({ companyName: localSettings.companyName });
+                              toast({ title: 'Logo atualizado', description: 'O logo da empresa foi atualizado com sucesso.' });
+                            } catch (error: any) {
+                              toast({ title: 'Erro', description: error.message || 'Falha ao enviar logo', variant: 'destructive' });
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                        className="hidden"
+                        id="file-input-logo"
+                      />
+                      <Label htmlFor="file-input-logo">
+                        <Button asChild variant="outline" size="sm" className="flex-shrink-0 w-full sm:w-auto cursor-pointer">
+                          <span>
+                            <Upload className="h-4 w-4 mr-2 sm:mr-0" />
+                            <span className="sm:hidden">Upload</span>
+                          </span>
+                        </Button>
+                      </Label>
+                    </div>
+                    {localSettings.theme.companyLogo && (
+                      <div className="mt-2">
+                        <img src={localSettings.theme.companyLogo} alt="Logo Preview" className="h-10 w-auto" />
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Recomendado: 200x50px, formato PNG ou SVG
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="primary-color">Cor Primária</Label>
+                    <div className="flex items-center space-x-3">
+                      <div 
+                        className="w-10 h-10 rounded-lg border border-border flex-shrink-0 shadow-sm"
+                        style={{ backgroundColor: localSettings.theme.primaryColor }}
+                      />
+                      <Input
+                        id="primary-color"
+                        value={localSettings.theme.primaryColor}
+                        onChange={(e) => setLocalSettings(prev => ({
+                          ...prev,
+                          theme: { ...prev.theme, primaryColor: e.target.value }
+                        }))}
+                        placeholder="#6366f1"
+                        data-testid="input-primary-color"
+                        className="flex-1"
                       />
                     </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="company-logo">Logo da Empresa</Label>
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-                        <Input
-                          id="company-logo"
-                          value={localSettings.theme.companyLogo}
-                          onChange={(e) => setLocalSettings(prev => ({
-                            ...prev,
-                            theme: { ...prev.theme, companyLogo: e.target.value }
-                          }))}
-                          placeholder="URL do logo ou upload"
-                          data-testid="input-company-logo"
-                          className="flex-1"
-                        />
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            const reader = new FileReader();
-                            reader.onload = async () => {
-                              try {
-                                const base64 = reader.result as string;
-                                const res = await apiRequest('POST', '/api/company/logo', { base64 });
-                                const data = await res.json();
-                                setLocalSettings(prev => ({
-                                  ...prev,
-                                  theme: { ...prev.theme, companyLogo: data.logoUrl }
-                                }));
-                                updateSettings({ companyName: localSettings.companyName });
-                                toast({ title: 'Logo atualizado', description: 'O logo da empresa foi atualizado com sucesso.' });
-                              } catch (error: any) {
-                                toast({ title: 'Erro', description: error.message || 'Falha ao enviar logo', variant: 'destructive' });
-                              }
-                            };
-                            reader.readAsDataURL(file);
-                          }}
-                          className="hidden"
-                          id="file-input-logo"
-                        />
-                        <Label htmlFor="file-input-logo">
-                          <Button asChild variant="outline" size="sm" className="flex-shrink-0 w-full sm:w-auto cursor-pointer">
-                            <span>
-                              <Upload className="h-4 w-4 mr-2 sm:mr-0" />
-                              <span className="sm:hidden">Upload</span>
-                            </span>
-                          </Button>
-                        </Label>
-                      </div>
-                      {localSettings.theme.companyLogo && (
-                        <div className="mt-2">
-                          <img src={localSettings.theme.companyLogo} alt="Logo Preview" className="h-10 w-auto" />
-                        </div>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        Recomendado: 200x50px, formato PNG ou SVG
-                      </p>
-                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Escolha a cor principal da sua marca
+                    </p>
                   </div>
-
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="favicon">Favicon</Label>
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-                        <Input
-                          id="favicon"
-                          value={localSettings.theme.favicon}
-                          onChange={(e) => setLocalSettings(prev => ({
-                            ...prev,
-                            theme: { ...prev.theme, favicon: e.target.value }
-                          }))}
-                          placeholder="URL do favicon"
-                          data-testid="input-favicon"
-                          className="flex-1"
-                        />
-                        <Button variant="outline" size="sm" className="flex-shrink-0 w-full sm:w-auto">
-                          <Upload className="h-4 w-4 mr-2 sm:mr-0" />
-                          <span className="sm:hidden">Upload</span>
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Formato ICO, PNG ou SVG, 32x32px
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="primary-color">Cor Primária</Label>
-                      <div className="flex items-center space-x-3">
-                        <div 
-                          className="w-10 h-10 rounded-lg border border-border flex-shrink-0 shadow-sm"
-                          style={{ backgroundColor: localSettings.theme.primaryColor }}
-                        />
-                        <Input
-                          id="primary-color"
-                          value={localSettings.theme.primaryColor}
-                          onChange={(e) => setLocalSettings(prev => ({
-                            ...prev,
-                            theme: { ...prev.theme, primaryColor: e.target.value }
-                          }))}
-                          placeholder="#6366f1"
-                          data-testid="input-primary-color"
-                          className="flex-1"
-                        />
-                      </div>
-                    </div>
-                  </div>
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <Label htmlFor="custom-css">CSS Personalizado</Label>
-                <Textarea
-                  id="custom-css"
-                  className="h-32 font-mono text-sm"
-                  value={localSettings.theme.customCss}
-                  onChange={(e) => setLocalSettings(prev => ({
-                    ...prev,
-                    theme: { ...prev.theme, customCss: e.target.value }
-                  }))}
-                  placeholder="/* Adicione seu CSS personalizado aqui */
-.custom-header {
-  background: linear-gradient(45deg, #007bff, #6610f2);
-}"
-                  data-testid="textarea-custom-css"
-                />
-                <p className="text-xs text-muted-foreground">
-                  CSS personalizado para modificações avançadas de estilo
-                </p>
+                </div>
               </div>
             </CardContent>
           </Card>
