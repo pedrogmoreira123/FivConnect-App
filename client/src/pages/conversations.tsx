@@ -34,8 +34,6 @@ import {
 export default function ConversationsPage() {
   const { t } = useT();
   const isMobile = useMobile();
-  const { soundSettings } = useSound();
-  
   // Fetch real conversations data
   const { data: conversations = [], isLoading } = useQuery({
     queryKey: ['conversations'],
