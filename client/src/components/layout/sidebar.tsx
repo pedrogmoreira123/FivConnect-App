@@ -26,11 +26,11 @@ const getNavigationItems = (userRole: string) => [
   {
     sectionKey: 'navigation.main',
     items: [
-      { nameKey: 'navigation.dashboard', href: '/', icon: BarChart3 },
       { nameKey: 'navigation.conversations', href: '/conversations', icon: MessageCircle },
       { nameKey: 'navigation.tickets', href: '/tickets', icon: AlertCircle },
       { nameKey: 'navigation.clients', href: '/clients', icon: Users },
-      { nameKey: 'navigation.queues', href: '/queues', icon: List },
+      { nameKey: 'navigation.dashboard', href: '/', icon: BarChart3 },
+      { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
     ]
   },
   {
@@ -38,12 +38,16 @@ const getNavigationItems = (userRole: string) => [
     items: [
       { nameKey: 'navigation.users', href: '/users', icon: Users, adminOnly: true },
       { nameKey: 'navigation.chatBot', href: '/ai-agent', icon: Bot },
-      { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
       { nameKey: 'navigation.financeiro', href: '/financeiro', icon: DollarSign },
       { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
-      { nameKey: 'navigation.whatsappSettings', href: '/whatsapp-settings', icon: MessageSquare },
+    ]
+  },
+  {
+    sectionKey: 'navigation.administration',
+    items: [
       { nameKey: 'navigation.announcements', href: '/announcements', icon: Bell, superadminOnly: true },
       { nameKey: 'navigation.admin', href: '/admin', icon: Building2, superadminOnly: true },
+      { nameKey: 'navigation.whatsappSettings', href: '/whatsapp-settings', icon: MessageSquare },
     ]
   }
 ];
@@ -70,13 +74,12 @@ export default function Sidebar() {
     <div className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
       {/* Company Header */}
       <div className="p-6 border-b border-sidebar-border">
-        <div className="flex items-center space-x-2 mb-2">
-          <img src={logoSrc} alt="Fi.V App" className="h-8 w-auto" />
+        <div className="flex items-center justify-center mb-2">
+          <img src={logoSrc} alt="Fi.V App" className="h-10 w-auto" />
         </div>
-        <h2 className="text-xl font-bold text-sidebar-foreground" data-testid="text-company-name">
+        <h2 className="text-xl font-bold text-sidebar-foreground text-center" data-testid="text-company-name">
           {settings.companyName}
         </h2>
-        <p className="text-sm text-muted-foreground">{t('navigation.customerService')}</p>
       </div>
 
       {/* Navigation */}

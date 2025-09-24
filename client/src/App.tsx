@@ -7,31 +7,34 @@ import { ThemeProvider } from "@/contexts/theme-context";
 import { AuthProvider } from "@/contexts/auth-context";
 import { SettingsProvider } from "@/contexts/settings-context";
 import { ThemeCustomizationProvider } from "@/contexts/theme-customization-context";
-import LoginPage from "@/pages/login";
-import DashboardPage from "@/pages/dashboard";
-import ConversationsPage from "@/pages/conversations";
-import TicketsPage from "@/pages/tickets";
-import ClientsPage from "@/pages/clients";
-import QueuesPage from "@/pages/queues";
-import UsersPage from "@/pages/users";
-import AIAgentPage from "@/pages/ai-agent";
-import ChatbotHubPage from "@/pages/chatbot-hub";
-import ReportsPage from "@/pages/reports";
-import EnhancedReportsPage from "@/pages/enhanced-reports";
-import SettingsPage from "@/pages/settings";
-import BackofficePage from "@/pages/backoffice";
-import FeedbackPage from "@/pages/feedback";
-import FinanceiroPage from "@/pages/financeiro";
-import AdminPage from "@/pages/admin";
-import AnnouncementsPage from "@/pages/announcements";
-import WhatsAppSettingsPage from "@/pages/whatsapp-settings";
+import { lazy, Suspense } from "react";
 import MainLayout from "@/components/layout/main-layout";
-import NotFound from "@/pages/not-found";
 import { useAuth } from "@/hooks/use-auth";
 import { useInstanceStatus } from "@/hooks/use-instance-status";
 import { InstanceLockScreen } from "@/components/instance/instance-lock-screen";
 import { PaymentNotificationBanner } from "@/components/instance/payment-notification-banner";
 import "./lib/i18n"; // Initialize i18n
+
+// Lazy load pages for better performance
+const LoginPage = lazy(() => import("@/pages/login"));
+const DashboardPage = lazy(() => import("@/pages/dashboard"));
+const ConversationsPage = lazy(() => import("@/pages/conversations"));
+const TicketsPage = lazy(() => import("@/pages/tickets"));
+const ClientsPage = lazy(() => import("@/pages/clients"));
+const QueuesPage = lazy(() => import("@/pages/queues"));
+const UsersPage = lazy(() => import("@/pages/users"));
+const AIAgentPage = lazy(() => import("@/pages/ai-agent"));
+const ChatbotHubPage = lazy(() => import("@/pages/chatbot-hub"));
+const ReportsPage = lazy(() => import("@/pages/reports"));
+const EnhancedReportsPage = lazy(() => import("@/pages/enhanced-reports"));
+const SettingsPage = lazy(() => import("@/pages/settings"));
+const BackofficePage = lazy(() => import("@/pages/backoffice"));
+const FeedbackPage = lazy(() => import("@/pages/feedback"));
+const FinanceiroPage = lazy(() => import("@/pages/financeiro"));
+const AdminPage = lazy(() => import("@/pages/admin"));
+const AnnouncementsPage = lazy(() => import("@/pages/announcements"));
+const WhatsAppSettingsPage = lazy(() => import("@/pages/whatsapp-settings"));
+const NotFound = lazy(() => import("@/pages/not-found"));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -84,94 +87,105 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Loading component for Suspense
+function PageLoader() {
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+    </div>
+  );
+}
+
 function Router() {
   return (
-    <Switch>
-      <Route path="/login" component={LoginPage} />
-      <Route path="/">
-        <ProtectedRoute>
-          <DashboardPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/conversations">
-        <ProtectedRoute>
-          <ConversationsPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/tickets">
-        <ProtectedRoute>
-          <TicketsPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/clients">
-        <ProtectedRoute>
-          <ClientsPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/queues">
-        <ProtectedRoute>
-          <QueuesPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/users">
-        <ProtectedRoute>
-          <UsersPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/ai-agent">
-        <ProtectedRoute>
-          <ChatbotHubPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/reports">
-        <ProtectedRoute>
-          <ReportsPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/enhanced-reports">
-        <ProtectedRoute>
-          <EnhancedReportsPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/settings">
-        <ProtectedRoute>
-          <SettingsPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/backoffice">
-        <ProtectedRoute>
-          <BackofficePage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/feedback">
-        <ProtectedRoute>
-          <FeedbackPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/financeiro">
-        <ProtectedRoute>
-          <FinanceiroPage />
-        </ProtectedRoute>
-      </Route>
+    <Suspense fallback={<PageLoader />}>
+      <Switch>
+        <Route path="/login" component={LoginPage} />
+        <Route path="/">
+          <ProtectedRoute>
+            <DashboardPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/conversations">
+          <ProtectedRoute>
+            <ConversationsPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/tickets">
+          <ProtectedRoute>
+            <TicketsPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/clients">
+          <ProtectedRoute>
+            <ClientsPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/queues">
+          <ProtectedRoute>
+            <QueuesPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/users">
+          <ProtectedRoute>
+            <UsersPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/ai-agent">
+          <ProtectedRoute>
+            <ChatbotHubPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/reports">
+          <ProtectedRoute>
+            <ReportsPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/enhanced-reports">
+          <ProtectedRoute>
+            <EnhancedReportsPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/settings">
+          <ProtectedRoute>
+            <SettingsPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/backoffice">
+          <ProtectedRoute>
+            <BackofficePage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/feedback">
+          <ProtectedRoute>
+            <FeedbackPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/financeiro">
+          <ProtectedRoute>
+            <FinanceiroPage />
+          </ProtectedRoute>
+        </Route>
 
-      <Route path="/admin">
-        <ProtectedRoute>
-          <AdminPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/announcements">
-        <ProtectedRoute>
-          <AnnouncementsPage />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/whatsapp-settings">
-        <ProtectedRoute>
-          <WhatsAppSettingsPage />
-        </ProtectedRoute>
-      </Route>
-      
-      <Route component={NotFound} />
-    </Switch>
+        <Route path="/admin">
+          <ProtectedRoute>
+            <AdminPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/announcements">
+          <ProtectedRoute>
+            <AnnouncementsPage />
+          </ProtectedRoute>
+        </Route>
+        <Route path="/whatsapp-settings">
+          <ProtectedRoute>
+            <WhatsAppSettingsPage />
+          </ProtectedRoute>
+        </Route>
+        
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 

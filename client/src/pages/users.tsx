@@ -16,14 +16,7 @@ import { Plus, Edit, Trash2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-
-function mapApiErrorToMessage(e: any): string {
-  const message = e?.message || '';
-  if (message.startsWith('403')) return 'Você não tem permissão para executar esta ação.';
-  if (message.startsWith('409')) return 'O e-mail informado já está cadastrado.';
-  if (message.startsWith('400')) return 'Por favor, verifique os dados informados no formulário.';
-  return 'Ocorreu um erro. Tente novamente.';
-}
+import { mapContextualError } from '@/lib/error-mapper';
 
 export default function UsersPage() {
   const { toast } = useToast();
@@ -44,7 +37,7 @@ export default function UsersPage() {
       toast({ title: 'Usuário criado', description: 'O usuário foi criado com sucesso.' });
     },
     onError: (e: any) => {
-      toast({ title: 'Erro ao criar usuário', description: mapApiErrorToMessage(e), variant: 'destructive' });
+      toast({ title: 'Erro ao criar usuário', description: mapContextualError(e, 'user-creation'), variant: 'destructive' });
     }
   });
 
@@ -58,7 +51,7 @@ export default function UsersPage() {
       toast({ title: 'Usuário atualizado', description: 'As informações do usuário foram atualizadas.' });
     },
     onError: (e: any) => {
-      toast({ title: 'Erro ao atualizar', description: mapApiErrorToMessage(e), variant: 'destructive' });
+      toast({ title: 'Erro ao atualizar', description: mapContextualError(e, 'user-update'), variant: 'destructive' });
     }
   });
 
@@ -71,7 +64,7 @@ export default function UsersPage() {
       toast({ title: 'Usuário excluído', description: 'O usuário foi removido.' });
     },
     onError: (e: any) => {
-      toast({ title: 'Erro ao excluir', description: mapApiErrorToMessage(e), variant: 'destructive' });
+      toast({ title: 'Erro ao excluir', description: mapContextualError(e, 'user-deletion'), variant: 'destructive' });
     }
   });
 

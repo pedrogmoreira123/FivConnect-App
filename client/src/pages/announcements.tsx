@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
+import { mapContextualError } from '@/lib/error-mapper';
 import { Plus, Edit, Trash2, Bell, Calendar, User } from 'lucide-react';
 import {
   Dialog,
@@ -70,7 +71,7 @@ export default function AnnouncementsPage() {
     onError: (error: any) => {
       toast({
         title: "Erro",
-        description: error.message || "Falha ao salvar aviso",
+        description: mapContextualError(error, 'announcement-edit'),
         variant: "destructive"
       });
     }
@@ -91,7 +92,7 @@ export default function AnnouncementsPage() {
     onError: (error: any) => {
       toast({
         title: "Erro",
-        description: error.message || "Falha ao excluir aviso",
+        description: mapContextualError(error, 'announcement-deletion'),
         variant: "destructive"
       });
     }

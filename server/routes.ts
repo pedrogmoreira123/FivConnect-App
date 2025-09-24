@@ -180,6 +180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/users', requireAuth, requireRole(['admin', 'superadmin']), async (req, res) => {
     try {
       const userData = insertUserSchema.parse(req.body);
+      
       // Hash password before creating user
       const hashedPassword = await require('bcryptjs').hash(userData.password, 10);
       const userWithHashedPassword = { ...userData, password: hashedPassword };
@@ -516,7 +517,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/queues', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  app.post('/api/queues', requireAuth, requireRole(['admin', 'supervisor', 'superadmin']), async (req, res) => {
     try {
       const queueData = insertQueueSchema.parse(req.body);
       const queue = await storage.createQueue(queueData);

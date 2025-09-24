@@ -53,16 +53,21 @@
   "navigation": {
     "main": "Principal",
     "management": "Gerenciamento",
+    "administration": "Administração",
     "dashboard": "Dashboard",
     "conversations": "Conversas",
+    "tickets": "Atendimentos",
+    "clients": "Clientes",
     "queues": "Filas",
     "users": "Usuários",
     "aiAgent": "Agente I.A.",
+    "chatBot": "Chatbot",
     "reports": "Relatórios",
     "settings": "Configurações",
-    "admin": "Administração",
+    "admin": "Painel Admin",
     "announcements": "Avisos",
     "whatsappSettings": "Conexão WhatsApp",
+    "financeiro": "Financeiro",
     "customerService": "Atendimento ao Cliente"
   },
   "dashboard": {

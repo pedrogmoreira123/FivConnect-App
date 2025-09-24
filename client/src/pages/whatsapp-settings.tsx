@@ -8,6 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
+import { mapContextualError } from '@/lib/error-mapper';
 import { 
   MessageSquare, 
   QrCode, 
@@ -68,7 +69,7 @@ export default function WhatsAppSettingsPage() {
     onError: (error: any) => {
       toast({
         title: "Erro na Conexão",
-        description: error.message || "Falha ao conectar WhatsApp",
+        description: mapContextualError(error, 'whatsapp-connection'),
         variant: "destructive"
       });
     }
@@ -89,7 +90,7 @@ export default function WhatsAppSettingsPage() {
     onError: (error: any) => {
       toast({
         title: "Erro ao Desconectar",
-        description: error.message || "Falha ao desconectar WhatsApp",
+        description: mapContextualError(error, 'whatsapp-disconnection'),
         variant: "destructive"
       });
     }
@@ -160,10 +161,10 @@ export default function WhatsAppSettingsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Configurações do WhatsApp</h1>
-        <p className="text-muted-foreground">
-          Conecte seu WhatsApp Business para começar a receber e enviar mensagens
+      <div className="text-center space-y-2">
+        <h1 className="text-3xl font-bold text-foreground">Conexão WhatsApp</h1>
+        <p className="text-muted-foreground max-w-2xl mx-auto">
+          Conecte seu WhatsApp Business para começar a receber e enviar mensagens automaticamente
         </p>
       </div>
 
@@ -212,13 +213,18 @@ export default function WhatsAppSettingsPage() {
 
                 <div className="flex space-x-2">
                   {whatsappStatus?.status === 'disconnected' && (
-                    <Button onClick={handleConnect} disabled={connectMutation.isPending}>
+                    <Button 
+                      onClick={handleConnect} 
+                      disabled={connectMutation.isPending}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white"
+                      size="lg"
+                    >
                       {connectMutation.isPending ? (
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
                       ) : (
-                        <QrCode className="h-4 w-4 mr-2" />
+                        <QrCode className="h-5 w-5 mr-2" />
                       )}
-                      Conectar WhatsApp
+                      Gerar QR Code
                     </Button>
                   )}
 
