@@ -165,7 +165,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User management routes (protected)
-  app.get('/api/users', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  app.get('/api/users', requireAuth, requireRole(['admin', 'supervisor', 'superadmin']), async (req, res) => {
     try {
       const users = await storage.getAllUsers();
       // Remove passwords from response
@@ -1522,7 +1522,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== ADMIN PANEL ROUTES =====
   // Company management routes (admin and superadmin)
-  app.get('/api/admin/companies', requireRole(['admin', 'superadmin']), async (req, res) => {
+  app.get('/api/admin/companies', requireAuth, requireRole(['admin', 'superadmin']), async (req, res) => {
     try {
       const companies = await storage.getAllCompanies();
       res.json(companies);
@@ -1532,7 +1532,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/companies', requireRole(['superadmin']), async (req, res) => {
+  app.post('/api/admin/companies', requireAuth, requireRole(['superadmin']), async (req, res) => {
     try {
       const companyData = insertCompanySchema.parse(req.body);
       
@@ -1550,7 +1550,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/companies/:id', requireRole(['superadmin']), async (req, res) => {
+  app.put('/api/admin/companies/:id', requireAuth, requireRole(['superadmin']), async (req, res) => {
     try {
       const { id } = req.params;
       const updates = req.body; // Partial update
@@ -1563,7 +1563,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/admin/companies/:id', requireRole(['superadmin']), async (req, res) => {
+  app.delete('/api/admin/companies/:id', requireAuth, requireRole(['superadmin']), async (req, res) => {
     try {
       const { id } = req.params;
       const success = await storage.deleteCompany(id);
@@ -1580,7 +1580,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Company user management
-  app.get('/api/admin/companies/:id/users', requireRole(['superadmin']), async (req, res) => {
+  app.get('/api/admin/companies/:id/users', requireAuth, requireRole(['superadmin']), async (req, res) => {
     try {
       const { id } = req.params;
       const users = await storage.getUsersByCompany(id);
@@ -1591,7 +1591,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/companies/:id/users', requireRole(['superadmin']), async (req, res) => {
+  app.post('/api/admin/companies/:id/users', requireAuth, requireRole(['superadmin']), async (req, res) => {
     try {
       const { id: companyId } = req.params;
       const userData = insertUserSchema.parse(req.body);
@@ -1643,7 +1643,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===== PLANS MANAGEMENT ROUTES (SUPERADMIN ONLY) =====
-  app.get('/api/admin/plans', requireRole(['superadmin']), async (req, res) => {
+  app.get('/api/admin/plans', requireAuth, requireRole(['superadmin']), async (req, res) => {
     try {
       const plans = await storage.getAllPlans();
       res.json(plans);
@@ -1653,7 +1653,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/plans', requireRole(['superadmin']), async (req, res) => {
+  app.post('/api/admin/plans', requireAuth, requireRole(['superadmin']), async (req, res) => {
     try {
       const planData = insertPlanSchema.parse(req.body);
       const plan = await storage.createPlan(planData);
@@ -1664,7 +1664,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/admin/plans/:id', requireRole(['superadmin']), async (req, res) => {
+  app.put('/api/admin/plans/:id', requireAuth, requireRole(['superadmin']), async (req, res) => {
     try {
       const { id } = req.params;
       const updates = req.body;
@@ -1677,7 +1677,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete('/api/admin/plans/:id', requireRole(['superadmin']), async (req, res) => {
+  app.delete('/api/admin/plans/:id', requireAuth, requireRole(['superadmin']), async (req, res) => {
     try {
       const { id } = req.params;
       const success = await storage.deletePlan(id);

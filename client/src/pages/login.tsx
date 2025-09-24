@@ -56,6 +56,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md mx-4">
         <CardContent className="p-8">
           <div className="text-center mb-8">
+            <img src="/Fiv logo tela principal-Kittl.svg" alt="Fi.V App" className="h-10 w-auto mx-auto mb-3" />
             <h1 className="text-2xl font-bold text-foreground mb-2" data-testid="text-company-name">
               {settings.companyName}
             </h1>
