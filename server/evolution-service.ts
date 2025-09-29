@@ -38,7 +38,6 @@ export class EvolutionService {
     try {
       const response = await axios.post(`${this.apiUrl}/instance/create`, {
         instanceName,
-        token: `token_${instanceName}_${Date.now()}`,
         qrcode: true
       }, {
         headers: this.getHeaders()

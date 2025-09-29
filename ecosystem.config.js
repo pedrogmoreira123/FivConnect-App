@@ -28,7 +28,7 @@ module.exports = {
 
           // Evolution API Integration
           EVOLUTION_API_URL: "http://45.143.7.93:8080",
-          EVOLUTION_API_KEY: "evolution-api-key-2024-secure",
+          EVOLUTION_API_KEY: "b0ce23f3-d380-47e9-a33b-978ce2758f4c",
           MAIN_APP_URL: "https://app.fivconnect.net"
         }
       }

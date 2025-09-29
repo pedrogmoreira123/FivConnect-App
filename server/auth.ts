@@ -224,23 +224,26 @@ export async function validateSession(token: string): Promise<{ user: Omit<User,
   }
 
   // Remove password from response
-  const { password: _, ...userWithoutPassword } = user;
+  const { password: _, ...userFromDb } = user;
 
-  // CORREÇÃO: Preservar companyId do JWT no req.user
-  const userWithCompanyId = {
-    ...userWithoutPassword,
-    companyId: payload.companyId || userWithoutPassword.companyId
+  // Lógica Corrigida: Mescla os dados do banco com os dados do token,
+  // garantindo que as informações da sessão atual (payload) prevaleçam.
+  const finalUser = {
+    ...userFromDb,
+    id: payload.userId,
+    companyId: payload.companyId,
+    role: payload.role,
   };
 
   console.log('✅ [BACKEND] validateSession - Validação completa bem-sucedida para usuário:', user.id);
   console.log('🔍 [BACKEND] validateSession - CompanyId preservado do JWT:', payload.companyId);
   console.log('🔍 [BACKEND] validateSession - User final com companyId:', {
-    userId: userWithCompanyId.id,
-    role: userWithCompanyId.role,
-    companyId: userWithCompanyId.companyId
+    userId: finalUser.id,
+    role: finalUser.role,
+    companyId: finalUser.companyId
   });
   return {
-    user: userWithCompanyId,
+    user: finalUser,
     session
   };
 }
@@ -277,7 +280,6 @@ export async function requireAuth(req: any, res: any, next: any) {
     }
 
     // CORREÇÃO DEFINITIVA: Extrair companyId diretamente do JWT
-    const token = authHeader.substring(7);
     const jwtPayload = verifyToken(token);
     
     // Add user and session to request object
@@ -293,6 +295,8 @@ export async function requireAuth(req: any, res: any, next: any) {
       role: req.user.role,
       companyId: req.user.companyId
     });
+    
+    console.log('[Auth.ts] FINAL req.user ANTES de next():', req.user);
     
     next();
   } catch (error) {
