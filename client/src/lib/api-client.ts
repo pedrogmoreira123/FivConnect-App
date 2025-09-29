@@ -9,13 +9,21 @@ export async function authenticatedRequest(
 ): Promise<Response> {
   const token = localStorage.getItem('authToken');
   
+  // LOG DE DIAGNÓSTICO 1: Verificar token no localStorage
+  console.log('🔍 [FRONTEND] Enviando requisição:', { method, url, hasToken: !!token });
+  console.log('🔍 [FRONTEND] Token encontrado:', token ? `${token.substring(0, 20)}...` : 'NENHUM');
+  
   if (!token) {
+    console.log('❌ [FRONTEND] Nenhum token encontrado no localStorage');
     throw new Error('Authentication token not found');
   }
 
   const headers: Record<string, string> = {
     'Authorization': `Bearer ${token}`,
   };
+
+  // LOG DE DIAGNÓSTICO 2: Verificar cabeçalho de autorização
+  console.log('🔍 [FRONTEND] Cabeçalho de autorização configurado:', headers.Authorization);
 
   if (data) {
     headers['Content-Type'] = 'application/json';
@@ -28,11 +36,16 @@ export async function authenticatedRequest(
     credentials: 'include',
   });
 
+  // LOG DE DIAGNÓSTICO 3: Verificar resposta
+  console.log('🔍 [FRONTEND] Resposta recebida:', { status: response.status, statusText: response.statusText });
+
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    console.log('❌ [FRONTEND] Erro na resposta:', errorData);
     throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
   }
 
+  console.log('✅ [FRONTEND] Requisição bem-sucedida');
   return response;
 }
 

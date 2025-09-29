@@ -6,7 +6,7 @@ export class EvolutionService {
 
   constructor() {
     this.apiUrl = process.env.EVOLUTION_API_URL || 'http://45.143.7.93:8080';
-    this.apiKey = process.env.EVOLUTION_API_KEY || 'evolution-api-key-2024-secure';
+    this.apiKey = process.env.EVOLUTION_API_KEY || 'b0ce23f3-d380-47e9-a33b-978ce2758f4c';
     
     console.log('🔧 Evolution Service Configuration:');
     console.log('EVOLUTION_API_URL:', this.apiUrl);
@@ -36,11 +36,10 @@ export class EvolutionService {
   // Criar nova instância
   async createInstance(instanceName: string, companyId: string) {
     try {
-      const response = await axios.post(`${this.apiUrl}/instance/create/${instanceName}`, {
-        companyId,
-        qrcode: null,
-        number: null,
-        profilePictureUrl: null
+      const response = await axios.post(`${this.apiUrl}/instance/create`, {
+        instanceName,
+        token: `token_${instanceName}_${Date.now()}`,
+        qrcode: true
       }, {
         headers: this.getHeaders()
       });
@@ -106,10 +105,42 @@ export class EvolutionService {
     }
   }
 
+  // Obter QR Code da instância
+  async getQRCode(instanceName: string) {
+    try {
+      const response = await axios.get(`${this.apiUrl}/instance/connect/${instanceName}`, {
+        headers: this.getHeaders()
+      });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error getting QR code:', error);
+      throw new Error('Failed to get QR code');
+    }
+  }
+
+  // Configurar webhook para uma instância
+  async setWebhook(instanceName: string, webhookUrl: string) {
+    try {
+      const response = await axios.post(`${this.apiUrl}/webhook/set/${instanceName}`, {
+        webhook: {
+          url: webhookUrl,
+          enabled: true,
+          events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'QRCODE_UPDATED']
+        }
+      }, {
+        headers: this.getHeaders()
+      });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error setting webhook:', error);
+      throw new Error('Failed to set webhook');
+    }
+  }
+
   // Verificar se a Evolution API está funcionando
   async healthCheck() {
     try {
-      const response = await axios.get(`${this.apiUrl}/health`);
+      const response = await axios.get(`${this.apiUrl}/`);
       return response.data;
     } catch (error) {
       console.error('❌ Evolution API health check failed:', error);

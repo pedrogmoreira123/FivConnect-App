@@ -48,7 +48,7 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({ connection, isOpen, onClose }
     try {
       const response = await fetch(`/api/whatsapp/connections/${connection.companyId}/${connection.id}/qrcode`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }
       });
       
@@ -62,6 +62,34 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({ connection, isOpen, onClose }
       setIsLoading(false);
     }
   };
+
+  // Polling para verificar status da conexão
+  useEffect(() => {
+    if (!isOpen || !connection) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/whatsapp/connections/${connection.companyId}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        
+        if (response.ok) {
+          const connections = await response.json();
+          const currentConnection = connections.find((c: WhatsAppConnection) => c.id === connection.id);
+          
+          if (currentConnection && currentConnection.status === 'connected') {
+            onClose(); // Fechar modal quando conectar
+          }
+        }
+      } catch (error) {
+        console.error('Error checking connection status:', error);
+      }
+    }, 3000); // Verificar a cada 3 segundos
+
+    return () => clearInterval(interval);
+  }, [isOpen, connection, onClose]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -109,7 +137,7 @@ const WhatsAppSettings: React.FC = () => {
   const [selectedConnection, setSelectedConnection] = useState<WhatsAppConnection | null>(null);
   const [isQRModalOpen, setIsQRModalOpen] = useState(false);
 
-  const companyId = user?.companyId || user?.company?.id;
+  const companyId = (user as any)?.companyId || (user as any)?.company?.id;
 
   useEffect(() => {
     if (companyId) {
@@ -122,11 +150,16 @@ const WhatsAppSettings: React.FC = () => {
     
     setIsLoading(true);
     try {
+      const token = localStorage.getItem('authToken');
+      console.log('🔍 [FRONTEND] fetchConnections - Token:', token ? `${token.substring(0, 20)}...` : 'NENHUM');
+      
       const response = await fetch(`/api/whatsapp/connections/${companyId}`, {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         }
       });
+      
+      console.log('🔍 [FRONTEND] fetchConnections - Resposta:', { status: response.status, statusText: response.statusText });
       
       if (response.ok) {
         const data = await response.json();
@@ -151,28 +184,57 @@ const WhatsAppSettings: React.FC = () => {
   };
 
   const createConnection = async () => {
-    if (!newConnectionName.trim() || !companyId) return;
+    if (!newConnectionName.trim() || !companyId) {
+      console.error('❌ Missing required data:', { newConnectionName, companyId });
+      toast({
+        title: "Erro",
+        description: "Dados necessários não encontrados. Faça login novamente.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const token = localStorage.getItem('authToken');
+    console.log('🔍 [FRONTEND] createConnection - Token:', token ? `${token.substring(0, 20)}...` : 'NENHUM');
+    
+    if (!token) {
+      console.log('❌ [FRONTEND] createConnection - Nenhum token encontrado');
+      toast({
+        title: "Erro",
+        description: "Token de autenticação não encontrado. Faça login novamente.",
+        variant: "destructive"
+      });
+      return;
+    }
     
     setIsCreating(true);
     try {
+      console.log('🔍 [FRONTEND] createConnection - Enviando requisição POST para:', `/api/whatsapp/connections/${companyId}`);
       const response = await fetch(`/api/whatsapp/connections/${companyId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           connectionName: newConnectionName.trim()
         })
       });
       
+      console.log('🔍 [FRONTEND] createConnection - Resposta:', { status: response.status, statusText: response.statusText });
+      
       if (response.ok) {
         const newConnection = await response.json();
         setConnections(prev => [newConnection, ...prev]);
         setNewConnectionName('');
+        
+        // Mostrar QR Code imediatamente
+        setSelectedConnection(newConnection);
+        setIsQRModalOpen(true);
+        
         toast({
           title: "Sucesso",
-          description: "Conexão criada com sucesso"
+          description: "Conexão criada com sucesso. Escaneie o QR Code para conectar."
         });
       } else {
         const error = await response.json();
@@ -201,7 +263,7 @@ const WhatsAppSettings: React.FC = () => {
       const response = await fetch(`/api/whatsapp/connections/${companyId}/${connectionId}/connect`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }
       });
       
@@ -238,7 +300,7 @@ const WhatsAppSettings: React.FC = () => {
       const response = await fetch(`/api/whatsapp/connections/${companyId}/${connectionId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
         }
       });
       

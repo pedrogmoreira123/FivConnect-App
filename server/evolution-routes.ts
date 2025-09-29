@@ -8,14 +8,25 @@ export function setupEvolutionRoutes(app: Express): void {
   console.log('Evolution API integration enabled');
 
   // Listar conexões por empresa
-  app.get('/api/whatsapp/connections/:companyId', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  app.get('/api/whatsapp/connections/:companyId', requireAuth, requireRole(['superadmin', 'admin', 'supervisor', 'agent']), async (req, res) => {
     try {
       const { companyId } = req.params;
       
       // Verificar se o usuário tem acesso à empresa
-      if (req.user.role !== 'superadmin' && req.user.companyId !== companyId) {
+      const userCompanyId = req.user.company?.id || req.user.companyId;
+      console.log('🔍 [BACKEND] Verificação de companyId:', {
+        userRole: req.user.role,
+        userCompanyId,
+        requestedCompanyId: companyId,
+        isSuperadmin: req.user.role === 'superadmin'
+      });
+      
+      if (req.user.role !== 'superadmin' && userCompanyId !== companyId) {
+        console.log('❌ [BACKEND] Acesso negado - companyId não confere');
         return res.status(403).json({ message: 'Access denied to this company' });
       }
+      
+      console.log('✅ [BACKEND] Acesso permitido para companyId:', companyId);
 
       const connections = await storage.getWhatsAppConnectionsByCompany(companyId);
       res.json(connections);
@@ -26,19 +37,38 @@ export function setupEvolutionRoutes(app: Express): void {
   });
 
   // Criar nova conexão
-  app.post('/api/whatsapp/connections/:companyId', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  app.post('/api/whatsapp/connections/:companyId', requireAuth, requireRole(['superadmin', 'admin', 'supervisor', 'agent']), async (req, res) => {
     try {
       const { companyId } = req.params;
       const { connectionName } = req.body;
       
+      console.log('🔍 [BACKEND] createConnection - Dados recebidos:', { companyId, connectionName });
+      console.log('🔍 [BACKEND] createConnection - Usuário autenticado:', {
+        userId: req.user.id,
+        role: req.user.role,
+        userCompanyId: req.user.company?.id
+      });
+      
       if (!connectionName) {
+        console.log('❌ [BACKEND] createConnection - Nome da conexão não fornecido');
         return res.status(400).json({ message: 'Connection name is required' });
       }
 
       // Verificar se o usuário tem acesso à empresa
-      if (req.user.role !== 'superadmin' && req.user.companyId !== companyId) {
+      const userCompanyId = req.user.company?.id || req.user.companyId;
+      console.log('🔍 [BACKEND] Verificação de companyId:', {
+        userRole: req.user.role,
+        userCompanyId,
+        requestedCompanyId: companyId,
+        isSuperadmin: req.user.role === 'superadmin'
+      });
+      
+      if (req.user.role !== 'superadmin' && userCompanyId !== companyId) {
+        console.log('❌ [BACKEND] Acesso negado - companyId não confere');
         return res.status(403).json({ message: 'Access denied to this company' });
       }
+      
+      console.log('✅ [BACKEND] Acesso permitido para companyId:', companyId);
 
       // Criar identificador único: companyId + connectionName
       const instanceName = `${companyId}_${connectionName}`;
@@ -46,15 +76,22 @@ export function setupEvolutionRoutes(app: Express): void {
       // Criar instância na Evolution API
       const evolutionResponse = await evolutionService.createInstance(instanceName, companyId);
       
+      // Obter QR Code imediatamente após criação
+      const qrResponse = await evolutionService.getQRCode(instanceName);
+      
+      // Configurar webhook para receber mensagens
+      const webhookUrl = `${process.env.MAIN_APP_URL || 'https://app.fivconnect.net'}/api/whatsapp/webhook`;
+      await evolutionService.setWebhook(instanceName, webhookUrl);
+      
       // Salvar no banco de dados
       const connection = await storage.createWhatsAppConnection({
         companyId,
         connectionName,
         instanceName,
-        status: 'connecting',
-        qrcode: evolutionResponse.instance?.qrcode || null,
-        number: evolutionResponse.instance?.number || null,
-        profilePictureUrl: evolutionResponse.instance?.profilePictureUrl || null
+        status: 'qr_ready',
+        qrcode: qrResponse.base64 || null,
+        number: null,
+        profilePictureUrl: null
       });
 
       res.status(201).json(connection);
@@ -65,14 +102,25 @@ export function setupEvolutionRoutes(app: Express): void {
   });
 
   // Conectar instância
-  app.post('/api/whatsapp/connections/:companyId/:connectionId/connect', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  app.post('/api/whatsapp/connections/:companyId/:connectionId/connect', requireAuth, requireRole(['superadmin', 'admin', 'supervisor']), async (req, res) => {
     try {
       const { companyId, connectionId } = req.params;
       
       // Verificar se o usuário tem acesso à empresa
-      if (req.user.role !== 'superadmin' && req.user.companyId !== companyId) {
+      const userCompanyId = req.user.company?.id || req.user.companyId;
+      console.log('🔍 [BACKEND] Verificação de companyId:', {
+        userRole: req.user.role,
+        userCompanyId,
+        requestedCompanyId: companyId,
+        isSuperadmin: req.user.role === 'superadmin'
+      });
+      
+      if (req.user.role !== 'superadmin' && userCompanyId !== companyId) {
+        console.log('❌ [BACKEND] Acesso negado - companyId não confere');
         return res.status(403).json({ message: 'Access denied to this company' });
       }
+      
+      console.log('✅ [BACKEND] Acesso permitido para companyId:', companyId);
 
       const connection = await storage.getWhatsAppConnection(connectionId);
       if (!connection || connection.companyId !== companyId) {
@@ -97,14 +145,25 @@ export function setupEvolutionRoutes(app: Express): void {
   });
 
   // Desconectar instância
-  app.delete('/api/whatsapp/connections/:companyId/:connectionId', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  app.delete('/api/whatsapp/connections/:companyId/:connectionId', requireAuth, requireRole(['superadmin', 'admin', 'supervisor']), async (req, res) => {
     try {
       const { companyId, connectionId } = req.params;
       
       // Verificar se o usuário tem acesso à empresa
-      if (req.user.role !== 'superadmin' && req.user.companyId !== companyId) {
+      const userCompanyId = req.user.company?.id || req.user.companyId;
+      console.log('🔍 [BACKEND] Verificação de companyId:', {
+        userRole: req.user.role,
+        userCompanyId,
+        requestedCompanyId: companyId,
+        isSuperadmin: req.user.role === 'superadmin'
+      });
+      
+      if (req.user.role !== 'superadmin' && userCompanyId !== companyId) {
+        console.log('❌ [BACKEND] Acesso negado - companyId não confere');
         return res.status(403).json({ message: 'Access denied to this company' });
       }
+      
+      console.log('✅ [BACKEND] Acesso permitido para companyId:', companyId);
 
       const connection = await storage.getWhatsAppConnection(connectionId);
       if (!connection || connection.companyId !== companyId) {
@@ -129,27 +188,46 @@ export function setupEvolutionRoutes(app: Express): void {
   });
 
   // Obter QR Code
-  app.get('/api/whatsapp/connections/:companyId/:connectionId/qrcode', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
+  app.get('/api/whatsapp/connections/:companyId/:connectionId/qrcode', requireAuth, requireRole(['superadmin', 'admin', 'supervisor']), async (req, res) => {
     try {
       const { companyId, connectionId } = req.params;
       
       // Verificar se o usuário tem acesso à empresa
-      if (req.user.role !== 'superadmin' && req.user.companyId !== companyId) {
+      const userCompanyId = req.user.company?.id || req.user.companyId;
+      console.log('🔍 [BACKEND] Verificação de companyId:', {
+        userRole: req.user.role,
+        userCompanyId,
+        requestedCompanyId: companyId,
+        isSuperadmin: req.user.role === 'superadmin'
+      });
+      
+      if (req.user.role !== 'superadmin' && userCompanyId !== companyId) {
+        console.log('❌ [BACKEND] Acesso negado - companyId não confere');
         return res.status(403).json({ message: 'Access denied to this company' });
       }
+      
+      console.log('✅ [BACKEND] Acesso permitido para companyId:', companyId);
 
       const connection = await storage.getWhatsAppConnection(connectionId);
       if (!connection || connection.companyId !== companyId) {
         return res.status(404).json({ message: 'Connection not found' });
       }
 
-      // Obter estado da conexão da Evolution API
-      const evolutionResponse = await evolutionService.getConnectionState(connection.instanceName);
+      // Obter QR Code da Evolution API
+      const qrResponse = await evolutionService.getQRCode(connection.instanceName);
+      
+      // Atualizar status no banco se necessário
+      if (qrResponse.base64) {
+        await storage.updateWhatsAppConnection(connectionId, {
+          qrcode: qrResponse.base64,
+          updatedAt: new Date().toISOString()
+        });
+      }
       
       res.json({
-        qrcode: evolutionResponse.instance?.qrcode || connection.qrcode,
-        status: evolutionResponse.instance?.status || connection.status,
-        number: evolutionResponse.instance?.number || connection.number
+        qrcode: qrResponse.base64 || connection.qrcode,
+        status: connection.status,
+        number: connection.number
       });
     } catch (error) {
       console.error('Failed to get QR code:', error);
@@ -189,6 +267,69 @@ export function setupEvolutionRoutes(app: Express): void {
     }
   });
 
+  // Webhook para receber mensagens da Evolution API
+  app.post('/api/whatsapp/webhook', async (req, res) => {
+    try {
+      const webhookData = req.body;
+      console.log('📨 Webhook received:', JSON.stringify(webhookData, null, 2));
+
+      // Extrair dados da mensagem
+      const { instance, data } = webhookData;
+      
+      if (!instance || !data) {
+        return res.status(400).json({ message: 'Invalid webhook data' });
+      }
+
+      // Identificar a empresa pelo nome da instância
+      const instanceName = instance;
+      const companyId = instanceName.split('_')[0];
+      
+      if (!companyId) {
+        console.error('❌ Could not extract companyId from instance name:', instanceName);
+        return res.status(400).json({ message: 'Invalid instance name format' });
+      }
+
+      // Processar diferentes tipos de eventos
+      if (data.event === 'MESSAGES_UPSERT') {
+        const message = data.data;
+        
+        if (message.message) {
+          // Extrair dados da mensagem
+          const messageData = {
+            companyId,
+            instanceName,
+            from: message.key?.remoteJid,
+            messageId: message.key?.id,
+            messageType: message.messageType,
+            content: message.message.conversation || 
+                    message.message.imageMessage?.caption ||
+                    message.message.audioMessage ? '[Áudio]' : '[Mídia]',
+            timestamp: message.messageTimestamp,
+            isFromMe: message.key?.fromMe || false
+          };
+
+          console.log('💬 New message received:', messageData);
+
+          // Salvar mensagem no banco de dados
+          // TODO: Implementar salvamento no banco
+          
+          // Emitir evento WebSocket para o frontend
+          // TODO: Implementar WebSocket
+        }
+      } else if (data.event === 'QRCODE_UPDATED') {
+        console.log('🔄 QR Code updated for instance:', instanceName);
+        
+        // Atualizar status da conexão
+        // TODO: Implementar atualização de status
+      }
+
+      res.status(200).json({ message: 'Webhook processed successfully' });
+    } catch (error) {
+      console.error('❌ Webhook processing error:', error);
+      res.status(500).json({ message: 'Webhook processing failed' });
+    }
+  });
+
   // Health check da Evolution API
   app.get('/api/whatsapp/health', requireAuth, async (req, res) => {
     try {
@@ -199,4 +340,5 @@ export function setupEvolutionRoutes(app: Express): void {
       res.status(500).json({ message: 'Evolution API unavailable' });
     }
   });
+
 }

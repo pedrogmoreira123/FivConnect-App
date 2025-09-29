@@ -53,9 +53,17 @@ export function generateToken(user: User, userCompany: any, sessionId: string): 
  */
 export function verifyToken(token: string): AuthPayload | null {
   try {
+    console.log('🔍 [BACKEND] verifyToken - Verificando JWT com secret:', JWT_SECRET ? 'DEFINIDO' : 'NÃO DEFINIDO');
     const decoded = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    console.log('✅ [BACKEND] verifyToken - JWT verificado com sucesso:', {
+      userId: decoded.userId,
+      username: decoded.username,
+      role: decoded.role,
+      companyId: decoded.companyId
+    });
     return decoded;
   } catch (error) {
+    console.log('❌ [BACKEND] verifyToken - Erro na verificação JWT:', error.message);
     return null;
   }
 }
@@ -189,23 +197,50 @@ export async function logoutUser(token: string): Promise<boolean> {
  * Validate session and get user
  */
 export async function validateSession(token: string): Promise<{ user: Omit<User, 'password'>; session: any } | null> {
+  console.log('🔍 [BACKEND] validateSession - Iniciando validação do token:', token.substring(0, 20) + '...');
+  
   // First verify the JWT
   const payload = verifyToken(token);
-  if (!payload) return null;
+  console.log('🔍 [BACKEND] validateSession - JWT payload decodificado:', !!payload);
+  if (!payload) {
+    console.log('❌ [BACKEND] validateSession - JWT inválido ou expirado');
+    return null;
+  }
 
   // Check if session exists in database
   const session = await storage.getSession(token);
-  if (!session) return null;
+  console.log('🔍 [BACKEND] validateSession - Sessão encontrada no banco:', !!session);
+  if (!session) {
+    console.log('❌ [BACKEND] validateSession - Sessão não encontrada ou expirada');
+    return null;
+  }
 
   // Get user
   const user = await storage.getUser(payload.userId);
-  if (!user) return null;
+  console.log('🔍 [BACKEND] validateSession - Usuário encontrado:', !!user);
+  if (!user) {
+    console.log('❌ [BACKEND] validateSession - Usuário não encontrado');
+    return null;
+  }
 
   // Remove password from response
   const { password: _, ...userWithoutPassword } = user;
 
+  // CORREÇÃO: Preservar companyId do JWT no req.user
+  const userWithCompanyId = {
+    ...userWithoutPassword,
+    companyId: payload.companyId || userWithoutPassword.companyId
+  };
+
+  console.log('✅ [BACKEND] validateSession - Validação completa bem-sucedida para usuário:', user.id);
+  console.log('🔍 [BACKEND] validateSession - CompanyId preservado do JWT:', payload.companyId);
+  console.log('🔍 [BACKEND] validateSession - User final com companyId:', {
+    userId: userWithCompanyId.id,
+    role: userWithCompanyId.role,
+    companyId: userWithCompanyId.companyId
+  });
   return {
-    user: userWithoutPassword,
+    user: userWithCompanyId,
     session
   };
 }
@@ -216,22 +251,52 @@ export async function validateSession(token: string): Promise<{ user: Omit<User,
 export async function requireAuth(req: any, res: any, next: any) {
   try {
     const authHeader = req.headers.authorization;
+    
+    // LOG DE DIAGNÓSTICO 1: Verificar cabeçalho recebido
+    console.log('🔍 [BACKEND] requireAuth - Cabeçalho recebido:', authHeader);
+    console.log('🔍 [BACKEND] requireAuth - URL:', req.url, 'Method:', req.method);
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('❌ [BACKEND] requireAuth - Cabeçalho ausente ou mal formatado');
       return res.status(401).json({ error: 'Authorization token required' });
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    
+    // LOG DE DIAGNÓSTICO 2: Verificar token extraído
+    console.log('🔍 [BACKEND] requireAuth - Token extraído:', token.substring(0, 20) + '...');
+    
     const validation = await validateSession(token);
     
+    // LOG DE DIAGNÓSTICO 3: Verificar resultado da validação
+    console.log('🔍 [BACKEND] requireAuth - Validação bem-sucedida:', !!validation);
+    
     if (!validation) {
+      console.log('❌ [BACKEND] requireAuth - Token inválido ou expirado');
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
 
+    // CORREÇÃO DEFINITIVA: Extrair companyId diretamente do JWT
+    const token = authHeader.substring(7);
+    const jwtPayload = verifyToken(token);
+    
     // Add user and session to request object
-    req.user = validation.user;
+    req.user = {
+      ...validation.user,
+      companyId: jwtPayload?.companyId || validation.user.companyId || 'N/A'
+    };
     req.session = validation.session;
+    
+    // LOG DE DIAGNÓSTICO 4: Verificar usuário anexado
+    console.log('✅ [BACKEND] requireAuth - Usuário autenticado:', {
+      userId: req.user.id,
+      role: req.user.role,
+      companyId: req.user.companyId
+    });
+    
     next();
   } catch (error) {
+    console.log('❌ [BACKEND] requireAuth - Erro na autenticação:', error);
     return res.status(401).json({ error: 'Authentication failed' });
   }
 }
@@ -241,14 +306,26 @@ export async function requireAuth(req: any, res: any, next: any) {
  */
 export function requireRole(roles: string[]) {
   return (req: any, res: any, next: any) => {
+    console.log('🔍 [BACKEND] requireRole - Verificando permissões:', {
+      userRole: req.user?.role,
+      requiredRoles: roles,
+      hasAccess: roles.includes(req.user?.role)
+    });
+    
     if (!req.user) {
+      console.log('❌ [BACKEND] requireRole - Usuário não autenticado');
       return res.status(401).json({ error: 'Authentication required' });
     }
 
     if (!roles.includes(req.user.role)) {
+      console.log('❌ [BACKEND] requireRole - Permissão insuficiente:', {
+        userRole: req.user.role,
+        requiredRoles: roles
+      });
       return res.status(403).json({ error: 'Insufficient permissions' });
     }
 
+    console.log('✅ [BACKEND] requireRole - Permissão concedida para role:', req.user.role);
     next();
   };
 }
