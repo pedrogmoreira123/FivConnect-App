@@ -21,9 +21,12 @@ export const users = pgTable("users", {
 // WhatsApp Connections table (must be defined before conversations that reference it)
 export const whatsappConnections = pgTable("whatsapp_connections", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(), // Connection name/label
+  companyId: varchar("company_id").notNull(), // Company that owns this connection
+  connectionName: text("connection_name").notNull(), // User-friendly connection name
+  instanceName: text("instance_name").notNull(), // Evolution API instance name
   phone: text("phone"), // WhatsApp phone number when connected
-  qrCode: text("qr_code"), // Current QR code for connection
+  qrcode: text("qrcode"), // Current QR code for connection
+  profilePictureUrl: text("profile_picture_url"), // Profile picture URL
   status: text("status", { 
     enum: ["disconnected", "connecting", "connected", "qr_ready", "destroyed"] 
   }).notNull().default("disconnected"),

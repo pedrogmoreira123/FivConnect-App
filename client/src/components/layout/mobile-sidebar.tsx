@@ -15,30 +15,46 @@ import {
   Settings,
   LogOut,
   X,
-  AlertCircle
+  AlertCircle,
+  Bell,
+  Building2
 } from 'lucide-react';
 
-const getNavigationItems = (userRole: string) => [
-  {
-    sectionKey: 'navigation.main',
-    items: [
-      { nameKey: 'navigation.dashboard', href: '/', icon: BarChart3 },
-      { nameKey: 'navigation.conversations', href: '/conversations', icon: MessageCircle },
-      { nameKey: 'navigation.tickets', href: '/tickets', icon: AlertCircle },
-      { nameKey: 'navigation.clients', href: '/clients', icon: Users },
-      { nameKey: 'navigation.queues', href: '/queues', icon: List },
-    ]
-  },
-  {
-    sectionKey: 'navigation.management',
-    items: [
-      { nameKey: 'navigation.users', href: '/users', icon: Users },
-      { nameKey: 'navigation.chatBot', href: '/ai-agent', icon: Bot },
-      { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
-      { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
-    ]
+const getNavigationItems = (userRole: string) => {
+  const items = [
+    {
+      sectionKey: 'navigation.main',
+      items: [
+        { nameKey: 'navigation.dashboard', href: '/', icon: BarChart3 },
+        { nameKey: 'navigation.tickets', href: '/tickets', icon: AlertCircle },
+        { nameKey: 'navigation.conversations', href: '/conversations', icon: MessageCircle },
+        { nameKey: 'navigation.clients', href: '/clients', icon: Users },
+        { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
+      ]
+    },
+    {
+      sectionKey: 'navigation.management',
+      items: [
+        { nameKey: 'navigation.users', href: '/users', icon: Users, adminOnly: true },
+        { nameKey: 'navigation.chatBot', href: '/ai-agent', icon: Bot },
+        { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
+      ]
+    }
+  ];
+
+  // Only add administration section for superadmin users
+  if (userRole === 'superadmin') {
+    items.push({
+      sectionKey: 'navigation.administration',
+      items: [
+        { nameKey: 'navigation.announcements', href: '/announcements', icon: Bell, superadminOnly: true },
+        { nameKey: 'navigation.admin', href: '/admin', icon: Building2, superadminOnly: true },
+      ]
+    });
   }
-];
+
+  return items;
+};
 
 interface MobileSidebarProps {
   onClose: () => void;

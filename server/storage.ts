@@ -988,34 +988,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(payments).orderBy(desc(payments.createdAt));
   }
 
-  // WhatsApp Connection operations
-  async createWhatsAppConnection(connection: InsertWhatsappConnection): Promise<WhatsappConnection> {
-    const [createdConnection] = await db.insert(whatsappConnections).values(connection).returning();
-    return createdConnection;
-  }
-
-  async getWhatsAppConnection(id: string): Promise<WhatsappConnection | undefined> {
-    const [connection] = await db.select().from(whatsappConnections).where(eq(whatsappConnections.id, id));
-    return connection || undefined;
-  }
-
-  async getAllWhatsAppConnections(): Promise<WhatsappConnection[]> {
-    return await db.select().from(whatsappConnections).orderBy(desc(whatsappConnections.createdAt));
-  }
-
-  async updateWhatsAppConnection(id: string, updates: Partial<InsertWhatsappConnection>): Promise<WhatsappConnection> {
-    const [connection] = await db.update(whatsappConnections)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(whatsappConnections.id, id))
-      .returning();
-    if (!connection) throw new Error("WhatsApp connection not found");
-    return connection;
-  }
-
-  async deleteWhatsAppConnection(id: string): Promise<boolean> {
-    const result = await db.delete(whatsappConnections).where(eq(whatsappConnections.id, id));
-    return (result.rowCount ?? 0) > 0;
-  }
+  // WhatsApp Connection operations (moved to new implementation below)
 
   // Quick Reply operations
   async createQuickReply(reply: InsertQuickReply): Promise<QuickReply> {
@@ -1197,12 +1170,22 @@ export class DatabaseStorage implements IStorage {
 
 
   // WhatsApp-related methods
-  async getConversationByPhone(phone: string): Promise<Conversation | null> {
-    const [conversation] = await db.select()
-      .from(conversations)
-      .where(eq(conversations.contactPhone, phone))
-      .limit(1);
-    return conversation || null;
+  async getConversationByPhone(phone: string, tenantId?: string): Promise<Conversation | null> {
+    try {
+      let query = db.select()
+        .from(conversations)
+        .where(eq(conversations.contactPhone, phone));
+      
+      if (tenantId) {
+        query = query.where(eq(conversations.tenantId, tenantId));
+      }
+      
+      const [conversation] = await query.limit(1);
+      return conversation || null;
+    } catch (error) {
+      console.error('❌ Error getting conversation by phone:', error);
+      return null;
+    }
   }
 
 
@@ -1214,6 +1197,240 @@ export class DatabaseStorage implements IStorage {
     if (!conversation) throw new Error("Conversation not found");
     return conversation;
   }
+
+  // ===== WAHA SESSION METHODS =====
+
+  /**
+   * Salvar sessão WAHA no Redis
+   */
+  async saveWahaSession(sessionData: {
+    tenantId: string;
+    sessionId: string;
+    status: string;
+    qrCode?: string;
+    lastActivity: Date;
+  }): Promise<void> {
+    try {
+      const key = `waha:session:${sessionData.tenantId}`;
+      const data = {
+        ...sessionData,
+        lastActivity: sessionData.lastActivity.toISOString()
+      };
+      
+      // Salvar no Redis (se disponível) ou no banco de dados
+      if (this.redis) {
+        await this.redis.setex(key, 86400, JSON.stringify(data)); // 24 horas
+      }
+      
+      console.log(`✅ WAHA session saved: ${sessionData.tenantId}`);
+    } catch (error) {
+      console.error('❌ Error saving WAHA session:', error);
+    }
+  }
+
+  /**
+   * Obter sessão WAHA
+   */
+  async getWahaSession(tenantId: string): Promise<any | null> {
+    try {
+      const key = `waha:session:${tenantId}`;
+      
+      if (this.redis) {
+        const data = await this.redis.get(key);
+        if (data) {
+          const session = JSON.parse(data);
+          session.lastActivity = new Date(session.lastActivity);
+          return session;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error getting WAHA session:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Atualizar status da sessão WAHA
+   */
+  async updateWahaSessionStatus(tenantId: string, status: string, qrCode?: string | null): Promise<void> {
+    try {
+      const session = await this.getWahaSession(tenantId);
+      if (session) {
+        session.status = status;
+        if (qrCode !== undefined) {
+          session.qrCode = qrCode;
+        }
+        session.lastActivity = new Date();
+        
+        await this.saveWahaSession(session);
+        console.log(`✅ WAHA session status updated: ${tenantId} -> ${status}`);
+      }
+    } catch (error) {
+      console.error('❌ Error updating WAHA session status:', error);
+    }
+  }
+
+  /**
+   * Remover sessão WAHA
+   */
+  async removeWahaSession(tenantId: string): Promise<void> {
+    try {
+      const key = `waha:session:${tenantId}`;
+      
+      if (this.redis) {
+        await this.redis.del(key);
+      }
+      
+      console.log(`✅ WAHA session removed: ${tenantId}`);
+    } catch (error) {
+      console.error('❌ Error removing WAHA session:', error);
+    }
+  }
+
+  // ===== WHATSAPP CONNECTIONS METHODS =====
+
+  /**
+   * Criar nova conexão WhatsApp
+   */
+  async createWhatsAppConnection(data: {
+    companyId: string;
+    connectionName: string;
+    instanceName: string;
+    status?: string;
+    qrcode?: string | null;
+    number?: string | null;
+    profilePictureUrl?: string | null;
+  }): Promise<WhatsappConnection> {
+    try {
+      const [connection] = await db.insert(whatsappConnections)
+        .values({
+          ...data,
+          status: data.status || 'disconnected',
+          environment: this.getCurrentEnvironment()
+        })
+        .returning();
+      
+      console.log(`✅ WhatsApp connection created: ${connection.id}`);
+      return connection;
+    } catch (error) {
+      console.error('❌ Error creating WhatsApp connection:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obter conexão WhatsApp por ID
+   */
+  async getWhatsAppConnection(id: string): Promise<WhatsappConnection | null> {
+    try {
+      const [connection] = await db.select()
+        .from(whatsappConnections)
+        .where(and(
+          eq(whatsappConnections.id, id),
+          eq(whatsappConnections.environment, this.getCurrentEnvironment())
+        ))
+        .limit(1);
+      
+      return connection || null;
+    } catch (error) {
+      console.error('❌ Error getting WhatsApp connection:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Obter conexões WhatsApp por empresa
+   */
+  async getWhatsAppConnectionsByCompany(companyId: string): Promise<WhatsappConnection[]> {
+    try {
+      const connections = await db.select()
+        .from(whatsappConnections)
+        .where(and(
+          eq(whatsappConnections.companyId, companyId),
+          eq(whatsappConnections.environment, this.getCurrentEnvironment())
+        ))
+        .orderBy(desc(whatsappConnections.createdAt));
+      
+      return connections;
+    } catch (error) {
+      console.error('❌ Error getting WhatsApp connections by company:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Atualizar conexão WhatsApp
+   */
+  async updateWhatsAppConnection(id: string, updates: Partial<{
+    status: string;
+    qrcode: string | null;
+    number: string | null;
+    profilePictureUrl: string | null;
+    lastSeen: Date;
+    updatedAt: string;
+  }>): Promise<WhatsappConnection> {
+    try {
+      const [connection] = await db.update(whatsappConnections)
+        .set({ 
+          ...updates, 
+          updatedAt: new Date().toISOString() 
+        })
+        .where(and(
+          eq(whatsappConnections.id, id),
+          eq(whatsappConnections.environment, this.getCurrentEnvironment())
+        ))
+        .returning();
+      
+      if (!connection) {
+        throw new Error("WhatsApp connection not found");
+      }
+      
+      console.log(`✅ WhatsApp connection updated: ${id}`);
+      return connection;
+    } catch (error) {
+      console.error('❌ Error updating WhatsApp connection:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Deletar conexão WhatsApp
+   */
+  async deleteWhatsAppConnection(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(whatsappConnections)
+        .where(and(
+          eq(whatsappConnections.id, id),
+          eq(whatsappConnections.environment, this.getCurrentEnvironment())
+        ));
+      
+      console.log(`✅ WhatsApp connection deleted: ${id}`);
+      return true;
+    } catch (error) {
+      console.error('❌ Error deleting WhatsApp connection:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Obter todas as conexões WhatsApp
+   */
+  async getAllWhatsAppConnections(): Promise<WhatsappConnection[]> {
+    try {
+      const connections = await db.select()
+        .from(whatsappConnections)
+        .where(eq(whatsappConnections.environment, this.getCurrentEnvironment()))
+        .orderBy(desc(whatsappConnections.createdAt));
+      
+      return connections;
+    } catch (error) {
+      console.error('❌ Error getting all WhatsApp connections:', error);
+      return [];
+    }
+  }
+
 }
 
 export const storage = new DatabaseStorage();

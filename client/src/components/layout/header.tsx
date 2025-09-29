@@ -77,25 +77,7 @@ export default function Header({ title }: HeaderProps) {
     <>
       <header className="bg-card/95 backdrop-blur-sm border-b border-border/50 px-6 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center space-x-4">
-          {/* Logo */}
-          <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-lg bg-primary/10 shadow-sm">
-              <img
-                src={logoSrcState}
-                alt="Fi.V App"
-                className="h-6 w-auto"
-                onError={() => {
-                  if (logoSrcState !== '/logo.svg') {
-                    setLogoSrcState('/logo.svg');
-                  }
-                }}
-              />
-            </div>
-            <span className="font-bold text-lg text-foreground">Fi.V App</span>
-          </div>
-
           {/* Page Title */}
-          <div className="h-6 w-px bg-border"></div>
           <h1 className="text-xl font-semibold text-foreground" data-testid="text-page-title">
             {title}
           </h1>

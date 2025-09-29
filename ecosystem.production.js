@@ -1,4 +1,4 @@
-module.exports = {
+export default {
     apps: [
       {
         name: "fiv-backend",
@@ -20,11 +20,11 @@ module.exports = {
           // Redis (se você ativar)
           REDIS_URL: "redis://localhost:6379",
 
-          //WEBSOCKET
+          //WEBSOCKET - Atualizado para app.fivconnect.net
           WEBSOCKET_URL: "wss://app.fivconnect.net/v2",
-	        WSS_URL: "wss://app.fivconnect.net/v2",
+	  WSS_URL: "wss://app.fivconnect.net/v2",
           VITE_WEBSOCKET_URL: "wss://app.fivconnect.net/v2",
-	        NODE_TLS_REJECT_UNAUTHORIZED: 0,
+	  NODE_TLS_REJECT_UNAUTHORIZED: 0,
 
           // Evolution API Integration
           EVOLUTION_API_URL: "http://45.143.7.93:8080",

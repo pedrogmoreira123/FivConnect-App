@@ -1,3 +1,4 @@
+console.log("--- DEBUG PM2 ENV VARS ---", { websocket: process.env.WEBSOCKET_URL, wss: process.env.WSS_URL, vite: process.env.VITE_WEBSOCKET_URL });
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
@@ -37,15 +38,8 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // 🚫 Temporarily disabled WhatsApp service
-    console.log("⚠️ WhatsApp service disabled temporarily");
-  // try {
-  //   const { whatsappService } = await import('./whatsapp-service');
-  //   await whatsappService.initialize();
-  // } catch (error) {
-  //   console.warn('⚠️  WhatsApp service initialization failed:', error);
-  //   console.log('💡 WhatsApp features will be unavailable until properly configured');
-  // }
+  // 🚀 System ready for Evolution API integration
+  console.log("✅ System initialized and ready for Evolution API integration");
 
   const server = await registerRoutes(app);
 

@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 import { hash } from 'bcryptjs';
 import { db } from '../server/db.js';
 import { companies, users, userCompanies } from '../shared/schema.js';

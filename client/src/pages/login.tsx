@@ -56,13 +56,9 @@ export default function LoginPage() {
       <Card className="w-full max-w-md shadow-xl border-0 bg-card/95 backdrop-blur-sm">
         <CardContent className="p-8">
           <div className="text-center mb-8">
-            <div className="p-4 rounded-2xl bg-primary/10 shadow-sm mb-4 inline-block">
-              <img src="/logo.svg" alt="Fi.V App" className="h-8 w-auto" />
+            <div className="p-6 rounded-2xl bg-primary/10 shadow-sm mb-6 inline-block">
+              <img src="/logo.svg" alt="Fi.V App" className="h-16 w-auto" />
             </div>
-            <h1 className="text-2xl font-bold text-foreground mb-2" data-testid="text-company-name">
-              {settings.companyName}
-            </h1>
-            <p className="text-muted-foreground">{t('auth.loginDescription')}</p>
           </div>
           
           <form onSubmit={handleSubmit} className="space-y-6">

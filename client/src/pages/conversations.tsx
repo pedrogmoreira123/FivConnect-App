@@ -50,6 +50,7 @@ export default function ConversationsPage() {
   const [activeTab, setActiveTab] = useState('active');
   const [newMessage, setNewMessage] = useState('');
   const [showNewConversation, setShowNewConversation] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
 
   // Filter conversations based on search and tab

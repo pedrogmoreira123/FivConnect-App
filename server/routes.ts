@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import "./types"; // Import type extensions
 import { storage } from "./storage";
-import { setupWhatsAppRoutes } from "./whatsapp.routes";
+import { setupEvolutionRoutes } from "./evolution-routes";
 import { 
   insertUserSchema,
   insertClientSchema,
@@ -1290,125 +1290,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // WhatsApp Connection routes (protected)
-  app.get('/api/whatsapp/connections', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
-    try {
-      const connections = await storage.getAllWhatsAppConnections();
-      res.json(connections);
-    } catch (error) {
-      console.error('Failed to get WhatsApp connections:', error);
-      res.status(500).json({ message: "Failed to get WhatsApp connections" });
-    }
-  });
-
-  app.post('/api/whatsapp/connections', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
-    try {
-      const { name, isDefault } = req.body;
-      
-      if (!name) {
-        return res.status(400).json({ message: "Connection name is required" });
-      }
-
-      // Create connection in database
-      const connection = await storage.createWhatsAppConnection({
-        name,
-        isDefault: isDefault || false,
-        status: 'connecting'
-      });
-
-      // Initialize WhatsApp session
-      const { whatsappService } = await import('./whatsapp-service');
-      await whatsappService.createConnection(name, isDefault || false);
-
-      res.status(201).json(connection);
-    } catch (error) {
-      console.error('Failed to create WhatsApp connection:', error);
-      res.status(500).json({ message: "Failed to create WhatsApp connection" });
-    }
-  });
-
-  app.get('/api/whatsapp/connections/:id/qr', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      const { whatsappService } = await import('./whatsapp-service');
-      const connectionInfo = whatsappService.getConnectionInfo(id);
-      
-      if (!connectionInfo) {
-        return res.status(404).json({ message: "WhatsApp connection not found" });
-      }
-
-      res.json({
-        status: connectionInfo.status,
-        qrCode: connectionInfo.qrCode
-      });
-    } catch (error) {
-      console.error('Failed to get QR code:', error);
-      res.status(500).json({ message: "Failed to get QR code" });
-    }
-  });
-
-  app.post('/api/whatsapp/connections/:id/disconnect', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      const { whatsappService } = await import('./whatsapp-service');
-      await whatsappService.disconnectConnection(id);
-
-      res.json({ message: "WhatsApp connection disconnected successfully" });
-    } catch (error) {
-      console.error('Failed to disconnect WhatsApp connection:', error);
-      res.status(500).json({ message: "Failed to disconnect WhatsApp connection" });
-    }
-  });
-
-  app.delete('/api/whatsapp/connections/:id', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      // Disconnect first
-      try {
-        const { whatsappService } = await import('./whatsapp-service');
-        await whatsappService.disconnectConnection(id);
-      } catch (error) {
-        console.warn('Failed to disconnect WhatsApp connection:', error);
-      }
-
-      // Delete from database
-      const success = await storage.deleteWhatsAppConnection(id);
-      
-      if (success) {
-        res.json({ message: "WhatsApp connection deleted successfully" });
-      } else {
-        res.status(404).json({ message: "WhatsApp connection not found" });
-      }
-    } catch (error) {
-      console.error('Failed to delete WhatsApp connection:', error);
-      res.status(500).json({ message: "Failed to delete WhatsApp connection" });
-    }
-  });
-
-  app.post('/api/whatsapp/send-message', requireAuth, async (req, res) => {
-    try {
-      const { connectionId, to, message } = req.body;
-      
-      if (!connectionId || !to || !message) {
-        return res.status(400).json({ message: "Connection ID, phone number, and message are required" });
-      }
-
-      const { whatsappService } = await import('./whatsapp-service');
-      const success = await whatsappService.sendMessage(connectionId, to, message);
-      
-      if (success) {
-        res.json({ message: "Message sent successfully" });
-      } else {
-        res.status(400).json({ message: "Failed to send message" });
-      }
-    } catch (error) {
-      console.error('Failed to send WhatsApp message:', error);
-      res.status(500).json({ message: "Failed to send WhatsApp message" });
-    }
-  });
+  // Evolution API routes will be implemented here in the future
 
   // Quick Replies routes (protected)
   app.get('/api/quick-replies', requireAuth, async (req, res) => {
@@ -1797,8 +1679,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Setup WhatsApp routes
-  setupWhatsAppRoutes(app);
+  // Setup Evolution API routes
+  setupEvolutionRoutes(app);
 
   const httpServer = createServer(app);
   return httpServer;

@@ -20,7 +20,7 @@ Adicione as seguintes variáveis ao seu arquivo `.env`:
 
 ```env
 # WhatsApp Connection Service
-CONNECTION_SERVICE_URL=http://localhost:3001
+CONNECTION_SERVICE_URL=http://45.143.7.93:3001
 CONNECTION_SERVICE_API_KEY=your-connection-service-api-key
 ```
 
