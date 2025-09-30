@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
+import apiClient from '@/lib/api-client';
+import io from 'socket.io-client';
 
 interface WhatsAppConnection {
   id: string;
@@ -46,18 +48,25 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({ connection, isOpen, onClose }
     
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/whatsapp/connections/${connection.companyId}/${connection.id}/qrcode`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
-        }
-      });
+      console.log('🔍 [FRONTEND] fetchQRCode - Buscando QR Code para:', connection.id);
+      const response = await apiClient.get(`/api/whatsapp/connections/${connection.companyId}/${connection.id}/qrcode`);
+      console.log('🔍 [FRONTEND] fetchQRCode - Resposta:', response.data);
       
-      if (response.ok) {
-        const data = await response.json();
-        setQrCode(data.qrcode);
+      if (response.data.qrcode) {
+        // Se o QR Code já tem o prefixo data:image, usar diretamente
+        if (response.data.qrcode.startsWith('data:image')) {
+          setQrCode(response.data.qrcode);
+        } else {
+          // Se é base64 puro, adicionar o prefixo
+          setQrCode(`data:image/png;base64,${response.data.qrcode}`);
+        }
+      } else {
+        console.log('⚠️ [FRONTEND] fetchQRCode - QR Code não disponível ainda');
+        setQrCode(null);
       }
     } catch (error) {
-      console.error('Error fetching QR code:', error);
+      console.error('❌ [FRONTEND] fetchQRCode - Erro:', error);
+      setQrCode(null);
     } finally {
       setIsLoading(false);
     }
@@ -69,19 +78,12 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({ connection, isOpen, onClose }
 
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`/api/whatsapp/connections/${connection.companyId}`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
+        const response = await apiClient.get(`/api/whatsapp/connections/${connection.companyId}`);
+        const connections = response.data;
+        const currentConnection = connections.find((c: WhatsAppConnection) => c.id === connection.id);
         
-        if (response.ok) {
-          const connections = await response.json();
-          const currentConnection = connections.find((c: WhatsAppConnection) => c.id === connection.id);
-          
-          if (currentConnection && currentConnection.status === 'connected') {
-            onClose(); // Fechar modal quando conectar
-          }
+        if (currentConnection && currentConnection.status === 'connected') {
+          onClose(); // Fechar modal quando conectar
         }
       } catch (error) {
         console.error('Error checking connection status:', error);
@@ -143,6 +145,28 @@ const WhatsAppSettings: React.FC = () => {
     if (companyId) {
       fetchConnections();
     }
+
+    // Conectar ao WebSocket
+    const socket = io(window.location.origin); // Conecta ao mesmo host/porta do servidor
+
+    socket.on('connect', () => {
+      console.log('✅ Conectado ao servidor WebSocket!');
+    });
+
+    socket.on('connectionUpdate', (data) => {
+      console.log('🔄 Atualização de status recebida:', data);
+      if (data.companyId === companyId) {
+        setConnections(prev => 
+          prev.map(conn => 
+            conn.instanceName === data.instanceName ? { ...conn, status: data.status } : conn
+          )
+        );
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, [companyId]);
 
   const fetchConnections = async () => {
@@ -150,27 +174,8 @@ const WhatsAppSettings: React.FC = () => {
     
     setIsLoading(true);
     try {
-      const token = localStorage.getItem('authToken');
-      console.log('🔍 [FRONTEND] fetchConnections - Token:', token ? `${token.substring(0, 20)}...` : 'NENHUM');
-      
-      const response = await fetch(`/api/whatsapp/connections/${companyId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      console.log('🔍 [FRONTEND] fetchConnections - Resposta:', { status: response.status, statusText: response.statusText });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setConnections(data);
-      } else {
-        toast({
-          title: "Erro",
-          description: "Falha ao carregar conexões WhatsApp",
-          variant: "destructive"
-        });
-      }
+      const response = await apiClient.get(`/api/whatsapp/connections/${companyId}`);
+      setConnections(response.data);
     } catch (error) {
       console.error('Error fetching connections:', error);
       toast({
@@ -209,46 +214,27 @@ const WhatsAppSettings: React.FC = () => {
     
     setIsCreating(true);
     try {
-      console.log('🔍 [FRONTEND] createConnection - Enviando requisição POST para:', `/api/whatsapp/connections/${companyId}`);
-      const response = await fetch(`/api/whatsapp/connections/${companyId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          connectionName: newConnectionName.trim()
-        })
+      const response = await apiClient.post(`/api/whatsapp/connections/${companyId}`, {
+        connectionName: newConnectionName.trim()
       });
       
-      console.log('🔍 [FRONTEND] createConnection - Resposta:', { status: response.status, statusText: response.statusText });
+      const newConnection = response.data;
+      setConnections(prev => [newConnection, ...prev]);
+      setNewConnectionName('');
       
-      if (response.ok) {
-        const newConnection = await response.json();
-        setConnections(prev => [newConnection, ...prev]);
-        setNewConnectionName('');
-        
-        // Mostrar QR Code imediatamente
-        setSelectedConnection(newConnection);
-        setIsQRModalOpen(true);
-        
-        toast({
-          title: "Sucesso",
-          description: "Conexão criada com sucesso. Escaneie o QR Code para conectar."
-        });
-      } else {
-        const error = await response.json();
-        toast({
-          title: "Erro",
-          description: error.message || "Falha ao criar conexão",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
+      // Mostrar QR Code imediatamente
+      setSelectedConnection(newConnection);
+      setIsQRModalOpen(true);
+      
+      toast({
+        title: "Sucesso",
+        description: "Conexão criada com sucesso. Escaneie o QR Code para conectar."
+      });
+    } catch (error: any) {
       console.error('Error creating connection:', error);
       toast({
         title: "Erro",
-        description: "Erro ao criar conexão",
+        description: error.response?.data?.message || "Erro ao criar conexão",
         variant: "destructive"
       });
     } finally {

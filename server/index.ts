@@ -1,5 +1,6 @@
 console.log("--- DEBUG PM2 ENV VARS ---", { websocket: process.env.WEBSOCKET_URL, wss: process.env.WSS_URL, vite: process.env.VITE_WEBSOCKET_URL });
 import express, { type Request, Response, NextFunction } from "express";
+import { Server } from "socket.io";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 

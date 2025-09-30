@@ -24,8 +24,9 @@ export const whatsappConnections = pgTable("whatsapp_connections", {
   companyId: varchar("company_id").notNull(), // Company that owns this connection
   connectionName: text("connection_name").notNull(), // User-friendly connection name
   instanceName: text("instance_name").notNull(), // Evolution API instance name
+  name: text("name").notNull(), // User-friendly connection name (for display)
   phone: text("phone"), // WhatsApp phone number when connected
-  qrcode: text("qrcode"), // Current QR code for connection
+  qrcode: text("qr_code"), // Current QR code for connection
   profilePictureUrl: text("profile_picture_url"), // Profile picture URL
   status: text("status", { 
     enum: ["disconnected", "connecting", "connected", "qr_ready", "destroyed"] 

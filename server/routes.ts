@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { Server as SocketIOServer } from "socket.io";
 import "./types"; // Import type extensions
 import { storage } from "./storage";
 import { setupEvolutionRoutes } from "./evolution-routes";
@@ -1683,5 +1684,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupEvolutionRoutes(app);
 
   const httpServer = createServer(app);
+  
+  // Configuração do Socket.io
+  const io = new SocketIOServer(httpServer, {
+    cors: {
+      origin: '*', // Em produção, restrinja para o seu domínio
+      methods: ['GET', 'POST'],
+    },
+  });
+
+  app.set('io', io); // Disponibiliza o `io` para as rotas
+
+  io.on('connection', (socket) => {
+    console.log(`[Socket.io] Novo cliente conectado: ${socket.id}`);
+    socket.on('disconnect', () => {
+      console.log(`[Socket.io] Cliente desconectado: ${socket.id}`);
+    });
+  });
+
   return httpServer;
 }

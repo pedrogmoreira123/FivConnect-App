@@ -1304,10 +1304,23 @@ export class DatabaseStorage implements IStorage {
     profilePictureUrl?: string | null;
   }): Promise<WhatsappConnection> {
     try {
+      console.log('🔍 [STORAGE] Dados recebidos para createWhatsAppConnection:', {
+        companyId: data.companyId,
+        connectionName: data.connectionName,
+        instanceName: data.instanceName,
+        status: data.status
+      });
+
       const [connection] = await db.insert(whatsappConnections)
         .values({
-          ...data,
+          companyId: data.companyId,
+          connectionName: data.connectionName,
+          instanceName: data.instanceName,
+          name: data.connectionName, // Mapear connectionName para name
           status: data.status || 'disconnected',
+          qrcode: data.qrcode,
+          number: data.number,
+          profilePictureUrl: data.profilePictureUrl,
           environment: this.getCurrentEnvironment()
         })
         .returning();
@@ -1357,6 +1370,26 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error('❌ Error getting WhatsApp connections by company:', error);
       return [];
+    }
+  }
+
+  /**
+   * Obter conexão WhatsApp por instanceName
+   */
+  async getWhatsAppConnectionByInstanceName(instanceName: string): Promise<WhatsappConnection | null> {
+    try {
+      const [connection] = await db.select()
+        .from(whatsappConnections)
+        .where(and(
+          eq(whatsappConnections.instanceName, instanceName),
+          eq(whatsappConnections.environment, this.getCurrentEnvironment())
+        ))
+        .limit(1);
+      
+      return connection || null;
+    } catch (error) {
+      console.error('❌ Error getting WhatsApp connection by instance name:', error);
+      return null;
     }
   }
 
@@ -1428,6 +1461,41 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error('❌ Error getting all WhatsApp connections:', error);
       return [];
+    }
+  }
+
+  /**
+   * Atualizar conexão WhatsApp por instanceName
+   */
+  async updateWhatsAppConnectionByInstanceName(instanceName: string, updates: Partial<{
+    status: string;
+    qrcode: string | null;
+    number: string | null;
+    profilePictureUrl: string | null;
+    updatedAt: string;
+  }>): Promise<WhatsappConnection | undefined> {
+    try {
+      const [connection] = await db.update(whatsappConnections)
+        .set({ 
+          ...updates, 
+          updatedAt: new Date().toISOString() 
+        })
+        .where(and(
+          eq(whatsappConnections.instanceName, instanceName),
+          eq(whatsappConnections.environment, this.getCurrentEnvironment())
+        ))
+        .returning();
+      
+      if (!connection) {
+        console.error('❌ WhatsApp connection not found for instanceName:', instanceName);
+        return undefined;
+      }
+      
+      console.log('✅ WhatsApp connection updated successfully:', connection.id);
+      return connection;
+    } catch (error) {
+      console.error('❌ Error updating WhatsApp connection by instanceName:', error);
+      return undefined;
     }
   }
 

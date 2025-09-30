@@ -69,19 +69,16 @@ export function setupEvolutionRoutes(app: Express): void {
       }
       
       console.log('✅ [BACKEND] Acesso permitido para companyId:', companyId);
+      console.log('🔍 [BACKEND] Dados para criação:', { companyId, connectionName });
 
-      // Criar identificador único: companyId + connectionName
-      const instanceName = `${companyId}_${connectionName}`;
+      // Criar instância na Evolution API (o instanceName é gerado internamente com timestamp)
+      const evolutionResponse = await evolutionService.createInstance(connectionName, companyId);
       
-      // Criar instância na Evolution API
-      const evolutionResponse = await evolutionService.createInstance(instanceName, companyId);
+      // O instanceName é retornado pela Evolution API - vamos usar o mesmo que foi criado
+      const instanceName = evolutionResponse.instanceName || `${companyId}_${connectionName}_${Date.now()}`;
       
       // Obter QR Code imediatamente após criação
-      const qrResponse = await evolutionService.getQRCode(instanceName);
-      
-      // Configurar webhook para receber mensagens
-      const webhookUrl = `${process.env.MAIN_APP_URL || 'https://app.fivconnect.net'}/api/whatsapp/webhook`;
-      await evolutionService.setWebhook(instanceName, webhookUrl);
+      const qrCodeBase64 = await evolutionService.getQRCode(instanceName);
       
       // Salvar no banco de dados
       const connection = await storage.createWhatsAppConnection({
@@ -89,7 +86,7 @@ export function setupEvolutionRoutes(app: Express): void {
         connectionName,
         instanceName,
         status: 'qr_ready',
-        qrcode: qrResponse.base64 || null,
+        qrcode: qrCodeBase64 || null,
         number: null,
         profilePictureUrl: null
       });
@@ -214,18 +211,24 @@ export function setupEvolutionRoutes(app: Express): void {
       }
 
       // Obter QR Code da Evolution API
-      const qrResponse = await evolutionService.getQRCode(connection.instanceName);
+      const qrCodeBase64 = await evolutionService.getQRCode(connection.instanceName);
       
       // Atualizar status no banco se necessário
-      if (qrResponse.base64) {
+      if (qrCodeBase64) {
         await storage.updateWhatsAppConnection(connectionId, {
-          qrcode: qrResponse.base64,
+          qrcode: qrCodeBase64,
           updatedAt: new Date().toISOString()
         });
       }
       
+      console.log('🔍 [BACKEND] QR Code response:', {
+        qrCodeBase64: qrCodeBase64 ? `${qrCodeBase64.substring(0, 50)}...` : null,
+        connectionQrcode: connection.qrcode ? `${connection.qrcode.substring(0, 50)}...` : null,
+        status: connection.status
+      });
+      
       res.json({
-        qrcode: qrResponse.base64 || connection.qrcode,
+        qrcode: qrCodeBase64 || connection.qrcode,
         status: connection.status,
         number: connection.number
       });
@@ -316,11 +319,21 @@ export function setupEvolutionRoutes(app: Express): void {
           // Emitir evento WebSocket para o frontend
           // TODO: Implementar WebSocket
         }
-      } else if (data.event === 'QRCODE_UPDATED') {
+      } else if (data.event === 'qrcode.updated') {
         console.log('🔄 QR Code updated for instance:', instanceName);
         
-        // Atualizar status da conexão
-        // TODO: Implementar atualização de status
+        // Atualizar QR code no banco de dados
+        const connection = await storage.getWhatsAppConnectionByInstanceName(instanceName);
+        if (connection && data.qrcode?.base64) {
+          await storage.updateWhatsAppConnection(connection.id, {
+            qrcode: data.qrcode.base64,
+            status: 'qr_ready',
+            updatedAt: new Date().toISOString()
+          });
+          console.log('✅ QR Code atualizado no banco de dados para instância:', instanceName);
+        } else {
+          console.log('❌ Conexão não encontrada ou QR Code inválido para instância:', instanceName);
+        }
       }
 
       res.status(200).json({ message: 'Webhook processed successfully' });
@@ -328,6 +341,37 @@ export function setupEvolutionRoutes(app: Express): void {
       console.error('❌ Webhook processing error:', error);
       res.status(500).json({ message: 'Webhook processing failed' });
     }
+  });
+
+  // ENDPOINT DO WEBHOOK - ROTA PÚBLICA PARA A EVOLUTION API
+  app.post('/api/whatsapp/webhook', async (req, res) => {
+    const event = req.body;
+    console.log(`[WEBHOOK] Evento recebido: ${event.event} para a instância ${event.instance}`);
+
+    const io = req.app.get('io');
+    const instanceName = event.instance;
+
+    if (event.event === 'connection.update' && instanceName) {
+      const newState = event.data.state.toUpperCase(); // Ex: 'CONNECTED', 'CLOSE'
+      const [companyId] = instanceName.split('_');
+
+      try {
+        await storage.updateWhatsAppConnectionByInstanceName(instanceName, {
+          status: newState,
+          updatedAt: new Date().toISOString()
+        });
+
+        console.log(`[WEBHOOK] Status da instância ${instanceName} atualizado para ${newState}`);
+
+        // Notifica o frontend via WebSocket
+        io.emit('connectionUpdate', { instanceName, status: newState, companyId });
+
+      } catch (error) {
+        console.error(`[WEBHOOK] Erro ao atualizar status para ${instanceName}:`, error);
+      }
+    }
+
+    res.sendStatus(200);
   });
 
   // Health check da Evolution API
