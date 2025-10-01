@@ -1408,7 +1408,7 @@ export class DatabaseStorage implements IStorage {
       const [connection] = await db.update(whatsappConnections)
         .set({ 
           ...updates, 
-          updatedAt: new Date().toISOString() 
+          updatedAt: new Date() 
         })
         .where(and(
           eq(whatsappConnections.id, id),
@@ -1447,6 +1447,40 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async getWhatsAppConnectionById(id: string): Promise<any> {
+    try {
+      const result = await db.select()
+        .from(whatsappConnections)
+        .where(and(
+          eq(whatsappConnections.id, id),
+          eq(whatsappConnections.environment, this.getCurrentEnvironment())
+        ))
+        .limit(1);
+      
+      return result[0] || null;
+    } catch (error) {
+      console.error('❌ Error getting WhatsApp connection by ID:', error);
+      return null;
+    }
+  }
+
+  async deleteAllWhatsAppConnections(companyId: string): Promise<WhatsappConnection[]> {
+    try {
+      const deletedConnections = await db.delete(whatsappConnections)
+        .where(and(
+          eq(whatsappConnections.companyId, companyId),
+          eq(whatsappConnections.environment, this.getCurrentEnvironment())
+        ))
+        .returning();
+      
+      console.log(`✅ Deleted ${deletedConnections.length} WhatsApp connections for company: ${companyId}`);
+      return deletedConnections;
+    } catch (error) {
+      console.error('❌ Error deleting all WhatsApp connections:', error);
+      throw error;
+    }
+  }
+
   /**
    * Obter todas as conexões WhatsApp
    */
@@ -1478,7 +1512,7 @@ export class DatabaseStorage implements IStorage {
       const [connection] = await db.update(whatsappConnections)
         .set({ 
           ...updates, 
-          updatedAt: new Date().toISOString() 
+          updatedAt: new Date() 
         })
         .where(and(
           eq(whatsappConnections.instanceName, instanceName),

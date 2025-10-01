@@ -1,12 +1,43 @@
 console.log("--- DEBUG PM2 ENV VARS ---", { websocket: process.env.WEBSOCKET_URL, wss: process.env.WSS_URL, vite: process.env.VITE_WEBSOCKET_URL });
 import express, { type Request, Response, NextFunction } from "express";
+import http from 'http';
 import { Server } from "socket.io";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+const server = http.createServer(app);
+
+// Configuração do Socket.io
+const io = new Server(server, {
+  cors: {
+    origin: ['https://app.fivconnect.net', 'http://localhost:3000', 'http://localhost:5173'],
+    methods: ['GET', 'POST'],
+    credentials: true
+  },
+  transports: ['websocket', 'polling']
+});
+
+app.set('io', io); // Disponibiliza o `io` para as rotas
+
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ extended: false, limit: '200mb' }));
+
+// Servir arquivos de upload
+app.use('/uploads', express.static(path.join(__dirname, '..', 'public', 'uploads')));
+
+// Middleware para aumentar timeout e tamanho do body
+app.use((req, res, next) => {
+  req.setTimeout(300000); // 5 minutos
+  res.setTimeout(300000); // 5 minutos
+  next();
+});
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -42,7 +73,7 @@ app.use((req, res, next) => {
   // 🚀 System ready for Evolution API integration
   console.log("✅ System initialized and ready for Evolution API integration");
 
-  const server = await registerRoutes(app);
+  await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -60,6 +91,14 @@ app.use((req, res, next) => {
   } else {
     serveStatic(app);
   }
+
+  // Socket.io event handlers
+  io.on('connection', (socket) => {
+    console.log(`[Socket.io] Novo cliente conectado: ${socket.id}`);
+    socket.on('disconnect', () => {
+      console.log(`[Socket.io] Cliente desconectado: ${socket.id}`);
+    });
+  });
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.

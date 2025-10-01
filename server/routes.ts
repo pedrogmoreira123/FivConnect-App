@@ -1680,9 +1680,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Setup Evolution API routes
-  setupEvolutionRoutes(app);
-
   const httpServer = createServer(app);
   
   // Configuração do Socket.io
@@ -1695,12 +1692,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.set('io', io); // Disponibiliza o `io` para as rotas
 
-  io.on('connection', (socket) => {
-    console.log(`[Socket.io] Novo cliente conectado: ${socket.id}`);
-    socket.on('disconnect', () => {
-      console.log(`[Socket.io] Cliente desconectado: ${socket.id}`);
-    });
-  });
+  // Setup Evolution API routes (após criar o io)
+  setupEvolutionRoutes(app, io);
 
   return httpServer;
 }

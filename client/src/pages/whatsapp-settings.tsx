@@ -34,6 +34,7 @@ interface QRCodeModalProps {
 }
 
 const QRCodeModal: React.FC<QRCodeModalProps> = ({ connection, isOpen, onClose }) => {
+  const { toast } = useToast();
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -83,10 +84,17 @@ const QRCodeModal: React.FC<QRCodeModalProps> = ({ connection, isOpen, onClose }
         const currentConnection = connections.find((c: WhatsAppConnection) => c.id === connection.id);
         
         if (currentConnection && currentConnection.status === 'connected') {
-          onClose(); // Fechar modal quando conectar
+          // Mostrar popup de sucesso
+          toast({
+            title: "Conectado!",
+            description: "WhatsApp conectado com sucesso!",
+          });
+          
+          // Fechar modal quando conectar
+          onClose();
         }
       } catch (error) {
-        console.error('Error checking connection status:', error);
+        // console.error('Error checking connection status:', error);
       }
     }, 3000); // Verificar a cada 3 segundos
 
@@ -141,31 +149,94 @@ const WhatsAppSettings: React.FC = () => {
 
   const companyId = (user as any)?.companyId || (user as any)?.company?.id;
 
+  // Função para formatar número de telefone
+  const formatPhoneNumber = (phone: string): string => {
+    // Remove @s.whatsapp.net se presente
+    const cleanPhone = phone.replace('@s.whatsapp.net', '');
+    
+    // Se começar com 55 (Brasil)
+    if (cleanPhone.startsWith('55')) {
+      const number = cleanPhone.substring(2); // Remove o 55
+      
+      // Se for um número de celular brasileiro (11 dígitos)
+      if (number.length === 11) {
+        const ddd = number.substring(0, 2);
+        const firstPart = number.substring(2, 7);
+        const secondPart = number.substring(7);
+        return `+55 (${ddd}) ${firstPart.charAt(0)} ${firstPart.substring(1)}-${secondPart}`;
+      }
+      
+      // Se for um número fixo brasileiro (10 dígitos)
+      if (number.length === 10) {
+        const ddd = number.substring(0, 2);
+        const firstPart = number.substring(2, 6);
+        const secondPart = number.substring(6);
+        return `+55 (${ddd}) ${firstPart}-${secondPart}`;
+      }
+    }
+    
+    // Se não conseguir formatar, retorna o número limpo
+    return cleanPhone;
+  };
+
   useEffect(() => {
     if (companyId) {
       fetchConnections();
     }
 
     // Conectar ao WebSocket
-    const socket = io(window.location.origin); // Conecta ao mesmo host/porta do servidor
+    const socket = io('http://localhost:3000', {
+      transports: ['websocket', 'polling'],
+      autoConnect: true
+    });
 
     socket.on('connect', () => {
-      console.log('✅ Conectado ao servidor WebSocket!');
+      // console.log('✅ Conectado ao servidor WebSocket!');
+      // Executar sincronização automática ao conectar
+      syncAllConnections();
     });
 
     socket.on('connectionUpdate', (data) => {
-      console.log('🔄 Atualização de status recebida:', data);
+      // console.log('🔄 Atualização de status recebida:', data);
       if (data.companyId === companyId) {
         setConnections(prev => 
           prev.map(conn => 
-            conn.instanceName === data.instanceName ? { ...conn, status: data.status } : conn
+            conn.instanceName === data.instanceName ? { 
+              ...conn, 
+              status: data.status,
+              phone: data.phone || conn.phone,
+              profilePictureUrl: data.profilePictureUrl || conn.profilePictureUrl,
+              updatedAt: new Date().toISOString()
+            } : conn
           )
         );
       }
     });
 
+    socket.on('qrcodeUpdate', (data) => {
+      // console.log('📱 QR Code atualizado:', data);
+      if (data.companyId === companyId) {
+        setConnections(prev => 
+          prev.map(conn => 
+            conn.instanceName === data.instanceName ? { 
+              ...conn, 
+              qrcode: data.qrcode,
+              status: data.qrcode ? 'qr_ready' : 'connecting'
+            } : conn
+          )
+        );
+      }
+    });
+
+    // Sincronização automática a cada 30 segundos
+    const syncInterval = setInterval(() => {
+      // console.log('🔄 Executando sincronização automática via intervalo...');
+      syncAllConnections();
+    }, 30000);
+
     return () => {
       socket.disconnect();
+      clearInterval(syncInterval);
     };
   }, [companyId]);
 
@@ -185,6 +256,32 @@ const WhatsAppSettings: React.FC = () => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const syncAllConnections = async () => {
+    if (!companyId) return;
+    
+    try {
+      // console.log('🔄 Executando sincronização automática...');
+      const response = await apiClient.post('/api/whatsapp/sync-all');
+      
+      if (response.data.syncedCount > 0) {
+        // console.log(`✅ ${response.data.syncedCount} conexão(ões) sincronizada(s)`);
+        
+        // Atualizar as conexões com os dados sincronizados
+        const updatedConnections = await apiClient.get(`/api/whatsapp/connections/${companyId}`);
+        setConnections(updatedConnections.data);
+        
+        // Mostrar toast de sucesso apenas se houve mudanças
+        toast({
+          title: "Sincronização Automática",
+          description: `${response.data.syncedCount} conexão(ões) atualizada(s)`,
+        });
+      }
+    } catch (error) {
+      // console.error('❌ Erro na sincronização automática:', error);
+      // Não mostrar toast de erro para não incomodar o usuário
     }
   };
 
@@ -277,6 +374,41 @@ const WhatsAppSettings: React.FC = () => {
     }
   };
 
+  const disconnectConnection = async (connectionId: string) => {
+    if (!companyId) return;
+    
+    try {
+      const response = await fetch(`/api/whatsapp/connections/${companyId}/${connectionId}/disconnect`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        }
+      });
+      
+      if (response.ok) {
+        await fetchConnections(); // Refresh connections
+        toast({
+          title: "Sucesso",
+          description: "Desconexão realizada com sucesso"
+        });
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Erro",
+          description: error.message || "Falha ao desconectar",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error disconnecting:', error);
+      toast({
+        title: "Erro",
+        description: "Erro ao desconectar",
+        variant: "destructive"
+      });
+    }
+  };
+
   const deleteConnection = async (connectionId: string) => {
     if (!companyId) return;
     
@@ -314,20 +446,64 @@ const WhatsAppSettings: React.FC = () => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, connection: WhatsAppConnection) => {
+    // Determinar status baseado em dados mais específicos
+    let actualStatus = status;
+    
+    // Se tem número de telefone, considerar como conectado
+    if (connection.phone && connection.phone !== '-' && status !== 'destroyed') {
+      actualStatus = 'connected';
+    }
+    // Se tem QR code disponível, mostrar como QR Code Pronto (prioridade sobre disconnected)
+    else if (connection.qrcode && status !== 'destroyed') {
+      actualStatus = 'qr_ready';
+    }
+    // Se está conectando, manter como conectando
+    else if (status === 'connecting') {
+      actualStatus = 'connecting';
+    }
+
     const statusConfig = {
-      connected: { label: 'Conectado', variant: 'default' as const, icon: Wifi },
-      connecting: { label: 'Conectando', variant: 'secondary' as const, icon: RefreshCw },
-      disconnected: { label: 'Desconectado', variant: 'destructive' as const, icon: WifiOff },
-      qr_ready: { label: 'QR Code Pronto', variant: 'outline' as const, icon: QrCode },
-      destroyed: { label: 'Destruído', variant: 'destructive' as const, icon: Trash2 }
+      connected: { 
+        label: 'Conectado', 
+        variant: 'default' as const, 
+        icon: Wifi,
+        className: 'bg-green-100 text-green-800 border-green-200 hover:bg-green-200'
+      },
+      connecting: { 
+        label: 'Conectando', 
+        variant: 'secondary' as const, 
+        icon: RefreshCw,
+        className: 'bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200'
+      },
+      disconnected: { 
+        label: 'Desconectado', 
+        variant: 'destructive' as const, 
+        icon: WifiOff,
+        className: 'bg-red-100 text-red-800 border-red-200 hover:bg-red-200'
+      },
+      qr_ready: { 
+        label: 'QR Code Pronto', 
+        variant: 'outline' as const, 
+        icon: QrCode,
+        className: 'bg-yellow-100 text-yellow-800 border-yellow-200 hover:bg-yellow-200'
+      },
+      destroyed: { 
+        label: 'Destruído', 
+        variant: 'destructive' as const, 
+        icon: Trash2,
+        className: 'bg-gray-100 text-gray-800 border-gray-200 hover:bg-gray-200'
+      }
     };
     
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.disconnected;
+    const config = statusConfig[actualStatus as keyof typeof statusConfig] || statusConfig.disconnected;
     const Icon = config.icon;
     
     return (
-      <Badge variant={config.variant} className="flex items-center gap-1">
+      <Badge 
+        variant={config.variant} 
+        className={`flex items-center gap-1 ${config.className}`}
+      >
         <Icon className="h-3 w-3" />
         {config.label}
       </Badge>
@@ -351,9 +527,9 @@ const WhatsAppSettings: React.FC = () => {
             Gerencie suas conexões WhatsApp com Evolution API
           </p>
         </div>
-        <Button onClick={fetchConnections} variant="outline">
+        <Button onClick={syncAllConnections} variant="outline">
           <RefreshCw className="h-4 w-4 mr-2" />
-          Atualizar
+          Sincronizar
         </Button>
       </div>
 
@@ -433,10 +609,16 @@ const WhatsAppSettings: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      {connection.phone || '-'}
+                      {connection.phone ? (
+                        <span className="text-sm font-mono">
+                          {formatPhoneNumber(connection.phone)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell>
-                      {getStatusBadge(connection.status)}
+                      {getStatusBadge(connection.status, connection)}
                     </TableCell>
                     <TableCell>
                       {connection.updatedAt 
@@ -446,7 +628,8 @@ const WhatsAppSettings: React.FC = () => {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {connection.status === 'disconnected' && (
+                        {/* Botão Conectar - apenas quando desconectado */}
+                        {connection.status === 'disconnected' && !connection.qrcode && (
                           <Button
                             size="sm"
                             onClick={() => connectConnection(connection.id)}
@@ -456,7 +639,9 @@ const WhatsAppSettings: React.FC = () => {
                           </Button>
                         )}
                         
-                        {(connection.status === 'connecting' || connection.status === 'qr_ready') && (
+                        {/* Botão QR Code - quando tem QR code disponível OU está conectando, MAS NÃO quando conectado */}
+                        {(connection.qrcode || connection.status === 'connecting' || connection.status === 'qr_ready') && 
+                         !(connection.status === 'connected' && connection.phone && connection.phone !== '-') && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -466,7 +651,31 @@ const WhatsAppSettings: React.FC = () => {
                             }}
                           >
                             <QrCode className="h-4 w-4 mr-1" />
-                            QR Code
+                            {connection.qrcode ? 'QR Code Pronto' : 'QR Code'}
+                          </Button>
+                        )}
+                        
+                        {/* Botão Reconectar - quando conectado */}
+                        {connection.status === 'connected' && connection.phone && connection.phone !== '-' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => connectConnection(connection.id)}
+                          >
+                            <RefreshCw className="h-4 w-4 mr-1" />
+                            Reconectar
+                          </Button>
+                        )}
+                        
+                        {/* Botão Desconectar - quando conectado */}
+                        {connection.status === 'connected' && connection.phone && connection.phone !== '-' && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => disconnectConnection(connection.id)}
+                          >
+                            <WifiOff className="h-4 w-4 mr-1" />
+                            Desconectar
                           </Button>
                         )}
                         

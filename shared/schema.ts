@@ -70,6 +70,7 @@ export const messages = pgTable("messages", {
   // Environment field to separate test from production data
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   isRead: boolean("is_read").default(false),
+  status: text("status", { enum: ["sent", "delivered", "read"] }).default("sent"),
   sentAt: timestamp("sent_at").defaultNow(),
 });
 
@@ -100,6 +101,7 @@ export const clients = pgTable("clients", {
   phone: text("phone").notNull().unique(),
   email: text("email"),
   notes: text("notes"),
+  companyId: varchar("company_id").notNull(), // Company that owns this client
   // Environment field to separate test from production data
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   createdAt: timestamp("created_at").defaultNow(),
