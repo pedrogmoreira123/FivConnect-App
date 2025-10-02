@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -26,7 +26,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const success = await login(username, password);
+      const success = await login(email, password);
       if (success) {
         setLocation('/');
         toast({
@@ -63,15 +63,15 @@ export default function LoginPage() {
           
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="username" className="text-sm font-medium">Usuário</Label>
+              <Label htmlFor="email" className="text-sm font-medium">E-mail</Label>
               <Input
-                id="username"
-                type="text"
-                placeholder="Digite seu nome de usuário"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                id="email"
+                type="email"
+                placeholder="Digite seu e-mail"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
-                data-testid="input-username"
+                data-testid="input-email"
                 className="h-11 shadow-sm"
               />
             </div>

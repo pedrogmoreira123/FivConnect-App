@@ -79,7 +79,7 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
+    <div className="w-80 bg-sidebar border-r border-sidebar-border flex flex-col">
       {/* Company Header */}
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center justify-center">

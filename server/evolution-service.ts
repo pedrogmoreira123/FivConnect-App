@@ -1,5 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { Logger } from 'pino';
+import fs from 'fs';
+import path from 'path';
 
 export class EvolutionService {
   private apiUrl: string;
@@ -19,6 +21,7 @@ export class EvolutionService {
     };
     this.logger.info(`[EvolutionService] Inicializado para a URL: ${this.apiUrl}`);
   }
+
 
   async createInstance(connectionName: string, companyId: string): Promise<any> {
     const instanceName = `${companyId}_${connectionName}`;
@@ -252,8 +255,39 @@ export class EvolutionService {
     }
   }
 
+  async sendMedia(instanceName: string, number: string, mediaUrl: string, mediaType: 'image' | 'audio' | 'video' | 'document', originalFileName: string, caption: string = ''): Promise<any> {
+    this.logger.info(`📤 Enviando mídia (${mediaType}) via URL [${mediaUrl}] para ${number}`);
+    
+    let payload;
+
+    switch (mediaType) {
+      case 'image':
+        payload = { number, options: { delay: 1200 }, mediatype: 'image', media: mediaUrl, caption };
+        break;
+      case 'audio':
+        payload = { number, options: { delay: 1200 }, mediatype: 'audio', media: mediaUrl, ptt: true };
+        break;
+      case 'video':
+        payload = { number, options: { delay: 1200 }, mediatype: 'video', media: mediaUrl, caption };
+        break;
+      case 'document':
+        payload = { number, options: { delay: 1200 }, mediatype: 'document', media: mediaUrl, fileName: originalFileName };
+        break;
+    }
+
+    try {
+      const response = await axios.post(`${this.apiUrl}/message/sendMedia/${instanceName}`, payload, { headers: this.headers });
+      this.logger.info(`✅ Mídia (${mediaType}) enviada com sucesso para ${number}.`);
+      return response.data;
+    } catch (error) {
+      this.handleApiError(error, `sendMedia (${mediaType})`);
+      throw new Error(`Falha ao enviar ${mediaType}.`);
+    }
+  }
+
   async sendImageMessage(instanceName: string, number: string, imageUrl: string, caption?: string): Promise<any> {
     this.logger.info(`📤 Enviando imagem para ${number} a partir da instância '${instanceName}'.`);
+    
     const payload = {
       number,
       options: {
@@ -278,6 +312,7 @@ export class EvolutionService {
 
   async sendAudioMessage(instanceName: string, number: string, audioUrl: string): Promise<any> {
     this.logger.info(`📤 Enviando áudio para ${number} a partir da instância '${instanceName}'.`);
+    
     const payload = {
       number,
       options: {
@@ -301,6 +336,7 @@ export class EvolutionService {
 
   async sendVideoMessage(instanceName: string, number: string, videoUrl: string, caption?: string): Promise<any> {
     this.logger.info(`📤 Enviando vídeo para ${number} a partir da instância '${instanceName}'.`);
+    
     const payload = {
       number,
       options: {
@@ -325,6 +361,7 @@ export class EvolutionService {
 
   async sendDocumentMessage(instanceName: string, number: string, documentUrl: string, filename: string): Promise<any> {
     this.logger.info(`📤 Enviando documento para ${number} a partir da instância '${instanceName}'.`);
+    
     const payload = {
       number,
       options: {

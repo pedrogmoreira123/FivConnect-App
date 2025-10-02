@@ -2,6 +2,108 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import apiClient from '../lib/api-client';
 import { useAuth } from '../hooks/use-auth';
 import io from 'socket.io-client';
+
+// Interfaces e tipos
+interface User {
+  id: string;
+  company?: {
+    id: string;
+  };
+}
+
+interface Conversation {
+  id: string;
+  contact_name?: string;
+  contact_phone?: string;
+  status: 'waiting' | 'in_progress' | 'finished';
+  last_message?: string;
+  updated_at?: string;
+  unreadCount?: number;
+  companyId?: string;
+  assignedAgentId?: string;
+}
+
+interface Message {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  messageType: string;
+  direction: 'incoming' | 'outgoing';
+  status?: 'sending' | 'sent' | 'delivered' | 'read';
+  mediaUrl?: string;
+  sentAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface Contact {
+  id: string;
+  name?: string;
+  phone?: string;
+}
+
+interface AudioPlayerProps {
+  src: string;
+  messageId: string;
+}
+
+interface EmojiPickerProps {
+  onEmojiSelect: (emoji: string) => void;
+  onClose: () => void;
+}
+
+interface TabButtonProps {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  icon: React.ComponentType<{ className?: string }>;
+  count?: number;
+}
+
+interface UnifiedListProps {
+  items: Conversation[] | Contact[];
+  onSelect: (item: Conversation | Contact) => void;
+  selectedId?: string;
+  title: string;
+  emptyMessage: string;
+  isContacts?: boolean;
+}
+
+interface ChatAreaProps {
+  conversation: Conversation | null;
+  messages: Message[];
+  onSendMessage: (text: string, quotedMessageId?: string) => void;
+  onTakeConversation: (conversationId: string) => void;
+  onFinishConversation: (conversationId: string) => void;
+  onSendMedia: (file: File, quotedMessageId?: string) => void;
+  onMessageInput?: (text: string) => void;
+}
+
+// Função para tocar som de notificação
+const playNotificationSound = () => {
+  try {
+    // Criar um som de notificação simples
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.2);
+  } catch (error) {
+    console.log('Não foi possível reproduzir som de notificação:', error);
+  }
+};
+
 import { 
   Search, 
   Plus, 
@@ -25,18 +127,21 @@ import {
   Image,
   FileText,
   X,
+  XCircle,
   Pause,
-  Play
+  Play,
+  Download,
+  Eye
 } from 'lucide-react';
 
 // Componente de Player de Áudio Moderno - Estilo WhatsApp
-const AudioPlayer = ({ src, messageId }) => {
+const AudioPlayer = ({ src, messageId }: AudioPlayerProps) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const audioRef = useRef(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -93,7 +198,7 @@ const AudioPlayer = ({ src, messageId }) => {
     }
   };
 
-  const handleSeek = (e) => {
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     const audio = audioRef.current;
     if (!audio || !duration) return;
 
@@ -104,7 +209,7 @@ const AudioPlayer = ({ src, messageId }) => {
     setCurrentTime(newTime);
   };
 
-  const formatTime = (time) => {
+  const formatTime = (time: number) => {
     if (!time || isNaN(time)) return '0:00';
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
@@ -170,7 +275,7 @@ const AudioPlayer = ({ src, messageId }) => {
 };
 
 // Componente de Emoji Picker
-const EmojiPicker = ({ onEmojiSelect, onClose }) => {
+const EmojiPicker = ({ onEmojiSelect, onClose }: EmojiPickerProps) => {
   const emojis = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾'];
 
   return (
@@ -197,7 +302,7 @@ const EmojiPicker = ({ onEmojiSelect, onClose }) => {
 };
 
 // Componente de Aba
-const TabButton = ({ active, onClick, children, icon: Icon, count }) => (
+const TabButton = ({ active, onClick, children, icon: Icon, count }: TabButtonProps) => (
   <button
     onClick={onClick}
     className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${
@@ -208,7 +313,7 @@ const TabButton = ({ active, onClick, children, icon: Icon, count }) => (
   >
     <Icon className="h-3 w-3" />
     <span className="text-xs">{children}</span>
-    {count > 0 && (
+    {count && count > 0 && (
       <span className="bg-red-500 text-white text-xs rounded-full px-1 py-0.5 min-w-[16px] h-4 flex items-center justify-center">
         {count}
                         </span>
@@ -217,7 +322,7 @@ const TabButton = ({ active, onClick, children, icon: Icon, count }) => (
 );
 
 // Componente de Lista Unificado - CORRIGIDO: Funciona para conversas e contatos
-const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isContacts = false }) => (
+const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isContacts = false }: UnifiedListProps) => (
   <div className="flex-1 overflow-y-auto">
     <div className="p-3 border-b bg-gray-50">
       <h3 className="font-semibold text-gray-700 text-sm">{title}</h3>
@@ -239,25 +344,20 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
                 <span className="text-sm font-medium text-white">
-                  {isContacts ? (item.name?.charAt(0) || 'C') : (item.contact_name?.charAt(0) || 'C')}
+                  {isContacts ? ((item as Contact).name?.charAt(0) || 'C') : ((item as Conversation).contact_name?.charAt(0) || 'C')}
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
                 <p className="font-medium text-gray-900 truncate text-sm">
-                  {isContacts ? (item.name || 'Cliente') : (item.contact_name || 'Cliente')}
+                  {isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contact_name || 'Cliente')}
                 </p>
                 <p className="text-sm text-gray-500 truncate">
-                  {isContacts ? item.phone : (item.contact_phone?.replace('@s.whatsapp.net', '') || 'Número não disponível')}
+                  {isContacts ? (item as Contact).phone : ((item as Conversation).last_message || 'Nenhuma mensagem ainda.')}
                 </p>
-                {!isContacts && (
-                  <p className="text-xs text-gray-400 truncate mt-1">
-                    {item.last_message || 'Nenhuma mensagem ainda'}
-                  </p>
-                )}
                         </div>
               {!isContacts && (
                 <div className="text-xs text-gray-400">
-                  {item.updated_at && new Date(item.updated_at).toLocaleTimeString()}
+                  {(item as Conversation).updated_at && new Date((item as Conversation).updated_at!).toLocaleTimeString()}
                         </div>
               )}
                     </div>
@@ -278,7 +378,7 @@ const ChatArea = ({
   onFinishConversation,
   onSendMedia,
   onMessageInput
-}) => {
+}: ChatAreaProps) => {
   const [text, setText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -286,6 +386,7 @@ const ChatArea = ({
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -303,8 +404,9 @@ const ChatArea = ({
       if (conversation && conversation.status === 'waiting') {
         onTakeConversation(conversation.id);
       }
-      onSendMessage(text);
+      onSendMessage(text, replyingTo?.id);
       setText('');
+      setReplyingTo(null); // Limpar resposta após envio
     }
   };
 
@@ -317,7 +419,7 @@ const ChatArea = ({
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
       // Configurar AudioContext para análise de áudio
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const analyser = audioContext.createAnalyser();
       const source = audioContext.createMediaStreamSource(stream);
       
@@ -342,12 +444,12 @@ const ChatArea = ({
       
       recorder.onstop = () => {
         console.log('Gravação parada, chunks:', chunks.length);
-        const audioBlob = new Blob(chunks, { type: 'audio/wav' });
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
         console.log('Blob criado:', audioBlob.size, 'bytes');
         
-        // Atualizar audioChunks imediatamente
-        setAudioChunks([audioBlob]);
-        console.log('AudioChunks atualizado:', [audioBlob]);
+        // Atualizar audioChunks com os chunks originais, não o blob final
+        setAudioChunks(chunks);
+        console.log('AudioChunks atualizado com', chunks.length, 'chunks');
         
         stream.getTracks().forEach(track => track.stop());
         
@@ -463,8 +565,14 @@ const ChatArea = ({
     console.log('audioChunks:', audioChunks);
     console.log('conversation:', conversation);
     
-    if (audioChunks.length === 0 || !conversation) {
-      console.log('Nenhum áudio gravado ou conversa não selecionada');
+    if (!conversation) {
+      console.log('Conversa não selecionada');
+      alert('Selecione uma conversa primeiro.');
+      return;
+    }
+
+    if (audioChunks.length === 0) {
+      console.log('Nenhum áudio gravado');
       alert('Nenhum áudio gravado. Grave um áudio primeiro.');
       return;
     }
@@ -472,39 +580,54 @@ const ChatArea = ({
     console.log('Enviando áudio...');
 
     // Auto-assumir conversa se estiver em espera
-    if (conversation.status === 'waiting') {
+    if (conversation && conversation.status === 'waiting') {
       onTakeConversation(conversation.id);
     }
 
     try {
-      const audioBlob = audioChunks[0];
-      console.log('Áudio blob:', audioBlob, 'size:', audioBlob.size);
+      // Criar Blob a partir de todos os chunks
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      console.log('🎤 Blob criado:', audioBlob.size, 'bytes');
       
-      if (audioBlob.size === 0) {
+      if (!audioBlob || audioBlob.size === 0) {
         alert('Áudio vazio. Grave novamente.');
         return;
       }
       
       // Criar FormData para envio
       const formData = new FormData();
-      formData.append('file', audioBlob, 'audio.wav');
+      formData.append('file', audioBlob, `audio-${Date.now()}.webm`);
+      
+      console.log('🎤 Enviando áudio:', {
+        blobSize: audioBlob.size,
+        blobType: audioBlob.type,
+        formDataKeys: Array.from(formData.keys())
+      });
+      
+      // Verificar se o FormData tem o arquivo
+      for (let [key, value] of formData.entries()) {
+        console.log('🎤 FormData entry:', key, value);
+      }
       
       // Enviar áudio via API
       const response = await apiClient.post(`/api/whatsapp/conversations/${conversation.id}/send-media`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 
+          'Accept': 'application/json'
+        }
       });
       
-      console.log('Resposta da API:', response.data);
+      console.log('✅ Resposta da API:', response.data);
       
-      // Limpar estado
+      // Limpar estado apenas após sucesso
       setAudioChunks([]);
       setRecordingTime('0:00');
       setIsRecording(false);
+      setReplyingTo(null); // Limpar resposta após envio
       
-      console.log('Áudio enviado com sucesso');
+      console.log('✅ Áudio enviado com sucesso');
       
     } catch (error) {
-      console.error('Erro ao enviar áudio:', error);
+      console.error('❌ Erro ao enviar áudio:', error);
       alert('Erro ao enviar áudio. Tente novamente.');
     }
   };
@@ -515,13 +638,21 @@ const ChatArea = ({
     console.log('Mudar velocidade de reprodução');
   };
 
-  const handleEmojiSelect = (emoji) => {
+  const handleEmojiSelect = (emoji: string) => {
     setText(prev => prev + emoji);
     setShowEmojiPicker(false);
   };
 
+  const handleReplyClick = (message: Message) => {
+    setReplyingTo(message);
+  };
 
-  const handleMediaUpload = (mediaType) => {
+  const handleCancelReply = () => {
+    setReplyingTo(null);
+  };
+
+
+  const handleMediaUpload = (mediaType: string) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = mediaType === 'image' ? 'image/*' : 
@@ -529,8 +660,9 @@ const ChatArea = ({
                   mediaType === 'audio' ? 'audio/*' : 
                   '*/*';
     
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
+    input.onchange = async (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0];
       if (!file) return;
 
       // Verificar tamanho do arquivo (200MB)
@@ -545,53 +677,44 @@ const ChatArea = ({
         onTakeConversation(conversation.id);
       }
 
+      // Criar URL local para preview imediato
+      const localUrl = URL.createObjectURL(file);
+      
+      // Criar mensagem otimista
+      const optimisticMessage: Message = {
+        id: `temp_${Date.now()}`,
+        conversation_id: conversation!.id,
+        content: '',
+        message_type: file.type.startsWith('image/') ? 'image' : 
+                     file.type.startsWith('video/') ? 'video' : 
+                     file.type.startsWith('audio/') ? 'audio' : 'document',
+        direction: 'outgoing',
+        media_url: localUrl,
+        status: 'sending',
+        sent_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        is_read: false,
+        environment: 'production'
+      };
+
+      // Enviar mídia via função do componente pai
       try {
-        console.log('Enviando mídia:', file);
-        
-        // Criar FormData para envio
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        // Enviar mídia via API
-        await apiClient.post(`/api/whatsapp/conversations/${conversation.id}/send-media`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        
-        console.log('Mídia enviada com sucesso');
-        
+        await onSendMedia(file, replyingTo?.id);
+        setReplyingTo(null); // Limpar resposta após envio
       } catch (error) {
         console.error('Erro ao enviar mídia:', error);
         alert('Erro ao enviar mídia. Tente novamente.');
+      } finally {
+        // Limpar URL local após um tempo
+        setTimeout(() => URL.revokeObjectURL(localUrl), 5000);
       }
     };
     
     input.click();
   };
 
-  const playNotificationSound = () => {
-    try {
-      // Criar um som de notificação simples
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
-      oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
-      
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-      
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.2);
-    } catch (error) {
-      console.log('Não foi possível reproduzir som de notificação:', error);
-    }
-  };
 
-  const handleTextChange = (e) => {
+  const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newText = e.target.value;
     setText(newText);
     // Auto-assumir conversa ao começar a digitar
@@ -600,15 +723,15 @@ const ChatArea = ({
     }
   };
 
-  const handleKeyPress = (e) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   };
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (file) {
       onSendMedia(file);
     }
@@ -671,6 +794,7 @@ const ChatArea = ({
       {/* Área de Mensagens - Layout WhatsApp */}
       <div className="flex-1 overflow-y-auto bg-gray-100">
         <div className="p-4 space-y-2">
+          {/* Debug logs removidos para evitar erros de tipo */}
           {messages.length === 0 ? (
             <div className="text-center py-8">
               <MessageCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
@@ -682,11 +806,14 @@ const ChatArea = ({
                 key={message.id}
                 className={`flex ${message.direction === 'outgoing' ? 'justify-end' : 'justify-start'} mb-2`}
               >
-                <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${
+                <div 
+                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl cursor-pointer hover:opacity-90 transition-opacity ${
                       message.direction === 'outgoing'
                     ? 'bg-green-500 text-white rounded-br-md' 
                     : 'bg-white text-gray-900 rounded-bl-md shadow-sm'
-                }`}>
+                }`}
+                  onClick={() => handleReplyClick(message)}
+                >
                   {/* Exibir mídia se existir */}
                   {(message.mediaUrl || message.messageType !== 'text') && (
                     <div className="mb-2">
@@ -695,7 +822,7 @@ const ChatArea = ({
                           src={message.mediaUrl} 
                           alt="Imagem" 
                           className="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={() => window.open(message.mediaUrl, '_blank')}
+                          onClick={() => setImagePopup({ src: message.mediaUrl, alt: 'Imagem' })}
                         />
                       )}
                       {(message.messageType === 'video' || message.messageType === 'videoMessage') && (
@@ -706,7 +833,7 @@ const ChatArea = ({
                           preload="metadata"
                         />
                       )}
-                      {(message.messageType === 'audio' || message.messageType === 'audioMessage') && (
+                      {(message.messageType === 'audio' || message.messageType === 'audioMessage') && message.mediaUrl && (
                         <AudioPlayer 
                           src={message.mediaUrl}
                           messageId={message.id}
@@ -740,7 +867,11 @@ const ChatArea = ({
                     )}
                   <div className="flex items-center justify-end mt-1">
                     <span className="text-xs opacity-70">
-                      {new Date(message.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(message.sentAt || message.createdAt).toLocaleTimeString('pt-BR', { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        timeZone: 'America/Sao_Paulo'
+                      })}
                         </span>
                       {message.direction === 'outgoing' && (
                       <div className="ml-1 flex">
@@ -762,6 +893,9 @@ const ChatArea = ({
                             <CheckCircle2 className="h-3 w-3 text-blue-500 -ml-1" />
                           </>
                         )}
+                        {message.status === 'failed' && (
+                          <XCircle className="h-3 w-3 text-red-500" />
+                        )}
                         {!message.status && (
                           <CheckCircle2 className="h-3 w-3 text-gray-400" />
                           )}
@@ -778,6 +912,29 @@ const ChatArea = ({
 
       {/* Área de Input de Mensagem - Layout WhatsApp */}
       <div className="p-3 bg-white border-t relative">
+        {/* Interface de Resposta */}
+        {replyingTo && (
+          <div className="mb-3 p-3 bg-gray-100 rounded-lg border-l-4 border-l-blue-500">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <div className="text-xs text-gray-500 mb-1">
+                  Respondendo para {replyingTo.direction === 'outgoing' ? 'você' : 'cliente'}
+                </div>
+                <div className="text-sm text-gray-700 truncate">
+                  {replyingTo.content || `[${replyingTo.messageType}]`}
+                </div>
+              </div>
+              <button
+                onClick={handleCancelReply}
+                className="ml-2 p-1 hover:bg-gray-200 rounded-full transition-colors"
+                title="Cancelar resposta"
+              >
+                <X className="h-4 w-4 text-gray-500" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Emoji Picker */}
         {showEmojiPicker && (
           <EmojiPicker 
@@ -922,16 +1079,17 @@ const ChatArea = ({
 
 export default function ConversationsPage() {
   const [activeTab, setActiveTab] = useState('active');
-  const [waitingConversations, setWaitingConversations] = useState([]);
-  const [activeConversations, setActiveConversations] = useState([]);
-  const [contacts, setContacts] = useState([]);
-  const [selectedConversation, setSelectedConversation] = useState(null);
-  const [selectedContact, setSelectedContact] = useState(null);
-  const [messages, setMessages] = useState([]);
+  const [waitingConversations, setWaitingConversations] = useState<Conversation[]>([]);
+  const [activeConversations, setActiveConversations] = useState<Conversation[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const { user } = useAuth();
+  const [imagePopup, setImagePopup] = useState<{ src: string; alt: string } | null>(null);
+  const { user } = useAuth() as { user: User | null };
 
   const companyId = useMemo(() => user?.company?.id, [user]);
 
@@ -951,79 +1109,123 @@ export default function ConversationsPage() {
     loadConversations();
     loadContacts();
 
-    // Conectar WebSocket
-    const socket = io('http://localhost:3000', {
-      transports: ['websocket', 'polling'],
+    // Configurar WebSocket
+    const socket = io(window.location.origin, {
+      auth: {
+        token: localStorage.getItem('token')
+      },
+      transports: ['polling', 'websocket'],
+      timeout: 20000,
+      forceNew: true,
       autoConnect: true
     });
-    
+
+    // Eventos WebSocket
     socket.on('connect', () => {
-      console.log('✅ Conectado ao servidor WebSocket para conversas!');
+      console.log('🔌 WebSocket conectado');
     });
 
-    socket.on('newConversation', (newConvo) => {
-      console.log('[WEBSOCKET] Nova conversa recebida:', newConvo);
-      if (newConvo.companyId === companyId) {
-        setWaitingConversations(prev => [newConvo, ...prev.filter(c => c.id !== newConvo.id)]);
-        // Tocar som de notificação
-        playNotificationSound();
-      }
+    socket.on('disconnect', () => {
+      console.log('🔌 WebSocket desconectado');
     });
 
-    socket.on('newMessage', (message) => {
-      console.log('[WEBSOCKET] Nova mensagem recebida:', message);
+    socket.on('newMessage', (messageData) => {
+      console.log('📨 Nova mensagem recebida via WebSocket:', messageData);
       
-      // ATUALIZAÇÃO EM TEMPO REAL: Adicionar mensagem ao chat se for da conversa selecionada
-      if (selectedConversation && message.conversationId === selectedConversation.id) {
-        setMessages(prev => [...prev, message]);
-      }
-      
-      // Atualizar última mensagem em todas as listas com contador de não lidas
-      const updateLastMessage = (prev) => 
-        prev.map(conv => 
-          conv.id === message.conversationId 
-            ? { 
-                ...conv, 
-                lastMessage: message.content, 
-                updatedAt: new Date().toISOString(),
-                unreadCount: message.direction === 'incoming' ? (conv.unreadCount || 0) + 1 : conv.unreadCount
-              }
-            : conv
-        );
-      
-      setWaitingConversations(updateLastMessage);
-      setActiveConversations(updateLastMessage);
-
-      // Atualizar contador global de não lidas
-      if (message.direction === 'incoming') {
-        setUnreadCount(prev => prev + 1);
-      }
-    });
-
-    // NOVO: Atualização de status de mensagem (✓, ✓✓, azul)
-    socket.on('messageStatus', (data) => {
-      console.log('[WEBSOCKET] Status da mensagem atualizado:', data);
-      if (selectedConversation && data.conversationId === selectedConversation.id) {
-        setMessages(prev => 
-          prev.map(msg => 
-            msg.id === data.messageId 
-              ? { ...msg, status: data.status }
-              : msg
-          )
-        );
-      }
-    });
-    
-    socket.on('conversationUpdate', (updatedConvo) => {
-      if (updatedConvo.companyId === companyId) {
-        setWaitingConversations(prev => prev.filter(c => c.id !== updatedConvo.id));
-        if (updatedConvo.assignedAgentId === user.id) {
-          setActiveConversations(prev => [updatedConvo, ...prev.filter(c => c.id !== updatedConvo.id)]);
+      // Verificar se a mensagem pertence à conversa atual
+      if (selectedConversation && messageData.conversationId === selectedConversation.id) {
+        setMessages(prev => {
+          // Verificar se a mensagem já existe
+          const exists = prev.some(msg => msg.id === messageData.id);
+          if (!exists) {
+            // Adicionar nova mensagem e ordenar por timestamp
+            const newMessages = [...prev, messageData];
+            return newMessages.sort((a, b) => 
+              new Date(a.sentAt || a.createdAt).getTime() - new Date(b.sentAt || b.createdAt).getTime()
+            );
+          }
+          return prev;
+        });
+        
+        // Tocar som de notificação para mensagens recebidas
+        if (messageData.direction === 'incoming') {
+          playNotificationSound();
         }
       }
+      
+      // Atualizar lista de conversas
+      loadConversations();
     });
 
-    return () => { socket.disconnect(); };
+    socket.on('messageStatusUpdate', (data) => {
+      console.log('📊 Atualização de status da mensagem:', data);
+      
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === data.messageId 
+            ? { ...msg, status: data.status }
+            : msg
+        )
+      );
+    });
+
+    socket.on('newConversation', (conversation) => {
+      console.log('💬 Nova conversa criada:', conversation);
+      loadConversations();
+      playNotificationSound();
+    });
+
+    socket.on('conversationUpdate', (conversation) => {
+      console.log('🔄 Conversa atualizada:', conversation);
+      loadConversations();
+    });
+
+    socket.on('connectionUpdate', (data) => {
+      console.log('🔗 Atualização de conexão:', data);
+    });
+
+    socket.on('qrcodeUpdate', (data) => {
+      console.log('📱 QR Code atualizado:', data);
+    });
+
+    // Fallback: Polling para mensagens da conversa selecionada (caso WebSocket falhe)
+    const pollMessages = async () => {
+      try {
+        if (selectedConversation) {
+          const response = await apiClient.get(`/api/test/messages/${selectedConversation.id}`);
+          
+          if (response.data && Array.isArray(response.data)) {
+            setMessages(response.data);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Erro no polling de mensagens:', error);
+      }
+    };
+
+    // Polling para conversas
+    const pollConversations = async () => {
+      try {
+        loadConversations();
+      } catch (error) {
+        console.error('❌ Erro no polling de conversas:', error);
+      }
+    };
+
+    // Polling inicial
+    pollMessages();
+    pollConversations();
+
+    // Polling a cada 30 segundos como fallback (reduzido drasticamente)
+    const messagesInterval = setInterval(pollMessages, 30000);
+    const conversationsInterval = setInterval(pollConversations, 60000);
+
+    return () => {
+      clearInterval(messagesInterval);
+      clearInterval(conversationsInterval);
+      socket.disconnect();
+      console.log('🔄 WebSocket e polling interrompidos');
+    };
   }, [companyId, user, selectedConversation]);
 
   const loadConversations = async () => {
@@ -1040,8 +1242,20 @@ export default function ConversationsPage() {
       
       console.log(`[FRONTEND] Carregadas ${waitingData.length} conversas em espera e ${activeData.length} conversas ativas`);
       
-      setWaitingConversations(waitingData);
-      setActiveConversations(activeData);
+      // Validar antes de definir os estados
+      if (Array.isArray(waitingData)) {
+        setWaitingConversations(waitingData);
+      } else {
+        console.warn('⚠️ Dados de conversas em espera inválidos:', waitingData);
+        setWaitingConversations([]);
+      }
+      
+      if (Array.isArray(activeData)) {
+        setActiveConversations(activeData);
+      } else {
+        console.warn('⚠️ Dados de conversas ativas inválidos:', activeData);
+        setActiveConversations([]);
+      }
     } catch (error) {
       console.error('Erro ao carregar conversas:', error);
       // Garantir que sempre temos arrays
@@ -1064,13 +1278,13 @@ export default function ConversationsPage() {
     }
   };
 
-  const handleSelectConversation = async (conversation) => {
+  const handleSelectConversation = async (conversation: Conversation) => {
     setSelectedConversation(conversation);
     setSelectedContact(null);
     
     // Marcar conversa como lida
-    if (conversation.unreadCount > 0) {
-      setUnreadCount(prev => Math.max(0, prev - conversation.unreadCount));
+    if (conversation.unreadCount && conversation.unreadCount > 0) {
+      setUnreadCount(prev => Math.max(0, prev - (conversation.unreadCount || 0)));
       setWaitingConversations(prev => 
         prev.map(conv => 
           conv.id === conversation.id 
@@ -1101,13 +1315,13 @@ export default function ConversationsPage() {
     }
   };
 
-  const handleSelectContact = (contact) => {
+  const handleSelectContact = (contact: Contact) => {
     setSelectedContact(contact);
     setSelectedConversation(null);
     setMessages([]);
   };
 
-  const handleTakeConversation = async (conversationId) => {
+  const handleTakeConversation = async (conversationId: string) => {
     try {
       await apiClient.post(`/api/whatsapp/conversations/${conversationId}/take`);
       await loadConversations();
@@ -1118,7 +1332,7 @@ export default function ConversationsPage() {
   };
 
   // Auto-assumir conversa ao começar a digitar
-  const handleMessageInput = (text) => {
+  const handleMessageInput = (text: string) => {
     if (selectedConversation && selectedConversation.status === 'waiting' && text.trim()) {
       if (!isTyping) {
         setIsTyping(true);
@@ -1127,18 +1341,19 @@ export default function ConversationsPage() {
     }
   };
 
-  const handleSendMessage = async (text) => {
+  const handleSendMessage = async (text: string, quotedMessageId?: string) => {
     if (!selectedConversation || !text.trim()) return;
 
     // OPTIMISTIC UI: Criar mensagem temporária imediatamente
-    const tempMessage = {
+    const tempMessage: Message = {
       id: `temp-${Date.now()}`,
       conversationId: selectedConversation.id,
-      senderId: user.id,
+      senderId: user!.id,
       content: text,
       messageType: 'text',
       direction: 'outgoing',
       status: 'sending', // Status temporário
+      sentAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -1152,7 +1367,12 @@ export default function ConversationsPage() {
         await handleTakeConversation(selectedConversation.id);
       }
 
-      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, { text });
+      const payload: any = { text };
+      if (quotedMessageId) {
+        payload.quotedMessageId = quotedMessageId;
+      }
+
+      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
 
       // Remover mensagem temporária e adicionar a real
       setMessages(prev => {
@@ -1170,11 +1390,11 @@ export default function ConversationsPage() {
     }
   };
 
-  const handleSendMedia = async (file) => {
+  const handleSendMedia = async (file: File, quotedMessageId?: string) => {
     if (!selectedConversation || !file) return;
 
     // Determinar tipo de mídia
-    const getMediaType = (file) => {
+    const getMediaType = (file: File) => {
       if (file.type.startsWith('image/')) return 'image';
       if (file.type.startsWith('video/')) return 'video';
       if (file.type.startsWith('audio/')) return 'audio';
@@ -1184,15 +1404,16 @@ export default function ConversationsPage() {
     const mediaType = getMediaType(file);
 
     // OPTIMISTIC UI: Criar mensagem temporária
-    const tempMessage = {
+    const tempMessage: Message = {
       id: `temp-${Date.now()}`,
       conversationId: selectedConversation.id,
-      senderId: user.id,
+      senderId: user!.id,
       content: `[${mediaType} enviando...]`,
       messageType: mediaType,
       direction: 'outgoing',
       status: 'sending',
       mediaUrl: URL.createObjectURL(file), // Preview temporário
+      sentAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -1208,6 +1429,9 @@ export default function ConversationsPage() {
 
       const formData = new FormData();
       formData.append('file', file);
+      if (quotedMessageId) {
+        formData.append('quotedMessageId', quotedMessageId);
+      }
       
       const response = await apiClient.post(
         `/api/whatsapp/conversations/${selectedConversation.id}/send-media`, 
@@ -1231,7 +1455,7 @@ export default function ConversationsPage() {
     }
   };
 
-  const handleFinishConversation = async (conversationId) => {
+  const handleFinishConversation = async (conversationId: string) => {
     try {
       await apiClient.post(`/api/whatsapp/conversations/${conversationId}/finish`);
       await loadConversations();
@@ -1333,6 +1557,7 @@ export default function ConversationsPage() {
               active={activeTab === 'contacts'}
               onClick={() => setActiveTab('contacts')}
               icon={Users}
+              count={0}
             >
               CONTATOS
             </TabButton>
@@ -1342,7 +1567,13 @@ export default function ConversationsPage() {
         {/* Lista de Conversas/Contatos */}
         <UnifiedList
           items={getCurrentList()}
-          onSelect={activeTab === 'contacts' ? handleSelectContact : handleSelectConversation}
+          onSelect={(item) => {
+            if (activeTab === 'contacts') {
+              handleSelectContact(item as Contact);
+            } else {
+              handleSelectConversation(item as Conversation);
+            }
+          }}
           selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
           title={getCurrentTitle()}
           emptyMessage={getEmptyMessage()}
@@ -1360,6 +1591,51 @@ export default function ConversationsPage() {
         onSendMedia={handleSendMedia}
         onMessageInput={handleMessageInput}
       />
+      
+      {/* Popup de Imagem */}
+      {imagePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-4xl bg-white rounded-lg overflow-hidden">
+            {/* Botão de fechar */}
+            <button
+              onClick={() => setImagePopup(null)}
+              className="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            
+            {/* Imagem */}
+            <img
+              src={imagePopup.src}
+              alt={imagePopup.alt}
+              className="max-w-full max-h-full object-contain"
+            />
+            
+            {/* Botões de ação */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3">
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = imagePopup.src;
+                  link.download = `imagem-${Date.now()}.jpg`;
+                  link.click();
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+              <button
+                onClick={() => window.open(imagePopup.src, '_blank')}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600 transition-colors"
+              >
+                <Eye className="h-4 w-4" />
+                Abrir em Nova Aba
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

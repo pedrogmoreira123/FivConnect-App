@@ -63,7 +63,7 @@ export function verifyToken(token: string): AuthPayload | null {
     });
     return decoded;
   } catch (error) {
-    console.log('❌ [BACKEND] verifyToken - Erro na verificação JWT:', error.message);
+    console.log('❌ [BACKEND] verifyToken - Erro na verificação JWT:', (error as Error).message);
     return null;
   }
 }
@@ -232,7 +232,7 @@ export async function validateSession(token: string): Promise<{ user: Omit<User,
     ...userFromDb,
     id: payload.userId,
     companyId: payload.companyId,
-    role: payload.role,
+    role: payload.role as "admin" | "supervisor" | "agent" | "superadmin",
   };
 
   console.log('✅ [BACKEND] validateSession - Validação completa bem-sucedida para usuário:', user.id);
@@ -285,7 +285,9 @@ export async function requireAuth(req: any, res: any, next: any) {
     // Add user and session to request object
     req.user = {
       ...validation.user,
-      companyId: jwtPayload?.companyId || validation.user.companyId || 'N/A'
+      company: {
+        id: jwtPayload?.companyId || validation.user.companyId || 'N/A'
+      }
     };
     req.session = validation.session;
     

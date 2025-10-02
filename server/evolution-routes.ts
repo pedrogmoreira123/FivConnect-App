@@ -53,8 +53,8 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
       const { companyId } = req.params;
       
       // Verificar se o usuário tem acesso à empresa
-      const userCompanyId = req.user.company?.id || req.user.companyId;
-      if (req.user.role !== 'superadmin' && userCompanyId !== companyId) {
+      const userCompanyId = req.user?.company?.id;
+      if (req.user?.role !== 'superadmin' && userCompanyId !== companyId) {
         return res.status(403).json({ message: 'Access denied to this company' });
       }
 
@@ -84,8 +84,8 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
       }
 
       // Verificar se o usuário tem acesso à empresa
-      const userCompanyId = req.user.company?.id || req.user.companyId;
-      if (req.user.role !== 'superadmin' && userCompanyId !== companyId) {
+      const userCompanyId = req.user?.company?.id;
+      if (req.user?.role !== 'superadmin' && userCompanyId !== companyId) {
         return res.status(403).json({ message: 'Access denied to this company' });
       }
       console.log('🔍 [BACKEND] Dados para criação:', { companyId, connectionName });
@@ -121,9 +121,9 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
       const { companyId, connectionId } = req.params;
       
       // Verificar se o usuário tem acesso à empresa
-      const userCompanyId = req.user.company?.id || req.user.companyId;
+      const userCompanyId = req.user?.company?.id;
       
-      if (req.user.role !== 'superadmin' && userCompanyId !== companyId) {
+      if (req.user?.role !== 'superadmin' && userCompanyId !== companyId) {
         return res.status(403).json({ message: 'Access denied to this company' });
       }
 
@@ -155,8 +155,8 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
       const { companyId, connectionId } = req.params;
       
       // Verificar se o usuário tem acesso à empresa
-      const userCompanyId = req.user.company?.id || req.user.companyId;
-      if (req.user.role !== 'superadmin' && userCompanyId !== companyId) {
+      const userCompanyId = req.user?.company?.id;
+      if (req.user?.role !== 'superadmin' && userCompanyId !== companyId) {
         return res.status(403).json({ message: 'Access denied to this company' });
       }
 
@@ -188,8 +188,8 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
       const { companyId, connectionId } = req.params;
       
       // Verificar se o usuário tem acesso à empresa
-      const userCompanyId = req.user.company?.id || req.user.companyId;
-      if (req.user.role !== 'superadmin' && userCompanyId !== companyId) {
+      const userCompanyId = req.user?.company?.id;
+      if (req.user?.role !== 'superadmin' && userCompanyId !== companyId) {
         return res.status(403).json({ message: 'Access denied to this company' });
       }
 
@@ -462,7 +462,7 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
       }).returning())[0];
 
       // Emitir evento WebSocket para atualização em tempo real
-      if (io) io.emit('newMessage', newMessage);
+      if (io) io.to(`company_${companyId}`).emit('newMessage', newMessage);
       
       // Simular atualização de status (em produção, viria da Evolution API)
       setTimeout(() => {
@@ -502,6 +502,8 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
       // Verificar se é FormData (upload de arquivo) ou JSON (URL de mídia)
       let mediaType, mediaUrl, caption;
       
+      let base64Media = null;
+      
       if (req.file) {
         // Upload de arquivo via FormData
         const file = req.file;
@@ -524,9 +526,9 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
         mediaUrl = `${process.env.MAIN_APP_URL}/uploads/${fileName}`;
         caption = req.body.caption || '';
         
-        // Converter para base64 para Evolution API
+        // Converter para base64 para Evolution API (sem data URL prefix)
         const fileBuffer = fs.readFileSync(filePath);
-        const base64Media = `data:${file.mimetype};base64,${fileBuffer.toString('base64')}`;
+        base64Media = fileBuffer.toString('base64');
       } else {
         // Dados JSON (URL de mídia)
         ({ mediaType, mediaUrl, caption } = req.body);
@@ -581,7 +583,7 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
                       connection.instanceName, 
                       conversation.contactPhone, 
                       mediaForEvolution, 
-                      file.originalname || 'documento'
+                      req.file?.originalname || 'documento'
                     );
                     break;
                   default:
@@ -601,7 +603,7 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
         status: 'sent',
       }).returning())[0];
 
-      if (io) io.emit('newMessage', newMessage);
+      if (io) io.to(`company_${companyId}`).emit('newMessage', newMessage);
       res.status(201).json(newMessage);
     } catch (error) {
       console.error(`❌ Erro ao enviar mídia para a conversa ${conversationId}:`, error);
@@ -692,6 +694,62 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
         console.log(`[WEBHOOK] Data completa: ${JSON.stringify(data)}`);
         
         const messageData = data.message;
+        
+        // Processar diferentes tipos de mensagens
+        let messageType = 'text';
+        let content = '';
+        let mediaUrl = null;
+        let caption = null;
+        let fileName = null;
+        
+        // Determinar tipo de mensagem e extrair conteúdo
+        if (messageData.conversation) {
+          messageType = 'text';
+          content = messageData.conversation;
+        } else if (messageData.extendedTextMessage) {
+          messageType = 'text';
+          content = messageData.extendedTextMessage.text || '';
+        } else if (messageData.imageMessage) {
+          messageType = 'image';
+          content = messageData.imageMessage.caption || '[Imagem]';
+          mediaUrl = messageData.imageMessage.url;
+          caption = messageData.imageMessage.caption;
+        } else if (messageData.videoMessage) {
+          messageType = 'video';
+          content = messageData.videoMessage.caption || '[Vídeo]';
+          mediaUrl = messageData.videoMessage.url;
+          caption = messageData.videoMessage.caption;
+        } else if (messageData.audioMessage) {
+          messageType = 'audio';
+          content = '[Áudio]';
+          mediaUrl = messageData.audioMessage.url;
+        } else if (messageData.documentMessage) {
+          messageType = 'document';
+          content = messageData.documentMessage.caption || '[Documento]';
+          mediaUrl = messageData.documentMessage.url;
+          caption = messageData.documentMessage.caption;
+          fileName = messageData.documentMessage.fileName;
+        } else if (messageData.stickerMessage) {
+          messageType = 'sticker';
+          content = '[Sticker]';
+          mediaUrl = messageData.stickerMessage.url;
+        } else if (messageData.contactMessage) {
+          messageType = 'contact';
+          content = '[Contato]';
+        } else if (messageData.locationMessage) {
+          messageType = 'location';
+          content = '[Localização]';
+        } else if (messageData.pollCreationMessage) {
+          messageType = 'poll';
+          content = '[Enquete]';
+        } else {
+          messageType = 'text';
+          content = '[Mensagem não suportada]';
+        }
+        
+        console.log(`[WEBHOOK] Tipo de mensagem detectado: ${messageType}`);
+        console.log(`[WEBHOOK] Conteúdo: ${content}`);
+        if (mediaUrl) console.log(`[WEBHOOK] URL da mídia: ${mediaUrl}`);
 
         try {
           // Buscar cliente existente usando pool direto
@@ -757,49 +815,59 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
             }
           }
 
-          const messageTypeKey = Object.keys(messageData).find(key => key.endsWith('Message'));
-          const messageType = messageTypeKey?.replace('Message', '').toLowerCase();
-          const messageDataContent = messageData[messageTypeKey];
+        // Processar mídia se existir
+        let finalMediaUrl = mediaUrl;
+        let finalCaption = caption;
+        let finalFileName = fileName;
 
-          let content = messageData.conversation || messageData.extendedTextMessage?.text || `[${messageType}]`;
-          let mediaUrl = null;
-
-          // Se for uma mensagem de mídia, baixar o arquivo
-          if (['image', 'audio', 'video', 'document'].includes(messageType)) {
-            try {
-              // Baixar mídia da Evolution API
-              const downloadResponse = await axios.get(`${process.env.EVOLUTION_API_URL}/chat/downloadMedia/${instanceName}`, {
-                params: {
-                  messageKey: JSON.stringify(data.key)
-                },
-                headers: {
-                  'apikey': process.env.EVOLUTION_API_KEY
-                },
-                responseType: 'arraybuffer'
-              });
-
-              // Salvar arquivo localmente
-              const fileExtension = messageType === 'image' ? '.jpg' : 
-                                   messageType === 'video' ? '.mp4' : 
-                                   messageType === 'audio' ? '.ogg' : '.bin';
-              const fileName = `${data.key.id}${fileExtension}`;
+        if (mediaUrl && ['image', 'video', 'audio', 'document', 'sticker'].includes(messageType)) {
+          try {
+            console.log(`[WEBHOOK] Baixando mídia: ${mediaUrl}`);
+            
+            // Baixar mídia da Evolution API
+            const mediaResponse = await axios.get(mediaUrl, {
+              responseType: 'arraybuffer',
+              timeout: 30000
+            });
+            
+            if (mediaResponse.data && mediaResponse.data.length > 0) {
+              // Gerar nome do arquivo
+              const fileExtension = messageType === 'image' ? 'jpg' : 
+                                  messageType === 'video' ? 'mp4' :
+                                  messageType === 'audio' ? 'ogg' :
+                                  messageType === 'document' ? 'pdf' : 'bin';
+              
+              const fileName = `${data.key.id}.${fileExtension}`;
               const filePath = path.join(__dirname, '..', 'public', 'uploads', fileName);
               
-              fs.writeFileSync(filePath, downloadResponse.data);
-              mediaUrl = `${process.env.MAIN_APP_URL}/uploads/${fileName}`;
-              content = messageDataContent?.caption || content;
-            } catch (downloadError) {
-              console.error(`[WEBHOOK] Erro ao baixar mídia:`, downloadError);
-              content = `[${messageType} - erro ao baixar]`;
+              // Garantir que o diretório existe
+              await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+              
+              // Salvar arquivo localmente
+              await fs.promises.writeFile(filePath, mediaResponse.data);
+              
+              // Atualizar URL para o arquivo local
+              finalMediaUrl = `${process.env.MAIN_APP_URL}/uploads/${fileName}`;
+              
+              console.log(`[WEBHOOK] Mídia salva localmente: ${finalMediaUrl}`);
+            } else {
+              console.log(`[WEBHOOK] ⚠️ Mídia vazia recebida`);
             }
+          } catch (mediaError) {
+            console.error(`[WEBHOOK] ❌ Erro ao baixar mídia:`, mediaError);
+            // Continuar sem mídia se falhar o download
           }
+        }
 
-          console.log(`[WEBHOOK] Salvando mensagem: ${content}`);
+        // Usar os dados já processados acima
+        const finalContent = content;
 
-          const newMessageResult = await pool.query(
-            `INSERT INTO messages (id, conversation_id, content, message_type, direction, environment, status, sent_at, media_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-            [data.key.id, conversation.id, content, messageType, 'incoming', 'production', 'delivered', new Date(data.messageTimestamp * 1000), mediaUrl]
-          );
+        console.log(`[WEBHOOK] Salvando mensagem: ${finalContent}`);
+
+        const newMessageResult = await pool.query(
+          `INSERT INTO messages (id, conversation_id, content, message_type, direction, environment, status, sent_at, media_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+          [data.key.id, conversation.id, finalContent, messageType, 'incoming', 'production', 'delivered', new Date(data.messageTimestamp * 1000), finalMediaUrl]
+        );
 
           console.log(`[WEBHOOK] Mensagem salva com sucesso: ${newMessageResult.rows[0].id}`);
           
@@ -813,13 +881,49 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
           
           console.log(`[WEBHOOK] Emitindo newMessage:`, messageData);
           if (io) {
-            io.emit('newMessage', messageData);
-            console.log(`[WEBHOOK] Evento newMessage emitido com sucesso`);
+            io.to(`company_${companyId}`).emit('newMessage', messageData);
+            console.log(`[WEBHOOK] Evento newMessage emitido para company_${companyId}`);
           } else {
             console.log(`[WEBHOOK] ❌ io não disponível para emitir evento`);
           }
       } catch (error) {
           console.error(`[WEBHOOK] Erro ao processar mensagem:`, error);
+        }
+      }
+
+      // Processar atualizações de status de mensagens
+      if (eventName === 'messages.update') {
+        const { key, update } = data;
+        
+        // Validar se os dados necessários existem
+        if (!key || !key.id || !update || !update.status) {
+          console.log(`[WEBHOOK] Dados incompletos para messages.update:`, { key, update });
+          return;
+        }
+        
+        const messageId = key.id;
+        const status = update.status;
+        
+        console.log(`[WEBHOOK] Atualizando status da mensagem ${messageId} para ${status}`);
+        
+        try {
+          // Atualizar status da mensagem no banco
+          await pool.query(
+            `UPDATE messages SET status = $1, updated_at = $2 WHERE id = $3`,
+            [status, new Date(), messageId]
+          );
+          
+          // Emitir evento WebSocket para atualizar o frontend
+          if (io) {
+            io.emit('messageStatusUpdate', {
+              messageId,
+              status,
+              companyId
+            });
+            console.log(`[WEBHOOK] Evento messageStatusUpdate emitido para mensagem ${messageId}`);
+          }
+        } catch (error) {
+          console.error(`[WEBHOOK] Erro ao atualizar status da mensagem:`, error);
         }
       }
 
@@ -942,6 +1046,245 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
     } catch (error) {
       console.error('Error fetching messages:', error);
       res.status(500).json({ message: 'Erro ao buscar mensagens' });
+    }
+  });
+
+  // Enviar mensagem de texto com suporte a resposta
+  app.post('/api/whatsapp/conversations/:conversationId/send', requireAuth, async (req, res) => {
+    try {
+      const { conversationId } = req.params;
+      const { text, quotedMessageId } = req.body;
+      const { companyId } = req.user;
+
+      if (!text || !text.trim()) {
+        return res.status(400).json({ message: 'Texto da mensagem é obrigatório' });
+      }
+
+      // Buscar conversa
+      const conversation = await storage.getConversationById(conversationId);
+      if (!conversation || conversation.companyId !== companyId) {
+        return res.status(404).json({ message: 'Conversa não encontrada' });
+      }
+
+      // Buscar conexão WhatsApp
+      const connection = await storage.getWhatsAppConnectionById(conversation.whatsappConnectionId);
+      if (!connection) {
+        return res.status(404).json({ message: 'Conexão WhatsApp não encontrada' });
+      }
+
+      // Preparar payload para Evolution API
+      const payload = {
+        number: conversation.contactPhone,
+        textMessage: {
+          text: text
+        },
+        options: {
+          delay: 1200
+        }
+      };
+
+      // Adicionar resposta se especificada
+      if (quotedMessageId) {
+        payload.options.quoted = {
+          key: {
+            id: quotedMessageId
+          }
+        };
+      }
+
+      // Enviar via Evolution API
+      const response = await axios.post(
+        `${process.env.EVOLUTION_API_URL}/message/sendText/${connection.instanceName}`,
+        payload,
+        {
+          headers: {
+            'apikey': process.env.EVOLUTION_API_KEY,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      // Salvar mensagem no banco
+      const messageData = {
+        id: response.data.key?.id || randomUUID(),
+        conversationId: conversationId,
+        content: text,
+        messageType: 'text',
+        direction: 'outgoing',
+        status: 'sent',
+        sentAt: new Date(),
+        mediaUrl: null,
+        caption: null,
+        fileName: null
+      };
+
+      const newMessageResult = await pool.query(
+        `INSERT INTO messages (id, conversation_id, content, message_type, direction, environment, status, sent_at, media_url, caption, file_name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+        [messageData.id, messageData.conversationId, messageData.content, messageData.messageType, messageData.direction, 'production', messageData.status, messageData.sentAt, messageData.mediaUrl, messageData.caption, messageData.fileName]
+      );
+
+      // Emitir evento WebSocket
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`company_${companyId}`).emit('newMessage', {
+          ...newMessageResult.rows[0],
+          companyId,
+          conversationId,
+          direction: 'outgoing'
+        });
+      }
+
+      res.json({
+        message: 'Mensagem enviada com sucesso',
+        messageId: newMessageResult.rows[0].id,
+        evolutionResponse: response.data
+      });
+
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error);
+      res.status(500).json({ message: 'Erro ao enviar mensagem', error: error.message });
+    }
+  });
+
+  // Enviar mídia (imagem, vídeo, áudio, documento)
+  app.post('/api/whatsapp/conversations/:conversationId/send-media', requireAuth, upload.single('file'), async (req, res) => {
+    try {
+      const { conversationId } = req.params;
+      const { quotedMessageId } = req.body;
+      const { companyId } = req.user;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ message: 'Arquivo é obrigatório' });
+      }
+
+      // Buscar conversa
+      const conversation = await storage.getConversationById(conversationId);
+      if (!conversation || conversation.companyId !== companyId) {
+        return res.status(404).json({ message: 'Conversa não encontrada' });
+      }
+
+      // Buscar conexão WhatsApp
+      const connection = await storage.getWhatsAppConnectionById(conversation.whatsappConnectionId);
+      if (!connection) {
+        return res.status(404).json({ message: 'Conexão WhatsApp não encontrada' });
+      }
+
+      // Determinar tipo de mídia
+      const getMediaType = (file: Express.Multer.File) => {
+        if (file.mimetype.startsWith('image/')) return 'image';
+        if (file.mimetype.startsWith('video/')) return 'video';
+        if (file.mimetype.startsWith('audio/')) return 'audio';
+        return 'document';
+      };
+
+      const mediaType = getMediaType(file);
+      const mediaUrl = `${process.env.MAIN_APP_URL}/uploads/${file.filename}`;
+
+      // Preparar payload para Evolution API
+      const payload = {
+        number: conversation.contactPhone,
+        options: {
+          delay: 1200
+        }
+      };
+
+      // Adicionar resposta se especificada
+      if (quotedMessageId) {
+        payload.options.quoted = {
+          key: {
+            id: quotedMessageId
+          }
+        };
+      }
+
+      // Configurar payload baseado no tipo de mídia
+      if (mediaType === 'image') {
+        payload.imageMessage = {
+          image: {
+            url: mediaUrl
+          },
+          caption: req.body.caption || ''
+        };
+      } else if (mediaType === 'video') {
+        payload.videoMessage = {
+          video: {
+            url: mediaUrl
+          },
+          caption: req.body.caption || ''
+        };
+      } else if (mediaType === 'audio') {
+        payload.audioMessage = {
+          audio: {
+            url: mediaUrl
+          }
+        };
+      } else {
+        payload.documentMessage = {
+          document: {
+            url: mediaUrl
+          },
+          fileName: file.originalname,
+          caption: req.body.caption || ''
+        };
+      }
+
+      // Enviar via Evolution API
+      const endpoint = mediaType === 'image' ? 'sendMedia' : 
+                     mediaType === 'video' ? 'sendMedia' : 
+                     mediaType === 'audio' ? 'sendWhatsAppAudio' : 'sendMedia';
+
+      const response = await axios.post(
+        `${process.env.EVOLUTION_API_URL}/message/${endpoint}/${connection.instanceName}`,
+        payload,
+        {
+          headers: {
+            'apikey': process.env.EVOLUTION_API_KEY,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      // Salvar mensagem no banco
+      const messageData = {
+        id: response.data.key?.id || randomUUID(),
+        conversationId: conversationId,
+        content: req.body.caption || `[${mediaType}]`,
+        messageType: mediaType,
+        direction: 'outgoing',
+        status: 'sent',
+        sentAt: new Date(),
+        mediaUrl: mediaUrl,
+        caption: req.body.caption || null,
+        fileName: file.originalname
+      };
+
+      const newMessageResult = await pool.query(
+        `INSERT INTO messages (id, conversation_id, content, message_type, direction, environment, status, sent_at, media_url, caption, file_name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+        [messageData.id, messageData.conversationId, messageData.content, messageData.messageType, messageData.direction, 'production', messageData.status, messageData.sentAt, messageData.mediaUrl, messageData.caption, messageData.fileName]
+      );
+
+      // Emitir evento WebSocket
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`company_${companyId}`).emit('newMessage', {
+          ...newMessageResult.rows[0],
+          companyId,
+          conversationId,
+          direction: 'outgoing'
+        });
+      }
+
+      res.json({
+        message: 'Mídia enviada com sucesso',
+        messageId: newMessageResult.rows[0].id,
+        mediaUrl: mediaUrl,
+        evolutionResponse: response.data
+      });
+
+    } catch (error) {
+      console.error('Erro ao enviar mídia:', error);
+      res.status(500).json({ message: 'Erro ao enviar mídia', error: error.message });
     }
   });
 

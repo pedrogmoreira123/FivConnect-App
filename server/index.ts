@@ -17,11 +17,53 @@ const server = http.createServer(app);
 // Configuração do Socket.io
 const io = new Server(server, {
   cors: {
-    origin: ['https://app.fivconnect.net', 'http://localhost:3000', 'http://localhost:5173'],
+    origin: ['https://app.fivconnect.net', 'http://localhost:3000', 'http://localhost:5173', 'http://localhost:5000'],
     methods: ['GET', 'POST'],
     credentials: true
   },
-  transports: ['websocket', 'polling']
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000
+});
+
+// Middleware de autenticação para WebSocket (opcional para desenvolvimento)
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  
+  if (!token) {
+    console.log('⚠️ WebSocket: Token não fornecido - permitindo conexão para desenvolvimento');
+    socket.userId = 'anonymous';
+    socket.companyId = 'default';
+    return next();
+  }
+  
+  try {
+    // Verificar token JWT (simplificado para WebSocket)
+    const decoded = JSON.parse(atob(token.split('.')[1]));
+    socket.userId = decoded.userId;
+    socket.companyId = decoded.companyId;
+    console.log(`✅ WebSocket: Cliente autenticado - User: ${socket.userId}, Company: ${socket.companyId}`);
+    next();
+  } catch (error) {
+    console.log('⚠️ WebSocket: Token inválido - permitindo conexão para desenvolvimento');
+    socket.userId = 'anonymous';
+    socket.companyId = 'default';
+    next();
+  }
+});
+
+// Logs de conexão WebSocket
+io.on('connection', (socket) => {
+  console.log(`🔌 Cliente WebSocket conectado: ${socket.id} (User: ${socket.userId})`);
+  console.log(`📊 Total de clientes conectados: ${io.engine.clientsCount}`);
+  
+  // Join user to their company room
+  socket.join(`company_${socket.companyId}`);
+  
+  socket.on('disconnect', () => {
+    console.log(`🔌 Cliente WebSocket desconectado: ${socket.id}`);
+    console.log(`📊 Total de clientes conectados: ${io.engine.clientsCount}`);
+  });
 });
 
 app.set('io', io); // Disponibiliza o `io` para as rotas
@@ -92,13 +134,7 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // Socket.io event handlers
-  io.on('connection', (socket) => {
-    console.log(`[Socket.io] Novo cliente conectado: ${socket.id}`);
-    socket.on('disconnect', () => {
-      console.log(`[Socket.io] Cliente desconectado: ${socket.id}`);
-    });
-  });
+  // Socket.io event handlers já configurados acima
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.

@@ -1680,20 +1680,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  const httpServer = createServer(app);
-  
-  // Configuração do Socket.io
-  const io = new SocketIOServer(httpServer, {
-    cors: {
-      origin: '*', // Em produção, restrinja para o seu domínio
-      methods: ['GET', 'POST'],
-    },
-  });
+  // Setup Evolution API routes (io já está configurado no index.ts)
+  setupEvolutionRoutes(app);
 
-  app.set('io', io); // Disponibiliza o `io` para as rotas
-
-  // Setup Evolution API routes (após criar o io)
-  setupEvolutionRoutes(app, io);
-
-  return httpServer;
+  return app;
 }
