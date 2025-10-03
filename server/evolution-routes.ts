@@ -527,8 +527,27 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
         caption = req.body.caption || '';
         
         // Converter para base64 para Evolution API (sem data URL prefix)
+        console.log('🔍 [DEBUG] Lendo arquivo:', filePath);
+        console.log('🔍 [DEBUG] Arquivo existe?', fs.existsSync(filePath));
+        
+        if (!fs.existsSync(filePath)) {
+          console.log('❌ [DEBUG] Arquivo não existe:', filePath);
+          return res.status(400).json({ error: "Arquivo não encontrado." });
+        }
+        
         const fileBuffer = fs.readFileSync(filePath);
+        console.log('🔍 [DEBUG] Buffer size:', fileBuffer.length);
+        
         base64Media = fileBuffer.toString('base64');
+        console.log('🔍 [DEBUG] base64Media length:', base64Media.length);
+        console.log('🔍 [DEBUG] base64Media type:', typeof base64Media);
+        console.log('🔍 [DEBUG] base64Media first 100 chars:', base64Media.substring(0, 100));
+        
+        // CORREÇÃO: Verificar se base64Media é válido
+        if (!base64Media || base64Media === '') {
+          console.log('❌ [DEBUG] base64Media é inválido:', base64Media);
+          return res.status(400).json({ error: "Erro ao converter arquivo para base64." });
+        }
       } else {
         // Dados JSON (URL de mídia)
         ({ mediaType, mediaUrl, caption } = req.body);
@@ -552,7 +571,62 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
                 
                 // Enviar mídia baseada no tipo usando o nome da instância
                 // Usar base64Media para Evolution API e mediaUrl para armazenamento
-                const mediaForEvolution = req.file ? base64Media : mediaUrl;
+                let mediaForEvolution;
+                if (req.file) {
+                  mediaForEvolution = base64Media;
+                } else {
+                  mediaForEvolution = mediaUrl;
+                }
+                
+                // CORREÇÃO: Validar se mediaForEvolution é válido
+                console.log('🔍 [DEBUG] mediaForEvolution:', mediaForEvolution);
+                console.log('🔍 [DEBUG] typeof mediaForEvolution:', typeof mediaForEvolution);
+                console.log('🔍 [DEBUG] req.file:', req.file);
+                console.log('🔍 [DEBUG] base64Media:', base64Media);
+                console.log('🔍 [DEBUG] mediaUrl:', mediaUrl);
+                console.log('🔍 [DEBUG] connection.instanceName:', connection.instanceName);
+                console.log('🔍 [DEBUG] conversation.contactPhone:', conversation.contactPhone);
+                console.log('🔍 [DEBUG] mediaType:', mediaType);
+                console.log('🔍 [DEBUG] Verificando se algum campo é false:', {
+                  mediaForEvolution: mediaForEvolution === false,
+                  connectionInstanceName: connection.instanceName === false,
+                  conversationContactPhone: conversation.contactPhone === false,
+                  mediaType: mediaType === false
+                });
+                
+                // CORREÇÃO: Verificar se connection.instanceName é válido
+                if (!connection.instanceName || connection.instanceName === false) {
+                  console.log('❌ [DEBUG] connection.instanceName é inválido:', connection.instanceName);
+                  return res.status(400).json({ error: "Nome da instância inválido." });
+                }
+                
+                // CORREÇÃO: Verificar se conversation.contactPhone é válido
+                if (!conversation.contactPhone || conversation.contactPhone === false) {
+                  console.log('❌ [DEBUG] conversation.contactPhone é inválido:', conversation.contactPhone);
+                  return res.status(400).json({ error: "Telefone do contato inválido." });
+                }
+                
+                if (!mediaForEvolution || mediaForEvolution === false || mediaForEvolution === null) {
+                  console.log('❌ [DEBUG] mediaForEvolution é inválido:', mediaForEvolution);
+                  return res.status(400).json({ error: "Mídia não encontrada ou inválida." });
+                }
+                
+                // CORREÇÃO: Validar se connection.instanceName é válido
+                if (!connection.instanceName || connection.instanceName === false) {
+                  console.log('❌ [DEBUG] connection.instanceName é inválido:', connection.instanceName);
+                  return res.status(400).json({ error: "Nome da instância inválido." });
+                }
+                
+                // CORREÇÃO: Validar se conversation.contactPhone é válido
+                if (!conversation.contactPhone || conversation.contactPhone === false) {
+                  console.log('❌ [DEBUG] conversation.contactPhone é inválido:', conversation.contactPhone);
+                  return res.status(400).json({ error: "Telefone do contato inválido." });
+                }
+                
+                if (!mediaForEvolution || mediaForEvolution === false || mediaForEvolution === null) {
+                  console.log('❌ [DEBUG] mediaForEvolution é inválido:', mediaForEvolution);
+                  return res.status(400).json({ error: "Mídia não encontrada ou inválida." });
+                }
                 
                 switch (mediaType) {
                   case 'image':
@@ -1224,7 +1298,7 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
           document: {
             url: mediaUrl
           },
-          fileName: file.originalname,
+          fileName: req.file?.originalname || 'documento',
           caption: req.body.caption || ''
         };
       }
@@ -1256,7 +1330,7 @@ export function setupEvolutionRoutes(app: Express, io?: any): void {
         sentAt: new Date(),
         mediaUrl: mediaUrl,
         caption: req.body.caption || null,
-        fileName: file.originalname
+        fileName: req.file?.originalname || 'documento'
       };
 
       const newMessageResult = await pool.query(

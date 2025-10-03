@@ -393,6 +393,7 @@ const ChatArea = ({
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -435,21 +436,35 @@ const ChatArea = ({
       const chunks: Blob[] = [];
       
       recorder.ondataavailable = (event) => {
-        console.log('Dados de áudio recebidos:', event.data.size, 'bytes');
+        console.log('🎤 Dados de áudio recebidos:', event.data.size, 'bytes');
         if (event.data.size > 0) {
           chunks.push(event.data);
-          console.log('Chunk adicionado, total de chunks:', chunks.length);
+          console.log('🎤 Chunk adicionado, total de chunks:', chunks.length);
+          console.log('🎤 Chunks array:', chunks);
         }
       };
       
       recorder.onstop = () => {
-        console.log('Gravação parada, chunks:', chunks.length);
-        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-        console.log('Blob criado:', audioBlob.size, 'bytes');
+        console.log('🎤 Gravação parada, chunks finais:', chunks.length);
+        console.log('🎤 Chunks array final:', chunks);
         
-        // Atualizar audioChunks com os chunks originais, não o blob final
-        setAudioChunks(chunks);
-        console.log('AudioChunks atualizado com', chunks.length, 'chunks');
+        if (chunks.length > 0) {
+          const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+          console.log('🎤 Blob criado:', {
+            size: audioBlob.size,
+            type: audioBlob.type,
+            chunks: chunks.length
+          });
+          
+          // CORREÇÃO: Usar useRef para persistir os chunks
+          audioChunksRef.current = chunks;
+          setAudioChunks(chunks);
+          console.log('🎤 AudioChunks atualizado com', chunks.length, 'chunks');
+          console.log('🎤 AudioChunksRef atualizado:', audioChunksRef.current.length);
+        } else {
+          console.error('❌ Nenhum chunk de áudio foi coletado');
+          setAudioChunks([]);
+        }
         
         stream.getTracks().forEach(track => track.stop());
         
@@ -461,6 +476,7 @@ const ChatArea = ({
       
       setMediaRecorder(recorder);
       setAudioChunks([]);
+      audioChunksRef.current = []; // CORREÇÃO: Limpar audioChunksRef no início
       setIsRecording(true);
       setRecordingTime('0:00');
       
@@ -479,7 +495,7 @@ const ChatArea = ({
       
       // Iniciar análise de áudio para waveform
       const updateAudioLevel = () => {
-        if (analyser && isRecording) {
+        if (analyser && recorder.state === 'recording' && isRecording) {
           const dataArray = new Uint8Array(analyser.frequencyBinCount);
           analyser.getByteFrequencyData(dataArray);
           
@@ -487,6 +503,13 @@ const ChatArea = ({
           setAudioLevel(average);
           
           animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+        } else {
+          // CORREÇÃO: Resetar imediatamente quando não está gravando
+          setAudioLevel(0);
+          if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = null;
+          }
         }
       };
       
@@ -524,7 +547,57 @@ const ChatArea = ({
       audioContextRef.current.close();
     }
     
-    console.log('Gravação parada');
+    console.log('🎤 Gravação parada');
+    
+    // CORREÇÃO: Usar apenas audioChunksRef para evitar race condition
+    setTimeout(() => {
+      console.log('🎤 Verificando audioChunksRef após parar:', audioChunksRef.current.length);
+      console.log('🎤 audioChunksRef atual:', audioChunksRef.current);
+      
+      if (audioChunksRef.current.length > 0) {
+        console.log('🎤 Enviando áudio automaticamente...');
+        handleSendRecording();
+      } else {
+        console.error('❌ Nenhum chunk disponível no audioChunksRef');
+        alert('Erro: Nenhum áudio foi gravado.');
+      }
+    }, 500);
+  };
+
+  // Função para cancelar gravação - NOVA
+  const handleCancelRecording = () => {
+    console.log('🎤 Cancelando gravação...');
+    
+    if (mediaRecorder && (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused')) {
+      mediaRecorder.stop();
+      console.log('🎤 MediaRecorder parado');
+    }
+    
+    setIsRecording(false);
+    setAudioLevel(0); // CORREÇÃO: Reset explícito do audioLevel
+    
+    // CORREÇÃO: Cancelar animation frame para parar waveform
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    
+    setAudioChunks([]);
+    audioChunksRef.current = []; // CORREÇÃO: Limpar audioChunksRef também
+    
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+    }
+    
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close();
+    }
+    
+    console.log('🎤 Gravação cancelada');
   };
 
   // Função para pausar gravação
@@ -559,23 +632,38 @@ const ChatArea = ({
     }
   };
 
-  // Função para enviar gravação
+  // Função para enviar gravação - FLUXO CORRIGIDO
   const handleSendRecording = async () => {
-    console.log('Tentando enviar áudio...');
-    console.log('audioChunks:', audioChunks);
-    console.log('conversation:', conversation);
+    console.log('🎤 Tentando enviar áudio...');
+    console.log('🎤 audioChunks:', audioChunks);
+    console.log('🎤 audioChunks length:', audioChunks.length);
+    console.log('🎤 audioChunksRef:', audioChunksRef.current);
+    console.log('🎤 audioChunksRef length:', audioChunksRef.current.length);
+    console.log('🎤 conversation:', conversation);
     
     if (!conversation) {
-      console.log('Conversa não selecionada');
+      console.log('❌ Conversa não selecionada');
       alert('Selecione uma conversa primeiro.');
       return;
     }
 
-    if (audioChunks.length === 0) {
-      console.log('Nenhum áudio gravado');
+    // CORREÇÃO: Usar audioChunksRef como fonte principal
+    const chunksToUse = audioChunksRef.current.length > 0 ? audioChunksRef.current : audioChunks;
+    
+    console.log('🎤 Debug completo:');
+    console.log('- audioChunks:', audioChunks);
+    console.log('- audioChunksRef.current:', audioChunksRef.current);
+    console.log('- chunksToUse:', chunksToUse);
+    
+    if (chunksToUse.length === 0) {
+      console.error('❌ Nenhum áudio gravado - chunks estão vazios');
+      console.error('❌ audioChunks:', audioChunks);
+      console.error('❌ audioChunksRef.current:', audioChunksRef.current);
       alert('Nenhum áudio gravado. Grave um áudio primeiro.');
       return;
     }
+
+    console.log('🎤 Usando chunks:', chunksToUse.length);
 
     console.log('Enviando áudio...');
 
@@ -585,8 +673,8 @@ const ChatArea = ({
     }
 
     try {
-      // Criar Blob a partir de todos os chunks
-      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      // Criar Blob a partir dos chunks corretos
+      const audioBlob = new Blob(chunksToUse, { type: 'audio/webm' });
       console.log('🎤 Blob criado:', audioBlob.size, 'bytes');
       
       if (!audioBlob || audioBlob.size === 0) {
@@ -620,6 +708,7 @@ const ChatArea = ({
       
       // Limpar estado apenas após sucesso
       setAudioChunks([]);
+      audioChunksRef.current = [];
       setRecordingTime('0:00');
       setIsRecording(false);
       setReplyingTo(null); // Limpar resposta após envio
@@ -943,59 +1032,67 @@ const ChatArea = ({
           />
         )}
         
-        {/* Interface de Gravação de Áudio - Layout Compacto */}
+        {/* Interface de Gravação de Áudio - Layout Melhorado */}
         {isRecording ? (
-          <div className="bg-gray-100 rounded-full px-3 py-1.5 flex items-center gap-2 w-1/2 ml-auto">
-            {/* Botão de Deletar */}
+          <div className="bg-gray-100 rounded-lg px-4 py-3 flex items-center gap-3 w-full">
+            {/* 1. Botão de Excluir */}
             <button
-              onClick={handleStopRecording}
-              className="p-1 hover:bg-gray-200 rounded-full transition-colors"
-              title="Cancelar gravação"
+              onClick={handleCancelRecording}
+              className="p-2 hover:bg-red-100 rounded-full transition-colors"
+              title="Excluir gravação"
             >
-              <Trash2 className="h-3 w-3 text-gray-600" />
+              <Trash2 className="h-4 w-4 text-red-600" />
             </button>
             
-            {/* Indicador de Gravação */}
-            <div className="flex items-center gap-1">
-              <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
-              <span className="text-gray-700 text-xs font-medium">{recordingTime}</span>
-          </div>
-
-            {/* Waveform Real - Ocupa todo espaço disponível */}
-            <div className="flex items-center gap-0.5 flex-1 min-w-0">
-              {Array.from({ length: 20 }, (_, i) => {
-                const height = audioLevel > 0 ? Math.min((audioLevel / 10) * (15 + i), 25) : 3;
+            {/* 2. Indicador REC com Tempo */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                <span className="text-red-600 font-bold text-sm">REC</span>
+              </div>
+              <span className="text-gray-700 font-medium text-sm">{recordingTime}</span>
+            </div>
+            
+            {/* 3. Waveform */}
+            <div className="flex items-center gap-1 flex-1">
+              {Array.from({ length: 30 }, (_, i) => {
+                // CORREÇÃO: Waveform responsivo que varia com o áudio
+                const baseHeight = 3;
+                const audioHeight = audioLevel > 0 ? Math.min((audioLevel / 20) * (5 + i * 0.3), 15) : 0;
+                const totalHeight = Math.max(baseHeight + audioHeight, 3);
+                
                 return (
                   <div
                     key={i}
-                    className="bg-gray-500 rounded-full transition-all duration-75"
+                    className="w-1 bg-gray-400 rounded-full transition-all duration-75"
                     style={{
-                      width: '1px',
-                      height: `${height}px`,
+                      height: `${totalHeight}px`,
+                      backgroundColor: audioHeight > 3 ? '#ef4444' : '#9ca3af',
+                      minHeight: '3px'
                     }}
-                  ></div>
+                  />
                 );
               })}
-                      </div>
-                  
-            {/* Botão de Pausar */}
+            </div>
+            
+            {/* 4. Botão de Pausar */}
             <button
               onClick={handlePauseRecording}
-              className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
               title="Pausar gravação"
             >
-              <Pause className="h-3 w-3 text-gray-600" />
+              <Pause className="h-4 w-4 text-gray-600" />
             </button>
             
-            {/* Botão de Enviar */}
-                          <button
-              onClick={handleSendRecording}
-              className="p-1.5 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+            {/* 5. Botão de Enviar */}
+            <button
+              onClick={handleStopRecording}
+              className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
               title="Enviar áudio"
             >
-              <Send className="h-3 w-3" />
-                          </button>
-                      </div>
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
         ) : (
           <div className="flex items-center gap-2 bg-gray-100 rounded-full px-4 py-2">
             {/* Botão de Imagem */}
@@ -1109,8 +1206,11 @@ export default function ConversationsPage() {
     loadConversations();
     loadContacts();
 
-    // Configurar WebSocket
-    const socket = io(window.location.origin, {
+    // Configurar WebSocket - CORRIGIDO
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+    console.log('🔌 Conectando WebSocket para:', apiUrl);
+    
+    const socket = io(apiUrl, {
       auth: {
         token: localStorage.getItem('token')
       },
