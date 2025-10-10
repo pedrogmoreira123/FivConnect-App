@@ -8,12 +8,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useT } from '@/hooks/use-translation';
 import { useMobile } from '@/hooks/use-mobile';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Search, 
-  Filter, 
   Plus, 
   Download,
   Upload,
@@ -25,10 +25,31 @@ import {
   MoreHorizontal,
   Edit,
   Trash2,
-  MessageCircle
+  MessageCircle,
+  FileSpreadsheet,
+  MessageSquare
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { formatPhoneNumber } from '@/lib/utils';
+import { useLocation } from 'wouter';
+import { IMaskInput } from 'react-imask';
+
+// Schema de validação para o formulário de cliente
+const clientSchema = z.object({
+  name: z.string().min(1, 'Nome é obrigatório'),
+  phone: z.string().min(1, 'Telefone é obrigatório'),
+  email: z.string().optional(),
+  cpf: z.string().optional(),
+  company: z.string().optional(),
+  address: z.string().optional(),
+  status: z.enum(['active', 'inactive']).default('active')
+});
+
+type ClientFormData = z.infer<typeof clientSchema>;
 
 interface Client {
   id: string;
@@ -37,6 +58,7 @@ interface Client {
   phone: string;
   email?: string;
   address?: string;
+  cpf?: string;
   status: 'active' | 'inactive';
   lastActivity?: string;
   totalTickets?: number;
@@ -50,35 +72,66 @@ export default function ClientsPage() {
   const isMobile = useMobile();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [showNewClientModal, setShowNewClientModal] = useState(false);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+
+  // Query para buscar detalhes do cliente selecionado
+  const { data: clientDetails } = useQuery({
+    queryKey: ['client-details', selectedClient?.id],
+    queryFn: async () => {
+      if (!selectedClient?.id) return null;
+      const response = await apiRequest('GET', `/api/clients/${selectedClient.id}/details`);
+      return response.json();
+    },
+    enabled: !!selectedClient?.id
+  });
   
-  const [newClient, setNewClient] = useState({
-    name: '',
-    company: '',
-    phone: '',
-    email: '',
-    address: '',
-    observations: '',
-    status: 'active' as 'active' | 'inactive'
+  // Form setup with react-hook-form
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    setValue,
+    formState: { errors, isSubmitting }
+  } = useForm<ClientFormData>({
+    resolver: zodResolver(clientSchema),
+    defaultValues: {
+      name: '',
+      phone: '',
+      email: '',
+      cpf: '',
+      company: '',
+      address: '',
+      status: 'active'
+    }
   });
 
   const { data: clients = [], isLoading } = useQuery<Client[]>({
-    queryKey: ['/api/clients'],
+    queryKey: ['/api/clients', searchQuery],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (searchQuery) {
+        params.append('search', searchQuery);
+      }
+      const response = await apiRequest('GET', `/api/clients?${params.toString()}`);
+      return response.json();
+    },
     staleTime: 30000,
   });
 
   const createClient = useMutation({
-    mutationFn: async (payload: any) => {
+    mutationFn: async (payload: ClientFormData) => {
       const res = await apiRequest('POST', '/api/clients', payload);
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
-      toast({ title: 'Cliente criado!', description: `${newClient.name} foi adicionado com sucesso.` });
-      setNewClient({ name: '', company: '', phone: '', email: '', address: '', observations: '', status: 'active' });
+      toast({ title: 'Cliente criado!', description: `${variables.name} foi adicionado com sucesso.` });
+      reset();
       setShowNewClientModal(false);
     },
     onError: (e: any) => {
@@ -86,12 +139,60 @@ export default function ClientsPage() {
     }
   });
 
-  const filteredClients = clients.filter(client =>
-    client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (client.company || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.phone.includes(searchQuery) ||
-    (client.email || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const importWhatsAppContacts = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('GET', '/api/whatsapp/import-contacts');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
+      toast({ 
+        title: 'Contatos importados!', 
+        description: `${data.importedCount} contatos foram importados do WhatsApp.` 
+      });
+    },
+    onError: (e: any) => {
+      toast({ title: 'Erro', description: e.message || 'Falha ao importar contatos', variant: 'destructive' });
+    }
+  });
+
+  const updateClient = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: ClientFormData }) => {
+      const res = await apiRequest('PUT', `/api/clients/${id}`, data);
+      return res.json();
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
+      queryClient.invalidateQueries({ queryKey: ['client-details', variables.id] });
+      // Update selectedClient if it's the one being edited
+      if (selectedClient?.id === variables.id) {
+        setSelectedClient(prev => prev ? { ...prev, ...data } : null);
+      }
+      toast({ title: 'Cliente atualizado!', description: 'Dados do cliente foram atualizados com sucesso.' });
+      setEditingClient(null);
+      setShowNewClientModal(false);
+      reset();
+    },
+    onError: (e: any) => {
+      toast({ title: 'Erro', description: e.message || 'Falha ao atualizar cliente', variant: 'destructive' });
+    }
+  });
+
+  const createOrFindConversation = useMutation({
+    mutationFn: async (clientId: string) => {
+      const res = await apiRequest('POST', `/api/whatsapp/conversations/create-or-find`, { clientId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setLocation(`/conversations?conversation=${data.conversationId}`);
+    },
+    onError: (e: any) => {
+      toast({ title: 'Erro', description: e.message || 'Falha ao iniciar conversa', variant: 'destructive' });
+    }
+  });
+
+  // O filtro agora é feito no backend
+  const filteredClients = clients;
 
   const handleSelectClient = (client: Client) => {
     setSelectedClient(client);
@@ -108,49 +209,52 @@ export default function ClientsPage() {
     });
   };
 
-  const handleCreateClient = () => {
-    if (!newClient.name || !newClient.phone) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro',
-        description: 'Nome e telefone são obrigatórios.',
-      });
-      return;
+  const handleCreateClient = (data: ClientFormData) => {
+    console.log('📝 Dados do formulário:', data);
+    if (editingClient) {
+      console.log('✏️ Editando cliente:', editingClient.id, 'com dados:', data);
+      updateClient.mutate({ id: editingClient.id, data });
+    } else {
+      console.log('➕ Criando novo cliente com dados:', data);
+      createClient.mutate(data);
     }
-    createClient.mutate({
-      name: newClient.name,
-      phone: newClient.phone,
-      email: newClient.email || undefined,
-      notes: newClient.observations || undefined,
+  };
+
+  const handleEditClient = (client: Client) => {
+    setEditingClient(client);
+    reset({
+      name: client.name,
+      phone: client.phone,
+      email: client.email || '',
+      cpf: client.cpf || '',
+      company: client.company || '',
+      address: client.address || '',
+      status: client.status
     });
+    setShowNewClientModal(true);
+  };
+
+  const handleChatWithClient = (client: Client) => {
+    createOrFindConversation.mutate(client.id);
   };
 
   const handleExportExcel = async () => {
     try {
-      const { utils, writeFile } = await import('xlsx');
+      const response = await apiRequest('GET', '/api/clients/export/excel');
+      const blob = await response.blob();
       
-      const exportData = clients.map(client => ({
-        'Nome': client.name,
-        'Empresa': client.company,
-        'Telefone': client.phone,
-        'Email': client.email,
-        'Endereço': client.address,
-        'Status': client.status === 'active' ? 'Ativo' : 'Inativo',
-        'Última Atividade': client.lastActivity,
-        'Total de Tickets': client.totalTickets,
-        'App Permitido': client.allowWebApp ? 'Sim' : 'Não'
-      }));
-
-      const worksheet = utils.json_to_sheet(exportData);
-      const workbook = utils.book_new();
-      utils.book_append_sheet(workbook, worksheet, 'Clientes');
-      
-      const filename = `clientes_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}.xlsx`;
-      writeFile(workbook, filename);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `clientes_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
       
       toast({
         title: "Exportação concluída!",
-        description: `Arquivo ${filename} foi baixado com sucesso.`,
+        description: "Arquivo Excel foi baixado com sucesso.",
       });
     } catch (error) {
       toast({
@@ -166,39 +270,17 @@ export default function ClientsPage() {
     if (!file) return;
 
     try {
-      const { read, utils } = await import('xlsx');
+      const formData = new FormData();
+      formData.append('file', file);
       
-      const data = await file.arrayBuffer();
-      const workbook = read(data);
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = utils.sheet_to_json(worksheet);
+      const response = await apiRequest('POST', '/api/clients/import/excel', formData);
+      const result = await response.json();
       
-      const importedClients: Client[] = jsonData.map((row: any, index: number) => {
-        const colors = ['bg-pink-500', 'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-red-500'];
-        const randomColor = colors[Math.floor(Math.random() * colors.length)];
-        const clientId = (row.Nome || `Cliente${index}`).split(' ').map((n: string) => n[0]).join('').toUpperCase();
-        
-        return {
-          id: clientId + index,
-          name: row.Nome || `Cliente ${index + 1}`,
-          company: row.Empresa || 'Empresa não informada',
-          phone: row.Telefone || '',
-          email: row.Email || '',
-          address: row.Endereço || '',
-          status: (row.Status === 'Ativo' ? 'active' : 'inactive') as 'active' | 'inactive',
-          lastActivity: row['Última Atividade'] || new Date().toLocaleDateString('pt-BR'),
-          totalTickets: Number(row['Total de Tickets']) || 0,
-          avatar: clientId,
-          bgColor: randomColor,
-          allowWebApp: row['App Permitido'] === 'Sim'
-        };
-      });
-      
-      setClients(prev => [...prev, ...importedClients]);
+      queryClient.invalidateQueries({ queryKey: ['/api/clients'] });
       
       toast({
         title: "Importação concluída!",
-        description: `${importedClients.length} cliente(s) foram importados com sucesso.`,
+        description: `${result.importedCount} cliente(s) foram importados com sucesso.`,
       });
     } catch (error) {
       toast({
@@ -212,21 +294,6 @@ export default function ClientsPage() {
     event.target.value = '';
   };
 
-  const handleEditClient = (client: Client) => {
-    // Implement edit functionality
-    toast({
-      title: "Função em desenvolvimento",
-      description: "A edição de clientes estará disponível em breve.",
-    });
-  };
-
-  const handleChatWithClient = (client: Client) => {
-    // Implement chat functionality
-    toast({
-      title: "Iniciar conversa",
-      description: `Redirecionando para o chat com ${client.name}...`,
-    });
-  };
 
   const handleDeleteClient = (client: Client) => {
     if (window.confirm(`Tem certeza que deseja excluir o cliente ${client.name}?`)) {
@@ -248,30 +315,7 @@ export default function ClientsPage() {
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-lg sm:text-xl font-semibold text-foreground">Clientes</h1>
             <div className="flex items-center space-x-1 sm:space-x-2 flex-wrap">
-              <input
-                type="file"
-                accept=".xlsx,.xls"
-                onChange={handleImportExcel}
-                className="hidden"
-                id="import-excel"
-              />
-              <label htmlFor="import-excel">
-                <Button variant="outline" size="sm" asChild data-testid="button-import-excel">
-                  <span className="cursor-pointer">
-                    <Upload className="h-4 w-4 mr-2" />
-                    Importar
-                  </span>
-                </Button>
-              </label>
-              <Button variant="outline" size="sm" onClick={handleExportExcel} data-testid="button-export-excel">
-                <Download className="h-4 w-4 mr-2" />
-                Exportar
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
-                <Filter className="h-4 w-4 mr-2" />
-                Filtrar
-              </Button>
-              
+              {/* Botão Novo Cliente */}
               <Dialog open={showNewClientModal} onOpenChange={setShowNewClientModal}>
                 <DialogTrigger asChild>
                   <Button size="sm" data-testid="button-new-client">
@@ -281,19 +325,83 @@ export default function ClientsPage() {
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-lg">
                   <DialogHeader>
-                    <DialogTitle>Cadastrar Novo Cliente</DialogTitle>
+                    <DialogTitle>{editingClient ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}</DialogTitle>
                   </DialogHeader>
                   
-                  <div className="space-y-4">
+                  <form onSubmit={handleSubmit(handleCreateClient)} className="space-y-4">
                     {/* Nome */}
                     <div className="space-y-2">
                       <Label htmlFor="name">Nome Completo *</Label>
                       <Input
                         id="name"
                         placeholder="Ex: João Silva"
-                        value={newClient.name}
-                        onChange={(e) => setNewClient(prev => ({ ...prev, name: e.target.value }))}
+                        {...register('name')}
                       />
+                      {errors.name && <p className="text-sm text-red-500">{errors.name.message}</p>}
+                    </div>
+
+                    {/* Telefone */}
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Telefone *</Label>
+                      <Input
+                        id="phone"
+                        placeholder="+55 (11) 99999-9999"
+                        {...register('phone')}
+                        className="w-full"
+                        onChange={(e) => {
+                          let value = e.target.value.replace(/\D/g, '');
+                          if (value.length > 0) {
+                            if (value.length <= 2) {
+                              value = `+55 (${value}`;
+                            } else if (value.length <= 4) {
+                              value = `+55 (${value.substring(2)})`;
+                            } else if (value.length <= 9) {
+                              value = `+55 (${value.substring(2, 4)}) ${value.substring(4)}`;
+                            } else {
+                              value = `+55 (${value.substring(2, 4)}) ${value.substring(4, 9)}-${value.substring(9, 13)}`;
+                            }
+                          }
+                          setValue('phone', value);
+                        }}
+                      />
+                      {errors.phone && <p className="text-sm text-red-500">{errors.phone.message}</p>}
+                    </div>
+
+                    {/* Email */}
+                    <div className="space-y-2">
+                      <Label htmlFor="email">E-mail</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="joao@exemplo.com"
+                        {...register('email')}
+                      />
+                      {errors.email && <p className="text-sm text-red-500">{errors.email.message}</p>}
+                    </div>
+
+                    {/* CPF/CNPJ */}
+                    <div className="space-y-2">
+                      <Label htmlFor="cpf">CPF/CNPJ</Label>
+                      <Input
+                        id="cpf"
+                        placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                        {...register('cpf')}
+                        className="w-full"
+                        onChange={(e) => {
+                          let value = e.target.value.replace(/\D/g, '');
+                          if (value.length > 0) {
+                            if (value.length <= 11) {
+                              // CPF: 000.000.000-00
+                              value = value.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+                            } else {
+                              // CNPJ: 00.000.000/0000-00
+                              value = value.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+                            }
+                          }
+                          setValue('cpf', value);
+                        }}
+                      />
+                      {errors.cpf && <p className="text-sm text-red-500">{errors.cpf.message}</p>}
                     </div>
 
                     {/* Empresa */}
@@ -302,32 +410,8 @@ export default function ClientsPage() {
                       <Input
                         id="company"
                         placeholder="Ex: Silva Comércio LTDA"
-                        value={newClient.company}
-                        onChange={(e) => setNewClient(prev => ({ ...prev, company: e.target.value }))}
+                        {...register('company')}
                       />
-                    </div>
-
-                    {/* Telefone e Email */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="phone">Telefone *</Label>
-                        <Input
-                          id="phone"
-                          placeholder="(11) 99999-9999"
-                          value={newClient.phone}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, phone: e.target.value }))}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="email">E-mail</Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          placeholder="joao@exemplo.com"
-                          value={newClient.email}
-                          onChange={(e) => setNewClient(prev => ({ ...prev, email: e.target.value }))}
-                        />
-                      </div>
                     </div>
 
                     {/* Endereço */}
@@ -336,20 +420,16 @@ export default function ClientsPage() {
                       <Input
                         id="address"
                         placeholder="Rua, número, bairro, cidade - UF"
-                        value={newClient.address}
-                        onChange={(e) => setNewClient(prev => ({ ...prev, address: e.target.value }))}
+                        {...register('address')}
                       />
                     </div>
 
                     {/* Status */}
                     <div className="space-y-2">
                       <Label htmlFor="status">Status</Label>
-                      <Select 
-                        value={newClient.status} 
-                        onValueChange={(value: 'active' | 'inactive') => setNewClient(prev => ({ ...prev, status: value }))}
-                      >
+                      <Select value={watch('status')} onValueChange={(value) => setValue('status', value as 'active' | 'inactive')}>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Selecione o status" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="active">Ativo</SelectItem>
@@ -358,33 +438,51 @@ export default function ClientsPage() {
                       </Select>
                     </div>
 
-                    {/* Observações */}
-                    <div className="space-y-2">
-                      <Label htmlFor="observations">Observações</Label>
-                      <Textarea
-                        id="observations"
-                        placeholder="Informações adicionais sobre o cliente..."
-                        value={newClient.observations}
-                        onChange={(e) => setNewClient(prev => ({ ...prev, observations: e.target.value }))}
-                        rows={3}
-                      />
-                    </div>
-
                     <div className="flex justify-end space-x-2">
-                      <Button variant="outline" onClick={() => setShowNewClientModal(false)}>
+                      <Button type="button" variant="outline" onClick={() => setShowNewClientModal(false)}>
                         Cancelar
                       </Button>
-                      <Button onClick={handleCreateClient}>
-                        Cadastrar Cliente
+                      <Button type="submit" disabled={isSubmitting}>
+                        {isSubmitting ? (editingClient ? 'Atualizando...' : 'Cadastrando...') : (editingClient ? 'Atualizar Cliente' : 'Cadastrar Cliente')}
                       </Button>
                     </div>
-                  </div>
+                  </form>
                 </DialogContent>
               </Dialog>
               
-              <Button variant="outline" size="sm">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+              {/* Dropdown Menu com opções de importação/exportação */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleExportExcel}>
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    Exportar para Excel
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <label htmlFor="import-excel" className="cursor-pointer">
+                      <Upload className="h-4 w-4 mr-2" />
+                      Importar do Excel
+                    </label>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => importWhatsAppContacts.mutate()}>
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Importar contatos do WhatsApp
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              {/* Input hidden para importação de Excel */}
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleImportExcel}
+                className="hidden"
+                id="import-excel"
+              />
             </div>
           </div>
           
@@ -404,6 +502,24 @@ export default function ClientsPage() {
         <div className="flex-1 overflow-auto">
           {isLoading ? (
             <div className="p-4">Carregando clientes...</div>
+          ) : filteredClients.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                  <User className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">
+                  Nenhum cliente encontrado
+                </h3>
+                <p className="text-muted-foreground mb-4">
+                  {searchQuery ? 'Nenhum cliente corresponde à sua busca.' : 'Comece cadastrando seu primeiro cliente.'}
+                </p>
+                <Button onClick={() => setShowNewClientModal(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Cadastrar Cliente
+                </Button>
+              </div>
+            </div>
           ) : (
             filteredClients.map((client) => (
               <div
@@ -415,25 +531,17 @@ export default function ClientsPage() {
                 data-testid={`client-${client.id}`}
               >
                 <div className="flex items-center space-x-3">
-                  <div className={`w-12 h-12 ${client.bgColor} rounded-full flex items-center justify-center flex-shrink-0`}>
-                    <span className="text-white font-semibold text-sm">
-                      {client.avatar}
-                    </span>
-                  </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-foreground truncate">
                       {client.name}
                     </h3>
                     <p className="text-sm text-muted-foreground truncate">
-                      {client.phone}
+                      {formatPhoneNumber(client.phone)}
                     </p>
                     <div className="flex items-center justify-between mt-1">
                       <Badge variant={client.status === 'active' ? 'default' : 'secondary'}>
                         {client.status === 'active' ? 'Ativo' : 'Inativo'}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {client.totalTickets} tickets
-                      </span>
                     </div>
                   </div>
                 </div>
@@ -449,27 +557,20 @@ export default function ClientsPage() {
           {/* Client Header */}
           <div className="p-6 border-b border-border">
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-4">
-                <div className={`w-16 h-16 ${selectedClient.bgColor} rounded-full flex items-center justify-center`}>
-                  <span className="text-white font-bold text-lg">
-                    {selectedClient.avatar}
+              <div>
+                <h2 className="text-2xl font-bold text-foreground">
+                  {selectedClient.name}
+                </h2>
+                <p className="text-muted-foreground">
+                  {selectedClient.company}
+                </p>
+                <div className="flex items-center space-x-2 mt-1">
+                  <Badge variant={selectedClient.status === 'active' ? 'default' : 'secondary'}>
+                    {selectedClient.status === 'active' ? 'Ativo' : 'Inativo'}
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    {formatPhoneNumber(selectedClient.phone)}
                   </span>
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-foreground">
-                    {selectedClient.name}
-                  </h2>
-                  <p className="text-muted-foreground">
-                    {selectedClient.company}
-                  </p>
-                  <div className="flex items-center space-x-2 mt-1">
-                    <Badge variant={selectedClient.status === 'active' ? 'default' : 'secondary'}>
-                      {selectedClient.status === 'active' ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                    <span className="text-sm text-muted-foreground">
-                      Última atividade: {selectedClient.lastActivity}
-                    </span>
-                  </div>
                 </div>
               </div>
               <div className="flex items-center space-x-2">
@@ -480,9 +581,6 @@ export default function ClientsPage() {
                 <Button variant="outline" size="sm" onClick={() => handleChatWithClient(selectedClient)} data-testid="button-chat-client">
                   <MessageCircle className="h-4 w-4 mr-2" />
                   Chat
-                </Button>
-                <Button variant="outline" size="sm">
-                  <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </div>
             </div>
@@ -501,57 +599,39 @@ export default function ClientsPage() {
                     <Phone className="h-5 w-5 text-muted-foreground" />
                     <div>
                       <p className="font-medium text-foreground">Telefone</p>
-                      <p className="text-sm text-muted-foreground">{selectedClient.phone}</p>
+                      <p className="text-sm text-muted-foreground">{formatPhoneNumber(selectedClient.phone)}</p>
                     </div>
                   </div>
                   <div className="flex items-center space-x-3">
                     <Mail className="h-5 w-5 text-muted-foreground" />
                     <div>
                       <p className="font-medium text-foreground">E-mail</p>
-                      <p className="text-sm text-muted-foreground">{selectedClient.email}</p>
+                      <p className="text-sm text-muted-foreground">{clientDetails?.client?.email || 'Não informado'}</p>
                     </div>
                   </div>
                   <div className="flex items-center space-x-3">
                     <MapPin className="h-5 w-5 text-muted-foreground" />
                     <div>
                       <p className="font-medium text-foreground">Endereço</p>
-                      <p className="text-sm text-muted-foreground">{selectedClient.address}</p>
+                      <p className="text-sm text-muted-foreground">{clientDetails?.client?.address || 'Não informado'}</p>
                     </div>
                   </div>
                   <div className="flex items-center space-x-3">
                     <Calendar className="h-5 w-5 text-muted-foreground" />
                     <div>
                       <p className="font-medium text-foreground">Última Atividade</p>
-                      <p className="text-sm text-muted-foreground">{selectedClient.lastActivity}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {clientDetails?.lastMessage ? 
+                          `${clientDetails.lastMessage.content.substring(0, 50)}...` : 
+                          'Nenhuma atividade recente'
+                        }
+                      </p>
                     </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* App Permissions */}
-            <Card>
-              <CardContent className="p-6">
-                <h3 className="text-lg font-semibold text-foreground mb-4">
-                  Permissões do App
-                </h3>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">
-                      Permitir ao cliente abrir atendimento via App e Web?
-                    </p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      O cliente poderá iniciar conversas através do aplicativo web
-                    </p>
-                  </div>
-                  <Switch
-                    checked={selectedClient.allowWebApp}
-                    onCheckedChange={(checked) => handleToggleWebApp(selectedClient.id, checked)}
-                    data-testid="switch-web-app-permission"
-                  />
-                </div>
-              </CardContent>
-            </Card>
 
             {/* Statistics */}
             <Card>
@@ -561,26 +641,26 @@ export default function ClientsPage() {
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center p-4 bg-muted/50 rounded-lg">
-                    <p className="text-2xl font-bold text-primary">{selectedClient.totalTickets}</p>
+                    <p className="text-2xl font-bold text-primary">{clientDetails?.statistics?.totalTickets || 0}</p>
                     <p className="text-sm text-muted-foreground">Total de Tickets</p>
                   </div>
                   <div className="text-center p-4 bg-muted/50 rounded-lg">
                     <p className="text-2xl font-bold text-green-600">
-                      {Math.floor(selectedClient.totalTickets * 0.8)}
+                      {clientDetails?.statistics?.completedTickets || 0}
                     </p>
                     <p className="text-sm text-muted-foreground">Resolvidos</p>
                   </div>
                   <div className="text-center p-4 bg-muted/50 rounded-lg">
-                    <p className="text-2xl font-bold text-yellow-600">
-                      {Math.floor(selectedClient.totalTickets * 0.15)}
+                    <p className="text-2xl font-bold text-blue-600">
+                      {clientDetails?.statistics?.totalMessages || 0}
                     </p>
-                    <p className="text-sm text-muted-foreground">Pendentes</p>
+                    <p className="text-sm text-muted-foreground">Mensagens</p>
                   </div>
                   <div className="text-center p-4 bg-muted/50 rounded-lg">
-                    <p className="text-2xl font-bold text-red-600">
-                      {Math.floor(selectedClient.totalTickets * 0.05)}
+                    <p className="text-2xl font-bold text-yellow-600">
+                      {clientDetails?.statistics?.completionRate || 0}%
                     </p>
-                    <p className="text-sm text-muted-foreground">Cancelados</p>
+                    <p className="text-sm text-muted-foreground">Taxa de Conclusão</p>
                   </div>
                 </div>
               </CardContent>
@@ -618,7 +698,7 @@ export default function ClientsPage() {
             </p>
             <Button onClick={() => setShowNewClientModal(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              Cadastrar Primeiro Cliente
+              Cadastrar Cliente
             </Button>
           </div>
         </div>

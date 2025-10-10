@@ -1,0 +1,3667 @@
+import { useEffect, useState, useMemo, useRef } from 'react';
+import apiClient from '../lib/api-client';
+import { useAuth } from '../hooks/use-auth';
+import io from 'socket.io-client';
+import { formatPhoneNumber } from '../lib/utils';
+import { MessageRenderer } from '../components/messages';
+
+// Interfaces e tipos
+interface User {
+  id: string;
+  company?: {
+    id: string;
+  };
+}
+
+interface Conversation {
+  id: string;
+  contact_name?: string;
+  contact_phone?: string;
+  status: 'waiting' | 'in_progress' | 'finished';
+  last_message?: string;
+  updated_at?: string;
+  unreadCount?: number;
+  companyId?: string;
+  assignedAgentId?: string;
+}
+
+interface Message {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  messageType: string;
+  direction: 'incoming' | 'outgoing';
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+  mediaUrl?: string;
+  caption?: string;
+  fileName?: string;
+  quotedMessageId?: string;
+  sentAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface Contact {
+  id: string;
+  name?: string;
+  phone?: string;
+}
+
+interface AudioPlayerProps {
+  src: string;
+  messageId: string;
+}
+
+interface EmojiPickerProps {
+  onEmojiSelect: (emoji: string) => void;
+  onClose: () => void;
+}
+
+interface TabButtonProps {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  icon: React.ComponentType<{ className?: string }>;
+  count?: number;
+}
+
+interface UnifiedListProps {
+  items: Conversation[] | Contact[];
+  onSelect: (item: Conversation | Contact) => void;
+  selectedId?: string;
+  title: string;
+  emptyMessage: string;
+  isContacts?: boolean;
+}
+
+interface ChatAreaProps {
+  conversation: Conversation | null;
+  messages: Message[];
+  onSendMessage: (text: string, quotedMessageId?: string) => void;
+  onTakeConversation: (conversationId: string) => void;
+  onFinishConversation: (conversationId: string) => void;
+  onSendMedia: (file: File, quotedMessageId?: string) => void;
+  onMessageInput?: (text: string) => void;
+}
+
+// Função para tocar som de notificação
+const playNotificationSound = () => {
+  try {
+    // Criar um som de notificação simples
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+    oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.2);
+  } catch (error) {
+    console.log('Não foi possível reproduzir som de notificação:', error);
+  }
+};
+
+                // Função para converter snake_case para camelCase
+                const snakeToCamel = (obj: any): any => {
+                  if (obj === null || typeof obj !== 'object') return obj;
+                  
+                  if (Array.isArray(obj)) {
+                    return obj.map(snakeToCamel);
+                  }
+                  
+                  return Object.keys(obj).reduce((acc, key) => {
+                    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+                    let value = snakeToCamel(obj[key]);
+                    
+                    // Converter campos de data para Date objects
+                    if (camelKey === 'sentAt' || camelKey === 'createdAt' || camelKey === 'updatedAt') {
+                      if (value && typeof value === 'string') {
+                        value = new Date(value);
+                      }
+                    }
+                    
+                    acc[camelKey] = value;
+                    return acc;
+                  }, {} as any);
+                };
+
+import { 
+  Search, 
+  Plus, 
+  UserPlus, 
+  MessageCircle, 
+  Clock, 
+  Users, 
+  Send,
+  Paperclip,
+  Smile,
+  Mic, 
+  Phone, 
+  Video, 
+  MoreVertical,
+  CheckCircle2,
+  RefreshCw,
+  Archive,
+  Trash2,
+  Info,
+  ArrowRightLeft,
+  Image,
+  FileText,
+  X,
+  XCircle,
+  Pause,
+  Play,
+  Download,
+  Eye
+} from 'lucide-react';
+
+
+
+
+
+// Componente de Emoji Picker
+const EmojiPicker = ({ onEmojiSelect, onClose }: EmojiPickerProps) => {
+  const emojis = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', '😈', '👿', '👹', '👺', '🤡', '💩', '👻', '💀', '☠️', '👽', '👾', '🤖', '🎃', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾'];
+
+  return (
+    <div className="absolute bottom-full right-0 mb-2 bg-white border rounded-lg shadow-lg p-3 max-w-xs">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-sm font-medium">Emojis</span>
+        <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="grid grid-cols-8 gap-1 max-h-32 overflow-y-auto">
+        {emojis.map((emoji, index) => (
+          <button
+            key={index}
+            onClick={() => onEmojiSelect(emoji)}
+            className="p-1 hover:bg-gray-100 rounded text-lg"
+          >
+            {emoji}
+          </button>
+        ))}
+              </div>
+            </div>
+  );
+};
+
+// Componente de Aba
+const TabButton = ({ active, onClick, children, icon: Icon, count }: TabButtonProps) => (
+  <button
+    onClick={onClick}
+    className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
+      active 
+        ? 'bg-green-500 text-white' 
+        : 'text-gray-600 hover:bg-gray-100'
+    }`}
+  >
+    <Icon className="h-3 w-3 flex-shrink-0" />
+    <span className="text-xs flex-shrink-0">{children}</span>
+    {count && count > 0 && (
+      <span className="bg-red-500 text-white text-xs rounded-full px-1 py-0.5 min-w-[16px] h-4 flex items-center justify-center flex-shrink-0">
+        {count}
+                        </span>
+    )}
+  </button>
+);
+
+// Componente de Lista Unificado - CORRIGIDO: Funciona para conversas e contatos
+const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isContacts = false }: UnifiedListProps) => (
+  <div className="flex-1 overflow-y-auto">
+    <div className="p-3 border-b bg-gray-50">
+      <h3 className="font-semibold text-gray-700 text-sm">{title}</h3>
+    </div>
+    <div className="space-y-1">
+      {!items || items.length === 0 ? (
+        <div className="p-4 text-center text-gray-500 text-sm">
+          {emptyMessage}
+                </div>
+              ) : (
+        items.map(item => (
+          <div
+            key={item.id}
+            onClick={() => onSelect(item)}
+            className={`p-3 cursor-pointer hover:bg-gray-100 border-b ${
+              selectedId === item.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                <span className="text-sm font-medium text-white">
+                  {isContacts ? ((item as Contact).name?.charAt(0) || 'C') : ((item as Conversation).contactName?.charAt(0) || 'C')}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                <p className="font-medium text-gray-900 truncate text-sm">
+                  {isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contactName || 'Cliente')}
+                </p>
+                <p className="text-sm text-gray-500 truncate">
+                  {isContacts ? (item as Contact).phone : ((item as Conversation).lastMessage || 'Nenhuma mensagem ainda.')}
+                </p>
+                {isContacts && (
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-xs text-gray-400">
+                      {formatPhoneNumber((item as Contact).phone || '')}
+                    </span>
+                  </div>
+                )}
+                        </div>
+              {!isContacts && (
+                <div className="text-xs text-gray-400">
+                  {(item as Conversation).updated_at && new Date((item as Conversation).updated_at!).toLocaleTimeString()}
+                        </div>
+              )}
+                    </div>
+                  </div>
+                ))
+              )}
+    </div>
+  </div>
+);
+
+
+// Componente de Área de Chat
+const ChatArea = ({ 
+  conversation, 
+  messages, 
+  onSendMessage, 
+  onTakeConversation, 
+  onFinishConversation,
+  onSendMedia,
+  onMessageInput
+}: ChatAreaProps) => {
+  const [text, setText] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState('0:00');
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const [userScrolling, setUserScrolling] = useState(false);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // Controle de scroll inteligente
+  useEffect(() => {
+    console.log('🔍 Mensagens atualizadas:', messages.length, messages);
+    
+    // Só fazer scroll automático se:
+    // 1. O usuário não estiver navegando manualmente
+    // 2. E for uma nova mensagem (não uma atualização de estado)
+    if (!userScrolling && messages.length > 0) {
+      // Pequeno delay para garantir que o DOM foi atualizado
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    }
+  }, [messages.length]); // Só reagir a mudanças no número de mensagens
+
+  // Detectar se o usuário está fazendo scroll manual
+  const handleScroll = () => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+    
+    const scrolledUp = el.scrollTop < el.scrollHeight - el.clientHeight - 100;
+    setUserScrolling(scrolledUp);
+    
+    // Resetar userScrolling após 3 segundos de inatividade
+    setTimeout(() => {
+      setUserScrolling(false);
+    }, 3000);
+  };
+
+  const handleSend = () => {
+    if (text.trim()) {
+      // Auto-assumir conversa se estiver em espera
+      if (conversation && conversation.status === 'waiting') {
+        onTakeConversation(conversation.id);
+      }
+      onSendMessage(text, replyingTo?.id);
+      setText('');
+      setReplyingTo(null); // Limpar resposta após envio
+    }
+  };
+
+  // Função para iniciar gravação de áudio
+  const handleStartRecording = async () => {
+    try {
+      console.log('Iniciando gravação...');
+      
+      // Solicitar permissão do microfone
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Configurar AudioContext para análise de áudio
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const analyser = audioContext.createAnalyser();
+      const source = audioContext.createMediaStreamSource(stream);
+      
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.8;
+      source.connect(analyser);
+      
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+      
+      // Configurar MediaRecorder
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      
+      recorder.ondataavailable = (event) => {
+        console.log('🎤 Dados de áudio recebidos:', event.data.size, 'bytes');
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+          console.log('🎤 Chunk adicionado, total de chunks:', chunks.length);
+          console.log('🎤 Chunks array:', chunks);
+        }
+      };
+      
+      recorder.onstop = () => {
+        console.log('🎤 Gravação parada, chunks finais:', chunks.length);
+        console.log('🎤 Chunks array final:', chunks);
+        
+        if (chunks.length > 0) {
+          const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+          console.log('🎤 Blob criado:', {
+            size: audioBlob.size,
+            type: audioBlob.type,
+            chunks: chunks.length
+          });
+          
+          // CORREÇÃO: Usar useRef para persistir os chunks
+          audioChunksRef.current = chunks;
+          setAudioChunks(chunks);
+          console.log('🎤 AudioChunks atualizado com', chunks.length, 'chunks');
+          console.log('🎤 AudioChunksRef atualizado:', audioChunksRef.current.length);
+        } else {
+          console.error('❌ Nenhum chunk de áudio foi coletado');
+          setAudioChunks([]);
+        }
+        
+        stream.getTracks().forEach(track => track.stop());
+        
+        // Fechar AudioContext apenas se não estiver fechado
+        if (audioContext && audioContext.state !== 'closed') {
+          audioContext.close();
+        }
+      };
+      
+      setMediaRecorder(recorder);
+      setAudioChunks([]);
+      audioChunksRef.current = []; // CORREÇÃO: Limpar audioChunksRef no início
+      setIsRecording(true);
+      setRecordingTime('0:00');
+      
+      // Iniciar gravação
+      recorder.start();
+      console.log('MediaRecorder iniciado, estado:', recorder.state);
+      
+      // Iniciar timer
+      let seconds = 0;
+      recordingIntervalRef.current = setInterval(() => {
+        seconds++;
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        setRecordingTime(`${mins}:${secs.toString().padStart(2, '0')}`);
+      }, 1000);
+      
+      // Iniciar análise de áudio para waveform
+      const updateAudioLevel = () => {
+        if (analyser && recorder.state === 'recording' && isRecording) {
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(dataArray);
+          
+          const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          setAudioLevel(average);
+          
+          animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+        } else {
+          // CORREÇÃO: Resetar imediatamente quando não está gravando
+          setAudioLevel(0);
+          if (animationFrameRef.current) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = null;
+          }
+        }
+      };
+      
+      updateAudioLevel();
+      
+      console.log('Gravação iniciada com sucesso');
+      
+    } catch (error) {
+      console.error('Erro ao acessar microfone:', error);
+      alert('Não foi possível acessar o microfone. Verifique as permissões.');
+    }
+  };
+
+  // Função para parar gravação
+  const handleStopRecording = () => {
+    console.log('Parando gravação...');
+    
+    if (mediaRecorder && (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused')) {
+      mediaRecorder.stop();
+      console.log('MediaRecorder parado');
+    }
+    
+    setIsRecording(false);
+    setAudioLevel(0);
+    
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+    }
+    
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close();
+    }
+    
+    console.log('🎤 Gravação parada');
+    
+    // CORREÇÃO: Usar apenas audioChunksRef para evitar race condition
+    setTimeout(() => {
+      console.log('🎤 Verificando audioChunksRef após parar:', audioChunksRef.current.length);
+      console.log('🎤 audioChunksRef atual:', audioChunksRef.current);
+      
+      if (audioChunksRef.current.length > 0) {
+        console.log('🎤 Enviando áudio automaticamente...');
+        handleSendRecording();
+      } else {
+        console.error('❌ Nenhum chunk disponível no audioChunksRef');
+        alert('Erro: Nenhum áudio foi gravado.');
+      }
+    }, 500);
+  };
+
+  // Função para cancelar gravação - NOVA
+  const handleCancelRecording = () => {
+    console.log('🎤 Cancelando gravação...');
+    
+    if (mediaRecorder && (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused')) {
+      mediaRecorder.stop();
+      console.log('🎤 MediaRecorder parado');
+    }
+    
+    setIsRecording(false);
+    setAudioLevel(0); // CORREÇÃO: Reset explícito do audioLevel
+    
+    // CORREÇÃO: Cancelar animation frame para parar waveform
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    
+    setAudioChunks([]);
+    audioChunksRef.current = []; // CORREÇÃO: Limpar audioChunksRef também
+    
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+    }
+    
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close();
+    }
+    
+    console.log('🎤 Gravação cancelada');
+  };
+
+  // Função para pausar gravação
+  const handlePauseRecording = () => {
+    if (mediaRecorder) {
+      if (mediaRecorder.state === 'recording') {
+        mediaRecorder.pause();
+        console.log('Gravação pausada');
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+      } else if (mediaRecorder.state === 'paused') {
+        mediaRecorder.resume();
+        console.log('Gravação retomada');
+        
+        // Reiniciar análise de áudio
+        if (analyserRef.current) {
+          const updateAudioLevel = () => {
+            if (analyserRef.current && isRecording) {
+              const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+              analyserRef.current.getByteFrequencyData(dataArray);
+              
+              const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+              setAudioLevel(average);
+              
+              animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+            }
+          };
+          updateAudioLevel();
+        }
+      }
+    }
+  };
+
+  // Função para enviar gravação - FLUXO CORRIGIDO
+  const handleSendRecording = async () => {
+    console.log('🎤 Tentando enviar áudio...');
+    console.log('🎤 audioChunks:', audioChunks);
+    console.log('🎤 audioChunks length:', audioChunks.length);
+    console.log('🎤 audioChunksRef:', audioChunksRef.current);
+    console.log('🎤 audioChunksRef length:', audioChunksRef.current.length);
+    console.log('🎤 conversation:', conversation);
+    
+    if (!conversation) {
+      console.log('❌ Conversa não selecionada');
+      alert('Selecione uma conversa primeiro.');
+      return;
+    }
+
+    // CORREÇÃO: Usar audioChunksRef como fonte principal
+    const chunksToUse = audioChunksRef.current.length > 0 ? audioChunksRef.current : audioChunks;
+    
+    console.log('🎤 Debug completo:');
+    console.log('- audioChunks:', audioChunks);
+    console.log('- audioChunksRef.current:', audioChunksRef.current);
+    console.log('- chunksToUse:', chunksToUse);
+    
+    if (chunksToUse.length === 0) {
+      console.error('❌ Nenhum áudio gravado - chunks estão vazios');
+      console.error('❌ audioChunks:', audioChunks);
+      console.error('❌ audioChunksRef.current:', audioChunksRef.current);
+      alert('Nenhum áudio gravado. Grave um áudio primeiro.');
+      return;
+    }
+
+    console.log('🎤 Usando chunks:', chunksToUse.length);
+
+    console.log('Enviando áudio...');
+
+    // Auto-assumir conversa se estiver em espera
+    if (conversation && conversation.status === 'waiting') {
+      onTakeConversation(conversation.id);
+    }
+
+    try {
+      // Criar Blob a partir dos chunks corretos
+      const audioBlob = new Blob(chunksToUse, { type: 'audio/webm' });
+      console.log('🎤 Blob criado:', audioBlob.size, 'bytes');
+      
+      if (!audioBlob || audioBlob.size === 0) {
+        alert('Áudio vazio. Grave novamente.');
+        return;
+      }
+      
+      // Criar FormData para envio
+      const formData = new FormData();
+      formData.append('file', audioBlob, `audio-${Date.now()}.webm`);
+      
+      console.log('🎤 Enviando áudio:', {
+        blobSize: audioBlob.size,
+        blobType: audioBlob.type,
+        formDataKeys: Array.from(formData.keys())
+      });
+      
+      // Verificar se o FormData tem o arquivo
+      console.log('🎤 FormData entries:', Array.from(formData.entries()));
+      
+      // Enviar áudio via API
+      const response = await apiClient.post(`/api/whatsapp/conversations/${conversation.id}/send-media`, formData, {
+        headers: { 
+          'Accept': 'application/json',
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      console.log('✅ Resposta da API:', response.data);
+      
+      // Limpar estado apenas após sucesso
+      setAudioChunks([]);
+      audioChunksRef.current = [];
+      setRecordingTime('0:00');
+      setIsRecording(false);
+      setReplyingTo(null); // Limpar resposta após envio
+      
+      console.log('✅ Áudio enviado com sucesso');
+      
+    } catch (error) {
+      console.error('❌ Erro ao enviar áudio:', error);
+      alert('Erro ao enviar áudio. Tente novamente.');
+    }
+  };
+
+  // Função para mudar velocidade (placeholder)
+  const handleSpeedChange = () => {
+    // Implementar mudança de velocidade se necessário
+    console.log('Mudar velocidade de reprodução');
+  };
+
+  const handleEmojiSelect = (emoji: string) => {
+    setText(prev => prev + emoji);
+    setShowEmojiPicker(false);
+  };
+
+  const handleReplyClick = (message: Message) => {
+    setReplyingTo(message);
+  };
+
+  const handleCancelReply = () => {
+    setReplyingTo(null);
+  };
+
+
+  const handleMediaUpload = (mediaType: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = mediaType === 'image' ? 'image/*' : 
+                  mediaType === 'video' ? 'video/*' : 
+                  mediaType === 'audio' ? 'audio/*' : 
+                  '*/*';
+    
+    input.onchange = async (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0];
+      if (!file) return;
+
+      console.log('📤 Arquivo selecionado:', {
+        name: file.name,
+        size: file.size,
+        type: file.type
+      });
+
+      // Verificar tamanho do arquivo (200MB)
+      const maxSize = 200 * 1024 * 1024; // 200MB
+      if (file.size > maxSize) {
+        alert('Arquivo muito grande. Tamanho máximo: 200MB');
+        return;
+      }
+
+      // Auto-assumir conversa se estiver em espera
+      if (conversation && conversation.status === 'waiting') {
+        onTakeConversation(conversation.id);
+      }
+
+      // Enviar mídia via função do componente pai
+      try {
+        console.log('📤 Enviando mídia...');
+        await onSendMedia(file, replyingTo?.id);
+        setReplyingTo(null); // Limpar resposta após envio
+        console.log('✅ Mídia enviada com sucesso');
+      } catch (error) {
+        console.error('❌ Erro ao enviar mídia:', error);
+        alert('Erro ao enviar mídia. Tente novamente.');
+      }
+    };
+    
+    input.click();
+  };
+
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newText = e.target.value;
+    setText(newText);
+    // Auto-assumir conversa ao começar a digitar
+    if (onMessageInput) {
+      onMessageInput(newText);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      onSendMedia(file);
+    }
+  };
+
+  if (!conversation) {
+  return (
+      <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <MessageCircle className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-500 mb-2">Selecione uma conversa</h3>
+          <p className="text-gray-400">Escolha uma conversa para começar o atendimento</p>
+              </div>
+                </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 flex flex-col bg-white">
+      {/* Top Bar do Chat */}
+      <div className="p-4 border-b bg-white flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+            <span className="text-sm font-medium text-white">
+              {conversation.contactName?.charAt(0) || 'C'}
+                        </span>
+                      </div>
+          <div>
+            <h3 className="font-semibold text-gray-900">
+              {conversation.contactName || 'Cliente'}
+                        </h3>
+            <p className="text-sm text-gray-500">
+              {conversation.contactPhone?.replace('@s.whatsapp.net', '') || 'Número não disponível'}
+                        </p>
+                      </div>
+                    </div>
+        <div className="flex items-center gap-2">
+          {conversation.status === 'waiting' && (
+            <button 
+              onClick={() => onTakeConversation(conversation.id)}
+              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium"
+            >
+              Iniciar Chat
+            </button>
+          )}
+          {conversation.status === 'in_progress' && (
+            <>
+              <button 
+                onClick={() => {
+                  if (conversation) {
+                    handleSelectConversation(conversation);
+                  }
+                }}
+                className="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm flex items-center gap-1"
+                title="Recarregar mensagens"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Recarregar
+              </button>
+              <button 
+                onClick={() => onFinishConversation(conversation.id)}
+                className="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm"
+              >
+                Finalizar Conversa
+              </button>
+            </>
+          )}
+          <button className="p-2 hover:bg-gray-100 rounded-lg">
+                  <MoreVertical className="h-4 w-4" />
+          </button>
+            </div>
+          </div>
+
+      {/* Área de Mensagens - Layout WhatsApp */}
+      <div 
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto bg-gray-100"
+        onScroll={handleScroll}
+      >
+        <div className="p-4 space-y-2">
+          {messages.length === 0 ? (
+            <div className="text-center py-8">
+              <MessageCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500">Nenhuma mensagem ainda</p>
+              <p className="text-xs text-gray-400 mt-2">Conversa: {conversation?.id}</p>
+                </div>
+              ) : (
+            messages.map(message => (
+              <div
+                key={message.id}
+                className={`flex ${message.direction === 'outgoing' ? 'justify-end' : 'justify-start'} mb-2`}
+              >
+                <div 
+                  className={`max-w-xs lg:max-w-md px-4 py-1 rounded-2xl relative group ${
+                      message.direction === 'outgoing'
+                    ? 'bg-green-500 text-white rounded-br-md' 
+                    : 'bg-white text-gray-900 rounded-bl-md shadow-sm'
+                }`}
+                >
+                  {/* Renderizar mensagem usando o novo componente */}
+                  <MessageRenderer message={message} messages={messages} />
+                  
+                  {/* Botão de responder - aparece no hover */}
+                  <button
+                    onClick={() => handleReplyClick(message)}
+                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 hover:bg-black/40 text-white p-1 rounded-full"
+                    title="Responder mensagem"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                    </svg>
+                  </button>
+                  
+                  <div className="flex items-center justify-end">
+                    <span className="text-xs opacity-70">
+                      {(() => {
+                        const dateStr = message.sentAt || message.createdAt;
+                        if (!dateStr) return 'Agora';
+                        
+                        const date = new Date(dateStr);
+                        if (isNaN(date.getTime())) return 'Agora';
+                        
+                        return date.toLocaleTimeString('pt-BR', { 
+                          hour: '2-digit', 
+                          minute: '2-digit',
+                          timeZone: 'America/Sao_Paulo'
+                        });
+                      })()}
+                        </span>
+                      {message.direction === 'outgoing' && (
+                      <div className="ml-1 flex">
+                        {message.status === 'sending' && (
+                          <div className="w-3 h-3 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                        )}
+                        {message.status === 'sent' && (
+                          <CheckCircle2 className="h-3 w-3 text-gray-400" />
+                        )}
+                        {message.status === 'delivered' && (
+                          <>
+                            <CheckCircle2 className="h-3 w-3 text-gray-400" />
+                            <CheckCircle2 className="h-3 w-3 text-gray-400 -ml-1" />
+                          </>
+                        )}
+                        {message.status === 'read' && (
+                          <>
+                            <CheckCircle2 className="h-3 w-3 text-blue-500" />
+                            <CheckCircle2 className="h-3 w-3 text-blue-500 -ml-1" />
+                          </>
+                        )}
+                        {message.status === 'failed' && (
+                          <XCircle className="h-3 w-3 text-red-500" />
+                        )}
+                        {!message.status && (
+                          <CheckCircle2 className="h-3 w-3 text-gray-400" />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Reações removidas conforme solicitado */}
+                  </div>
+                  </div>
+                ))
+              )}
+          <div ref={messagesEndRef} />
+                </div>
+              </div>
+
+      {/* Área de Input de Mensagem - Layout WhatsApp */}
+      <div className="p-3 bg-white border-t relative">
+        {/* Interface de Resposta */}
+        {replyingTo && (
+          <div className="mb-3 p-3 bg-gray-100 rounded-lg border-l-4 border-l-blue-500">
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <div className="text-xs text-gray-500 mb-1">
+                  Respondendo para {replyingTo.direction === 'outgoing' ? 'você' : 'cliente'}
+                </div>
+                <div className="text-sm text-gray-700 truncate">
+                  {replyingTo.content || `[${replyingTo.messageType}]`}
+                </div>
+              </div>
+              <button
+                onClick={handleCancelReply}
+                className="ml-2 p-1 hover:bg-gray-200 rounded-full transition-colors"
+                title="Cancelar resposta"
+              >
+                <X className="h-4 w-4 text-gray-500" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Emoji Picker */}
+        {showEmojiPicker && (
+          <EmojiPicker 
+            onEmojiSelect={handleEmojiSelect}
+            onClose={() => setShowEmojiPicker(false)}
+          />
+        )}
+        
+        {/* Interface de Gravação de Áudio - Layout Melhorado */}
+        {isRecording ? (
+          <div className="bg-gray-100 rounded-lg px-4 py-3 flex items-center gap-3 w-full">
+            {/* 1. Botão de Excluir */}
+            <button
+              onClick={handleCancelRecording}
+              className="p-2 hover:bg-red-100 rounded-full transition-colors"
+              title="Excluir gravação"
+            >
+              <Trash2 className="h-4 w-4 text-red-600" />
+            </button>
+            
+            {/* 2. Indicador REC com Tempo */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                <span className="text-red-600 font-bold text-sm">REC</span>
+              </div>
+              <span className="text-gray-700 font-medium text-sm">{recordingTime}</span>
+            </div>
+            
+            {/* 3. Waveform */}
+            <div className="flex items-center gap-1 flex-1">
+              {Array.from({ length: 30 }, (_, i) => {
+                // CORREÇÃO: Waveform responsivo que varia com o áudio
+                const baseHeight = 3;
+                const audioHeight = audioLevel > 0 ? Math.min((audioLevel / 20) * (5 + i * 0.3), 15) : 0;
+                const totalHeight = Math.max(baseHeight + audioHeight, 3);
+                
+                return (
+                  <div
+                    key={i}
+                    className="w-1 bg-gray-400 rounded-full transition-all duration-75"
+                    style={{
+                      height: `${totalHeight}px`,
+                      backgroundColor: audioHeight > 3 ? '#ef4444' : '#9ca3af',
+                      minHeight: '3px'
+                    }}
+                  />
+                );
+              })}
+            </div>
+            
+            {/* 4. Botão de Pausar */}
+            <button
+              onClick={handlePauseRecording}
+              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+              title="Pausar gravação"
+            >
+              <Pause className="h-4 w-4 text-gray-600" />
+            </button>
+            
+            {/* 5. Botão de Enviar */}
+            <button
+              onClick={handleStopRecording}
+              className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+              title="Enviar áudio"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 bg-gray-100 rounded-full px-4 py-2">
+            {/* Botão de Imagem */}
+                          <button
+              onClick={() => handleMediaUpload('image')}
+              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+              title="Enviar foto"
+            >
+              <Image className="h-5 w-5 text-gray-600" />
+                          </button>
+            
+            {/* Botão de Vídeo */}
+            <button
+              onClick={() => handleMediaUpload('video')}
+              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+              title="Enviar vídeo"
+            >
+              <Video className="h-5 w-5 text-gray-600" />
+            </button>
+            
+            {/* Botão de Documento */}
+            <button
+              onClick={() => handleMediaUpload('document')}
+              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+              title="Enviar documento"
+            >
+              <FileText className="h-5 w-5 text-gray-600" />
+            </button>
+            
+            {/* Botão de Localização */}
+            <button
+              onClick={() => handleSendLocation()}
+              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+              title="Enviar localização"
+            >
+              <span className="text-lg">📍</span>
+            </button>
+            
+            {/* Botão de Contato */}
+            <button
+              onClick={() => handleSendContact()}
+              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+              title="Enviar contato"
+            >
+              <span className="text-lg">👤</span>
+            </button>
+            
+            {/* Botão de Emoji */}
+            <button
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+              title="Emojis"
+            >
+              <Smile className="h-5 w-5 text-gray-600" />
+            </button>
+            
+            {/* Input de Texto */}
+                  <input
+              type="text"
+              placeholder="Digite uma mensagem"
+              className="flex-1 bg-transparent border-none outline-none text-gray-800 placeholder-gray-500"
+              value={text}
+              onChange={handleTextChange}
+              onKeyPress={handleKeyPress}
+            />
+            
+            {/* Botão de Envio/Áudio */}
+            {text.trim() ? (
+              <button
+                onClick={handleSend}
+                className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+                title="Enviar mensagem"
+              >
+                <Send className="h-5 w-5" />
+              </button>
+            ) : (
+              <button 
+                onClick={handleStartRecording}
+                className="p-2 hover:bg-gray-200 text-gray-600 rounded-full transition-colors"
+                title="Enviar áudio"
+              >
+                <Mic className="h-5 w-5" />
+              </button>
+            )}
+                </div>
+        )}
+        
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*,audio/*,.pdf,.doc,.docx"
+          onChange={handleFileUpload}
+          className="hidden"
+                  />
+                </div>
+              </div>
+  );
+};
+
+export default function ConversationsPage() {
+  const [activeTab, setActiveTab] = useState('active');
+  const [waitingConversations, setWaitingConversations] = useState<Conversation[]>([]);
+  const [activeConversations, setActiveConversations] = useState<Conversation[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isTyping, setIsTyping] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [imagePopup, setImagePopup] = useState<{ src: string; alt: string } | null>(null);
+  const { user } = useAuth() as { user: User | null };
+
+  const companyId = useMemo(() => user?.company?.id, [user]);
+
+  // Atualizar título da página com contador de não lidas
+  useEffect(() => {
+    if (unreadCount > 0) {
+      document.title = `(${unreadCount}) FivConnect - Chat`;
+    } else {
+      document.title = 'FivConnect - Chat';
+    }
+  }, [unreadCount]);
+
+  useEffect(() => {
+    if (!companyId) return;
+
+    // Carregar dados iniciais
+    loadConversations();
+    loadContacts();
+
+    // Configurar WebSocket - SIMPLIFICADO PARA DEBUG
+    const apiUrl = process.env.REACT_APP_API_URL || 'https://app.fivconnect.net';
+    console.log('🔌 Conectando WebSocket para:', apiUrl);
+    
+    const socket = io(apiUrl, {
+      auth: {
+        token: localStorage.getItem('token')
+      },
+      transports: ['polling', 'websocket'], // Polling primeiro para debug
+      timeout: 10000,
+      forceNew: true,
+      autoConnect: true,
+      reconnection: true,
+      reconnectionDelay: 2000,
+      reconnectionAttempts: 3
+    });
+
+    // Eventos WebSocket
+    socket.on('connect', () => {
+      console.log('🔌 WebSocket conectado com sucesso!');
+      console.log('🔌 Socket ID:', socket.id);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('🔌 WebSocket desconectado. Motivo:', reason);
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('❌ Erro de conexão WebSocket:', error);
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.log('🔄 WebSocket reconectado após', attemptNumber, 'tentativas');
+    });
+
+    socket.on('reconnect_error', (error) => {
+      console.error('❌ Erro de reconexão WebSocket:', error);
+    });
+
+    socket.on('newMessage', (messageData) => {
+      console.log('📨 Nova mensagem recebida via WebSocket:', messageData);
+      
+      // Converter snake_case para camelCase
+      const convertedMessage = snakeToCamel(messageData);
+      console.log('📨 Mensagem convertida:', convertedMessage);
+      
+      // Verificar se a mensagem pertence à conversa atual
+      if (selectedConversation && convertedMessage.conversationId === selectedConversation.id) {
+        console.log('📨 Mensagem pertence à conversa atual, adicionando...');
+        setMessages(prev => {
+          // Verificar se a mensagem já existe
+          const exists = prev.some(msg => msg.id === convertedMessage.id);
+          if (!exists) {
+            console.log('📨 Adicionando nova mensagem à lista');
+            // Adicionar nova mensagem e ordenar por timestamp
+            const newMessages = [...prev, convertedMessage];
+            return newMessages.sort((a, b) => 
+              new Date(a.sentAt || a.createdAt).getTime() - new Date(b.sentAt || b.createdAt).getTime()
+            );
+          } else {
+            console.log('📨 Mensagem já existe, ignorando duplicata');
+          }
+          return prev;
+        });
+        
+        // Tocar som de notificação para mensagens recebidas
+        if (convertedMessage.direction === 'incoming') {
+          playNotificationSound();
+        }
+      } else {
+        console.log('📨 Mensagem não pertence à conversa atual ou nenhuma conversa selecionada');
+        console.log('📨 Conversa selecionada:', selectedConversation?.id);
+        console.log('📨 ID da mensagem:', convertedMessage.conversationId);
+        
+        // Se não há conversa selecionada, mas a mensagem é de uma conversa que existe, selecionar automaticamente
+        if (!selectedConversation && convertedMessage.conversationId) {
+          console.log('📨 Nenhuma conversa selecionada, tentando selecionar automaticamente...');
+          // Buscar a conversa correspondente
+          const targetConversation = conversations.find(conv => conv.id === convertedMessage.conversationId);
+          if (targetConversation) {
+            console.log('📨 Conversa encontrada, selecionando automaticamente:', targetConversation.id);
+            setSelectedConversation(targetConversation);
+            // Carregar mensagens da conversa
+            loadMessages(targetConversation.id);
+          }
+        }
+      }
+      
+      // Atualizar lista de conversas imediatamente
+      console.log('🔄 Atualizando lista de conversas após nova mensagem');
+      loadConversations();
+    });
+
+    socket.on('messageStatusUpdate', (data) => {
+      console.log('📊 Atualização de status da mensagem:', data);
+      
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === data.messageId 
+            ? { ...msg, status: data.status }
+            : msg
+        )
+      );
+    });
+
+    socket.on('newConversation', (conversation) => {
+      console.log('💬 Nova conversa criada:', conversation);
+      loadConversations();
+      playNotificationSound();
+    });
+
+    socket.on('conversationUpdate', (conversation) => {
+      console.log('🔄 Conversa atualizada:', conversation);
+      loadConversations();
+    });
+
+    socket.on('connectionUpdate', (data) => {
+      console.log('🔗 Atualização de conexão:', data);
+    });
+
+    socket.on('qrcodeUpdate', (data) => {
+      console.log('📱 QR Code atualizado:', data);
+    });
+
+    // Fallback: Polling otimizado para mensagens (apenas se WebSocket falhar)
+    const pollMessages = async () => {
+      try {
+        if (selectedConversation && !socket.connected) {
+          const response = await apiClient.get(`/api/whatsapp/conversations/${selectedConversation.id}/messages`);
+          
+          if (response.data && Array.isArray(response.data)) {
+            // Converter snake_case para camelCase
+            const convertedMessages = snakeToCamel(response.data);
+            
+            setMessages(prev => {
+              // Verificar se há mudanças antes de atualizar
+              const hasChanges = prev.length !== convertedMessages.length || 
+                prev.some((prevMsg, index) => prevMsg.id !== convertedMessages[index]?.id);
+              
+              if (hasChanges) {
+                console.log('🔄 Polling: Mensagens atualizadas via fallback');
+                return convertedMessages;
+              }
+              return prev;
+            });
+          }
+        }
+      } catch (error) {
+        console.error('❌ Erro no polling de mensagens:', error);
+      }
+    };
+
+    // Polling para conversas
+    const pollConversations = async () => {
+      try {
+        loadConversations();
+      } catch (error) {
+        console.error('❌ Erro no polling de conversas:', error);
+      }
+    };
+
+    // Polling inicial
+    pollMessages();
+    pollConversations();
+
+    // Polling reduzido: apenas como fallback se WebSocket falhar
+    const messagesInterval = setInterval(pollMessages, 60000); // 1 minuto
+    const conversationsInterval = setInterval(pollConversations, 120000); // 2 minutos
+
+    return () => {
+      clearInterval(messagesInterval);
+      clearInterval(conversationsInterval);
+      socket.disconnect();
+      console.log('🔄 WebSocket e polling interrompidos');
+    };
+  }, [companyId, user, selectedConversation]);
+
+  const loadConversations = async () => {
+    try {
+      // Carregar conversas por status usando as rotas do WhatsApp
+      const [waitingRes, activeRes] = await Promise.all([
+        apiClient.get('/api/whatsapp/conversations?status=waiting'),
+        apiClient.get('/api/whatsapp/conversations?status=in_progress')
+      ]);
+      
+      // Garantir que sempre temos arrays válidos e converter snake_case para camelCase
+      const waitingData = Array.isArray(waitingRes.data) ? snakeToCamel(waitingRes.data) : [];
+      const activeData = Array.isArray(activeRes.data) ? snakeToCamel(activeRes.data) : [];
+      
+      console.log(`[FRONTEND] Carregadas ${waitingData.length} conversas em espera e ${activeData.length} conversas ativas`);
+      console.log('[FRONTEND] Primeira conversa ativa:', activeData[0]);
+      
+      // Validar antes de definir os estados
+      if (Array.isArray(waitingData)) {
+        setWaitingConversations(waitingData);
+      } else {
+        console.warn('⚠️ Dados de conversas em espera inválidos:', waitingData);
+        setWaitingConversations([]);
+      }
+      
+      if (Array.isArray(activeData)) {
+        setActiveConversations(activeData);
+      } else {
+        console.warn('⚠️ Dados de conversas ativas inválidos:', activeData);
+        setActiveConversations([]);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar conversas:', error);
+      // Garantir que sempre temos arrays
+      setWaitingConversations([]);
+      setActiveConversations([]);
+    }
+  };
+
+  const loadContacts = async () => {
+    try {
+      console.log('🔍 Carregando contatos para empresa:', companyId);
+      const response = await apiClient.get(`/api/clients/${companyId}`);
+      
+      // Garantir que sempre temos um array válido
+      const contactsData = Array.isArray(response.data) ? response.data : [];
+      console.log('🔍 Contatos carregados:', contactsData.length);
+      setContacts(contactsData);
+    } catch (error) {
+      console.error('Erro ao carregar contatos:', error);
+      // Garantir que sempre temos um array
+      setContacts([]);
+    }
+  };
+
+  const handleSelectConversation = async (conversation: Conversation) => {
+    console.log('🔍 Selecionando conversa:', conversation);
+    setSelectedConversation(conversation);
+    setSelectedContact(null);
+    
+    // Limpar mensagens anteriores ao iniciar nova conversa
+    setMessages([]);
+    
+    // Marcar conversa como lida
+    if (conversation.unreadCount && conversation.unreadCount > 0) {
+      setUnreadCount(prev => Math.max(0, prev - (conversation.unreadCount || 0)));
+      setWaitingConversations(prev => 
+        prev.map(conv => 
+          conv.id === conversation.id 
+            ? { ...conv, unreadCount: 0 }
+            : conv
+        )
+      );
+      setActiveConversations(prev => 
+        prev.map(conv => 
+          conv.id === conversation.id 
+            ? { ...conv, unreadCount: 0 }
+            : conv
+        )
+      );
+    }
+    
+    try {
+      console.log(`🔍 Buscando mensagens para conversa: ${conversation.id}`);
+      // Buscar mensagens da conversa
+      const res = await apiClient.get(`/api/whatsapp/conversations/${conversation.id}/messages`);
+      
+      // Garantir que sempre temos um array válido e converter snake_case para camelCase
+      const messagesData = Array.isArray(res.data) ? snakeToCamel(res.data) : [];
+      console.log(`[FRONTEND] Carregadas ${messagesData.length} mensagens para conversa ${conversation.id}`);
+      console.log('🔍 Mensagens carregadas:', messagesData);
+      setMessages(messagesData);
+    } catch (error) {
+      console.error("Erro ao buscar mensagens:", error);
+      setMessages([]);
+    }
+  };
+
+  // Função para recarregar mensagens
+  const handleReloadMessages = async () => {
+    if (!selectedConversation) return;
+    
+    try {
+      console.log('🔄 Recarregando mensagens...');
+      const res = await apiClient.get(`/api/whatsapp/conversations/${selectedConversation.id}/messages`);
+      const messagesData = Array.isArray(res.data) ? snakeToCamel(res.data) : [];
+      console.log(`[FRONTEND] Recarregadas ${messagesData.length} mensagens`);
+      setMessages(messagesData);
+    } catch (error) {
+      console.error("Erro ao recarregar mensagens:", error);
+    }
+  };
+
+  const handleSelectContact = (contact: Contact) => {
+    setSelectedContact(contact);
+    setSelectedConversation(null);
+    setMessages([]);
+  };
+
+  const handleTakeConversation = async (conversationId: string) => {
+    try {
+      await apiClient.post(`/api/whatsapp/conversations/${conversationId}/take`);
+      await loadConversations();
+      console.log(`[FRONTEND] Conversa ${conversationId} assumida com sucesso`);
+    } catch (error) {
+      console.error("Erro ao assumir conversa:", error);
+    }
+  };
+
+  // Auto-assumir conversa ao começar a digitar
+  const handleMessageInput = (text: string) => {
+    if (selectedConversation && selectedConversation.status === 'waiting' && text.trim()) {
+      if (!isTyping) {
+        setIsTyping(true);
+        handleTakeConversation(selectedConversation.id);
+      }
+    }
+  };
+
+  const handleSendMessage = async (text: string, quotedMessageId?: string) => {
+    if (!selectedConversation || !text.trim()) return;
+
+    // OPTIMISTIC UI: Criar mensagem temporária imediatamente
+    const tempMessage: Message = {
+      id: `temp-${Date.now()}`,
+      conversationId: selectedConversation.id,
+      senderId: user!.id,
+      content: text,
+      messageType: 'text',
+      direction: 'outgoing',
+      status: 'sending', // Status temporário
+      quotedMessageId: quotedMessageId,
+      sentAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Adicionar mensagem temporária ao chat
+    setMessages(prev => [...prev, tempMessage]);
+
+    try {
+      // Auto-assumir conversa se estiver em espera
+      if (selectedConversation.status === 'waiting') {
+        await handleTakeConversation(selectedConversation.id);
+      }
+
+      const payload: any = { text };
+      if (quotedMessageId) {
+        payload.quotedMessageId = quotedMessageId;
+      }
+
+      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
+
+      // Remover mensagem temporária e adicionar a real
+      setMessages(prev => {
+        const withoutTemp = prev.filter(msg => msg.id !== tempMessage.id);
+        return [...withoutTemp, { ...response.data, status: 'sent' }];
+      });
+
+    } catch (error) {
+      console.error("Erro ao enviar mensagem:", error);
+      
+      // Remover mensagem temporária em caso de erro
+      setMessages(prev => prev.filter(msg => msg.id !== tempMessage.id));
+      
+      alert('Erro ao enviar mensagem. Tente novamente.');
+    }
+  };
+
+  const handleSendMedia = async (file: File, quotedMessageId?: string) => {
+    if (!selectedConversation || !file) return;
+
+    // Determinar tipo de mídia
+    const getMediaType = (file: File) => {
+      if (file.type.startsWith('image/')) return 'image';
+      if (file.type.startsWith('video/')) return 'video';
+      if (file.type.startsWith('audio/')) return 'audio';
+      return 'document';
+    };
+
+    const mediaType = getMediaType(file);
+
+    // OPTIMISTIC UI: Criar mensagem temporária
+    const tempMessage: Message = {
+      id: `temp-${Date.now()}`,
+      conversationId: selectedConversation.id,
+      senderId: user!.id,
+      content: `[${mediaType} enviando...]`,
+      messageType: mediaType,
+      direction: 'outgoing',
+      status: 'sending',
+      mediaUrl: URL.createObjectURL(file), // Preview temporário
+      quotedMessageId: quotedMessageId,
+      sentAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Adicionar mensagem temporária
+    setMessages(prev => [...prev, tempMessage]);
+
+    try {
+      // Auto-assumir conversa se estiver em espera
+      if (selectedConversation.status === 'waiting') {
+        await handleTakeConversation(selectedConversation.id);
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+      if (quotedMessageId) {
+        formData.append('quotedMessageId', quotedMessageId);
+      }
+      
+      const response = await apiClient.post(
+        `/api/whatsapp/conversations/${selectedConversation.id}/send-media`, 
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+
+      // Remover mensagem temporária e adicionar a real
+      setMessages(prev => {
+        const withoutTemp = prev.filter(msg => msg.id !== tempMessage.id);
+        return [...withoutTemp, { ...response.data, status: 'sent' }];
+      });
+
+    } catch (error) {
+      console.error("Erro ao enviar mídia:", error);
+      
+      // Remover mensagem temporária em caso de erro
+      setMessages(prev => prev.filter(msg => msg.id !== tempMessage.id));
+      
+      alert('Erro ao enviar mídia. Tente novamente.');
+    }
+  };
+
+  const handleFinishConversation = async (conversationId: string) => {
+    try {
+      await apiClient.post(`/api/whatsapp/conversations/${conversationId}/finish`);
+      await loadConversations();
+      setSelectedConversation(null);
+      setMessages([]); // Limpar mensagens ao finalizar
+      setSelectedContact(null); // Limpar contato selecionado
+    } catch (error) {
+      console.error("Erro ao finalizar conversa:", error);
+    }
+  };
+
+  // Função para enviar localização
+  const handleSendLocation = async () => {
+    if (!selectedConversation) return;
+
+    if (!navigator.geolocation) {
+      alert('Geolocalização não é suportada por este navegador.');
+      return;
+    }
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000
+        });
+      });
+
+      const { latitude, longitude } = position.coords;
+      
+      // Obter endereço usando reverse geocoding (opcional)
+      let address = '';
+      try {
+        const response = await fetch(
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=pt`
+        );
+        const data = await response.json();
+        address = `${data.locality}, ${data.principalSubdivision}, ${data.countryName}`;
+      } catch (error) {
+        console.log('Erro ao obter endereço:', error);
+      }
+
+      const payload = {
+        type: 'location',
+        latitude: latitude,
+        longitude: longitude,
+        address: address,
+        name: 'Minha localização'
+      };
+
+      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
+      
+      // Adicionar mensagem ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao enviar localização:', error);
+      alert('Erro ao obter localização. Verifique as permissões.');
+    }
+  };
+
+  // Função para enviar contato
+  const handleSendContact = async () => {
+    if (!selectedConversation) return;
+
+    const contactName = prompt('Nome do contato:');
+    if (!contactName) return;
+
+    const contactPhone = prompt('Telefone do contato (com DDD):');
+    if (!contactPhone) return;
+
+    // Validar formato do telefone
+    const phoneRegex = /^[0-9]{10,15}$/;
+    if (!phoneRegex.test(contactPhone.replace(/\D/g, ''))) {
+      alert('Formato de telefone inválido. Use apenas números com DDD.');
+      return;
+    }
+
+    try {
+      const payload = {
+        type: 'contact',
+        contactName: contactName,
+        contactPhone: contactPhone
+      };
+
+      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
+      
+      // Adicionar mensagem ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao enviar contato:', error);
+      alert('Erro ao enviar contato. Tente novamente.');
+    }
+  };
+
+  // Função para reagir a uma mensagem
+  const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!selectedConversation) return;
+
+    try {
+      // Buscar a mensagem para obter o whapiMessageId
+      const message = messages.find(m => m.id === messageId);
+      if (!message || !message.metadata?.whapiMessageId) {
+        console.error('Mensagem não encontrada ou sem whapiMessageId');
+        alert('Não é possível reagir a esta mensagem. ID da Whapi.Cloud não encontrado.');
+        return;
+      }
+
+      const payload = {
+        emoji: emoji
+      };
+
+      const response = await apiClient.post(
+        `/api/whatsapp/conversations/${selectedConversation.id}/messages/${messageId}/react`, 
+        payload
+      );
+      
+      // Adicionar reação ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao reagir à mensagem:', error);
+      alert('Erro ao reagir à mensagem. Tente novamente.');
+    }
+  };
+
+  const getCurrentList = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return waitingConversations;
+      case 'active':
+        return activeConversations;
+      case 'contacts':
+        return contacts;
+      default:
+        return [];
+    }
+  };
+
+  const getCurrentTitle = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Em Espera';
+      case 'active':
+        return 'Conversas Ativas';
+      case 'contacts':
+        return 'Contatos';
+      default:
+        return '';
+    }
+  };
+
+  const getEmptyMessage = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Nenhuma conversa em espera';
+      case 'active':
+        return 'Nenhuma conversa ativa';
+      case 'contacts':
+        return 'Nenhum contato encontrado';
+      default:
+        return '';
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar Esquerda */}
+      <div className="w-80 bg-white border-r flex flex-col">
+          {/* Header */}
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-bold text-gray-800">Chat</h1>
+            <div className="flex gap-2">
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <MessageCircle className="h-4 w-4" />
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <UserPlus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Barra de Pesquisa */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar Conversas"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+                  </div>
+                  
+        {/* Abas */}
+        <div className="p-4 border-b">
+          <div className="flex gap-1 flex-nowrap overflow-x-auto">
+            <TabButton
+              active={activeTab === 'active'}
+              onClick={() => setActiveTab('active')}
+              icon={MessageCircle}
+              count={activeConversations.length}
+            >
+              CHAT
+            </TabButton>
+            <TabButton
+              active={activeTab === 'waiting'}
+              onClick={() => setActiveTab('waiting')}
+              icon={Clock}
+              count={waitingConversations.length}
+            >
+              ESPERA
+            </TabButton>
+            <TabButton
+              active={activeTab === 'contacts'}
+              onClick={() => setActiveTab('contacts')}
+              icon={Users}
+              count={0}
+            >
+              CONTATOS
+            </TabButton>
+            </div>
+          </div>
+                
+        {/* Lista de Conversas/Contatos */}
+        <UnifiedList
+          items={getCurrentList()}
+          onSelect={(item) => {
+            if (activeTab === 'contacts') {
+              handleSelectContact(item as Contact);
+            } else {
+              handleSelectConversation(item as Conversation);
+            }
+          }}
+          selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
+          title={getCurrentTitle()}
+          emptyMessage={getEmptyMessage()}
+          isContacts={activeTab === 'contacts'}
+                  />
+        </div>
+                
+      {/* Área Principal do Chat */}
+      <ChatArea
+        conversation={selectedConversation}
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        onTakeConversation={handleTakeConversation}
+        onFinishConversation={handleFinishConversation}
+        onSendMedia={handleSendMedia}
+        onMessageInput={handleMessageInput}
+      />
+      
+      {/* Popup de Imagem */}
+      {imagePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-4xl bg-white rounded-lg overflow-hidden">
+            {/* Botão de fechar */}
+            <button
+              onClick={() => setImagePopup(null)}
+              className="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            
+            {/* Imagem */}
+            <img
+              src={imagePopup.src}
+              alt={imagePopup.alt}
+              className="max-w-full max-h-full object-contain"
+            />
+            
+            {/* Botões de ação */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3">
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = imagePopup.src;
+                  link.download = `imagem-${Date.now()}.jpg`;
+                  link.click();
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+              <button
+                onClick={() => window.open(imagePopup.src, '_blank')}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600 transition-colors"
+              >
+                <Eye className="h-4 w-4" />
+                Abrir em Nova Aba
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+      alert('Formato de telefone inválido. Use apenas números com DDD.');
+      return;
+    }
+
+    try {
+      const payload = {
+        type: 'contact',
+        contactName: contactName,
+        contactPhone: contactPhone
+      };
+
+      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
+      
+      // Adicionar mensagem ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao enviar contato:', error);
+      alert('Erro ao enviar contato. Tente novamente.');
+    }
+  };
+
+  // Função para reagir a uma mensagem
+  const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!selectedConversation) return;
+
+    try {
+      // Buscar a mensagem para obter o whapiMessageId
+      const message = messages.find(m => m.id === messageId);
+      if (!message || !message.metadata?.whapiMessageId) {
+        console.error('Mensagem não encontrada ou sem whapiMessageId');
+        alert('Não é possível reagir a esta mensagem. ID da Whapi.Cloud não encontrado.');
+        return;
+      }
+
+      const payload = {
+        emoji: emoji
+      };
+
+      const response = await apiClient.post(
+        `/api/whatsapp/conversations/${selectedConversation.id}/messages/${messageId}/react`, 
+        payload
+      );
+      
+      // Adicionar reação ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao reagir à mensagem:', error);
+      alert('Erro ao reagir à mensagem. Tente novamente.');
+    }
+  };
+
+  const getCurrentList = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return waitingConversations;
+      case 'active':
+        return activeConversations;
+      case 'contacts':
+        return contacts;
+      default:
+        return [];
+    }
+  };
+
+  const getCurrentTitle = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Em Espera';
+      case 'active':
+        return 'Conversas Ativas';
+      case 'contacts':
+        return 'Contatos';
+      default:
+        return '';
+    }
+  };
+
+  const getEmptyMessage = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Nenhuma conversa em espera';
+      case 'active':
+        return 'Nenhuma conversa ativa';
+      case 'contacts':
+        return 'Nenhum contato encontrado';
+      default:
+        return '';
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar Esquerda */}
+      <div className="w-80 bg-white border-r flex flex-col">
+          {/* Header */}
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-bold text-gray-800">Chat</h1>
+            <div className="flex gap-2">
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <MessageCircle className="h-4 w-4" />
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <UserPlus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Barra de Pesquisa */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar Conversas"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+                  </div>
+                  
+        {/* Abas */}
+        <div className="p-4 border-b">
+          <div className="flex gap-1 flex-nowrap overflow-x-auto">
+            <TabButton
+              active={activeTab === 'active'}
+              onClick={() => setActiveTab('active')}
+              icon={MessageCircle}
+              count={activeConversations.length}
+            >
+              CHAT
+            </TabButton>
+            <TabButton
+              active={activeTab === 'waiting'}
+              onClick={() => setActiveTab('waiting')}
+              icon={Clock}
+              count={waitingConversations.length}
+            >
+              ESPERA
+            </TabButton>
+            <TabButton
+              active={activeTab === 'contacts'}
+              onClick={() => setActiveTab('contacts')}
+              icon={Users}
+              count={0}
+            >
+              CONTATOS
+            </TabButton>
+            </div>
+          </div>
+                
+        {/* Lista de Conversas/Contatos */}
+        <UnifiedList
+          items={getCurrentList()}
+          onSelect={(item) => {
+            if (activeTab === 'contacts') {
+              handleSelectContact(item as Contact);
+            } else {
+              handleSelectConversation(item as Conversation);
+            }
+          }}
+          selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
+          title={getCurrentTitle()}
+          emptyMessage={getEmptyMessage()}
+          isContacts={activeTab === 'contacts'}
+                  />
+        </div>
+                
+      {/* Área Principal do Chat */}
+      <ChatArea
+        conversation={selectedConversation}
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        onTakeConversation={handleTakeConversation}
+        onFinishConversation={handleFinishConversation}
+        onSendMedia={handleSendMedia}
+        onMessageInput={handleMessageInput}
+      />
+      
+      {/* Popup de Imagem */}
+      {imagePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-4xl bg-white rounded-lg overflow-hidden">
+            {/* Botão de fechar */}
+            <button
+              onClick={() => setImagePopup(null)}
+              className="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            
+            {/* Imagem */}
+            <img
+              src={imagePopup.src}
+              alt={imagePopup.alt}
+              className="max-w-full max-h-full object-contain"
+            />
+            
+            {/* Botões de ação */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3">
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = imagePopup.src;
+                  link.download = `imagem-${Date.now()}.jpg`;
+                  link.click();
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+              <button
+                onClick={() => window.open(imagePopup.src, '_blank')}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600 transition-colors"
+              >
+                <Eye className="h-4 w-4" />
+                Abrir em Nova Aba
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+      alert('Formato de telefone inválido. Use apenas números com DDD.');
+      return;
+    }
+
+    try {
+      const payload = {
+        type: 'contact',
+        contactName: contactName,
+        contactPhone: contactPhone
+      };
+
+      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
+      
+      // Adicionar mensagem ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao enviar contato:', error);
+      alert('Erro ao enviar contato. Tente novamente.');
+    }
+  };
+
+  // Função para reagir a uma mensagem
+  const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!selectedConversation) return;
+
+    try {
+      // Buscar a mensagem para obter o whapiMessageId
+      const message = messages.find(m => m.id === messageId);
+      if (!message || !message.metadata?.whapiMessageId) {
+        console.error('Mensagem não encontrada ou sem whapiMessageId');
+        alert('Não é possível reagir a esta mensagem. ID da Whapi.Cloud não encontrado.');
+        return;
+      }
+
+      const payload = {
+        emoji: emoji
+      };
+
+      const response = await apiClient.post(
+        `/api/whatsapp/conversations/${selectedConversation.id}/messages/${messageId}/react`, 
+        payload
+      );
+      
+      // Adicionar reação ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao reagir à mensagem:', error);
+      alert('Erro ao reagir à mensagem. Tente novamente.');
+    }
+  };
+
+  const getCurrentList = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return waitingConversations;
+      case 'active':
+        return activeConversations;
+      case 'contacts':
+        return contacts;
+      default:
+        return [];
+    }
+  };
+
+  const getCurrentTitle = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Em Espera';
+      case 'active':
+        return 'Conversas Ativas';
+      case 'contacts':
+        return 'Contatos';
+      default:
+        return '';
+    }
+  };
+
+  const getEmptyMessage = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Nenhuma conversa em espera';
+      case 'active':
+        return 'Nenhuma conversa ativa';
+      case 'contacts':
+        return 'Nenhum contato encontrado';
+      default:
+        return '';
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar Esquerda */}
+      <div className="w-80 bg-white border-r flex flex-col">
+          {/* Header */}
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-bold text-gray-800">Chat</h1>
+            <div className="flex gap-2">
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <MessageCircle className="h-4 w-4" />
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <UserPlus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Barra de Pesquisa */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar Conversas"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+                  </div>
+                  
+        {/* Abas */}
+        <div className="p-4 border-b">
+          <div className="flex gap-1 flex-nowrap overflow-x-auto">
+            <TabButton
+              active={activeTab === 'active'}
+              onClick={() => setActiveTab('active')}
+              icon={MessageCircle}
+              count={activeConversations.length}
+            >
+              CHAT
+            </TabButton>
+            <TabButton
+              active={activeTab === 'waiting'}
+              onClick={() => setActiveTab('waiting')}
+              icon={Clock}
+              count={waitingConversations.length}
+            >
+              ESPERA
+            </TabButton>
+            <TabButton
+              active={activeTab === 'contacts'}
+              onClick={() => setActiveTab('contacts')}
+              icon={Users}
+              count={0}
+            >
+              CONTATOS
+            </TabButton>
+            </div>
+          </div>
+                
+        {/* Lista de Conversas/Contatos */}
+        <UnifiedList
+          items={getCurrentList()}
+          onSelect={(item) => {
+            if (activeTab === 'contacts') {
+              handleSelectContact(item as Contact);
+            } else {
+              handleSelectConversation(item as Conversation);
+            }
+          }}
+          selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
+          title={getCurrentTitle()}
+          emptyMessage={getEmptyMessage()}
+          isContacts={activeTab === 'contacts'}
+                  />
+        </div>
+                
+      {/* Área Principal do Chat */}
+      <ChatArea
+        conversation={selectedConversation}
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        onTakeConversation={handleTakeConversation}
+        onFinishConversation={handleFinishConversation}
+        onSendMedia={handleSendMedia}
+        onMessageInput={handleMessageInput}
+      />
+      
+      {/* Popup de Imagem */}
+      {imagePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-4xl bg-white rounded-lg overflow-hidden">
+            {/* Botão de fechar */}
+            <button
+              onClick={() => setImagePopup(null)}
+              className="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            
+            {/* Imagem */}
+            <img
+              src={imagePopup.src}
+              alt={imagePopup.alt}
+              className="max-w-full max-h-full object-contain"
+            />
+            
+            {/* Botões de ação */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3">
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = imagePopup.src;
+                  link.download = `imagem-${Date.now()}.jpg`;
+                  link.click();
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+              <button
+                onClick={() => window.open(imagePopup.src, '_blank')}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600 transition-colors"
+              >
+                <Eye className="h-4 w-4" />
+                Abrir em Nova Aba
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+      alert('Formato de telefone inválido. Use apenas números com DDD.');
+      return;
+    }
+
+    try {
+      const payload = {
+        type: 'contact',
+        contactName: contactName,
+        contactPhone: contactPhone
+      };
+
+      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
+      
+      // Adicionar mensagem ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao enviar contato:', error);
+      alert('Erro ao enviar contato. Tente novamente.');
+    }
+  };
+
+  // Função para reagir a uma mensagem
+  const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!selectedConversation) return;
+
+    try {
+      // Buscar a mensagem para obter o whapiMessageId
+      const message = messages.find(m => m.id === messageId);
+      if (!message || !message.metadata?.whapiMessageId) {
+        console.error('Mensagem não encontrada ou sem whapiMessageId');
+        alert('Não é possível reagir a esta mensagem. ID da Whapi.Cloud não encontrado.');
+        return;
+      }
+
+      const payload = {
+        emoji: emoji
+      };
+
+      const response = await apiClient.post(
+        `/api/whatsapp/conversations/${selectedConversation.id}/messages/${messageId}/react`, 
+        payload
+      );
+      
+      // Adicionar reação ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao reagir à mensagem:', error);
+      alert('Erro ao reagir à mensagem. Tente novamente.');
+    }
+  };
+
+  const getCurrentList = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return waitingConversations;
+      case 'active':
+        return activeConversations;
+      case 'contacts':
+        return contacts;
+      default:
+        return [];
+    }
+  };
+
+  const getCurrentTitle = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Em Espera';
+      case 'active':
+        return 'Conversas Ativas';
+      case 'contacts':
+        return 'Contatos';
+      default:
+        return '';
+    }
+  };
+
+  const getEmptyMessage = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Nenhuma conversa em espera';
+      case 'active':
+        return 'Nenhuma conversa ativa';
+      case 'contacts':
+        return 'Nenhum contato encontrado';
+      default:
+        return '';
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar Esquerda */}
+      <div className="w-80 bg-white border-r flex flex-col">
+          {/* Header */}
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-bold text-gray-800">Chat</h1>
+            <div className="flex gap-2">
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <MessageCircle className="h-4 w-4" />
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <UserPlus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Barra de Pesquisa */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar Conversas"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+                  </div>
+                  
+        {/* Abas */}
+        <div className="p-4 border-b">
+          <div className="flex gap-1 flex-nowrap overflow-x-auto">
+            <TabButton
+              active={activeTab === 'active'}
+              onClick={() => setActiveTab('active')}
+              icon={MessageCircle}
+              count={activeConversations.length}
+            >
+              CHAT
+            </TabButton>
+            <TabButton
+              active={activeTab === 'waiting'}
+              onClick={() => setActiveTab('waiting')}
+              icon={Clock}
+              count={waitingConversations.length}
+            >
+              ESPERA
+            </TabButton>
+            <TabButton
+              active={activeTab === 'contacts'}
+              onClick={() => setActiveTab('contacts')}
+              icon={Users}
+              count={0}
+            >
+              CONTATOS
+            </TabButton>
+            </div>
+          </div>
+                
+        {/* Lista de Conversas/Contatos */}
+        <UnifiedList
+          items={getCurrentList()}
+          onSelect={(item) => {
+            if (activeTab === 'contacts') {
+              handleSelectContact(item as Contact);
+            } else {
+              handleSelectConversation(item as Conversation);
+            }
+          }}
+          selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
+          title={getCurrentTitle()}
+          emptyMessage={getEmptyMessage()}
+          isContacts={activeTab === 'contacts'}
+                  />
+        </div>
+                
+      {/* Área Principal do Chat */}
+      <ChatArea
+        conversation={selectedConversation}
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        onTakeConversation={handleTakeConversation}
+        onFinishConversation={handleFinishConversation}
+        onSendMedia={handleSendMedia}
+        onMessageInput={handleMessageInput}
+      />
+      
+      {/* Popup de Imagem */}
+      {imagePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-4xl bg-white rounded-lg overflow-hidden">
+            {/* Botão de fechar */}
+            <button
+              onClick={() => setImagePopup(null)}
+              className="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            
+            {/* Imagem */}
+            <img
+              src={imagePopup.src}
+              alt={imagePopup.alt}
+              className="max-w-full max-h-full object-contain"
+            />
+            
+            {/* Botões de ação */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3">
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = imagePopup.src;
+                  link.download = `imagem-${Date.now()}.jpg`;
+                  link.click();
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+              <button
+                onClick={() => window.open(imagePopup.src, '_blank')}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600 transition-colors"
+              >
+                <Eye className="h-4 w-4" />
+                Abrir em Nova Aba
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+      alert('Formato de telefone inválido. Use apenas números com DDD.');
+      return;
+    }
+
+    try {
+      const payload = {
+        type: 'contact',
+        contactName: contactName,
+        contactPhone: contactPhone
+      };
+
+      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
+      
+      // Adicionar mensagem ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao enviar contato:', error);
+      alert('Erro ao enviar contato. Tente novamente.');
+    }
+  };
+
+  // Função para reagir a uma mensagem
+  const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!selectedConversation) return;
+
+    try {
+      // Buscar a mensagem para obter o whapiMessageId
+      const message = messages.find(m => m.id === messageId);
+      if (!message || !message.metadata?.whapiMessageId) {
+        console.error('Mensagem não encontrada ou sem whapiMessageId');
+        alert('Não é possível reagir a esta mensagem. ID da Whapi.Cloud não encontrado.');
+        return;
+      }
+
+      const payload = {
+        emoji: emoji
+      };
+
+      const response = await apiClient.post(
+        `/api/whatsapp/conversations/${selectedConversation.id}/messages/${messageId}/react`, 
+        payload
+      );
+      
+      // Adicionar reação ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao reagir à mensagem:', error);
+      alert('Erro ao reagir à mensagem. Tente novamente.');
+    }
+  };
+
+  const getCurrentList = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return waitingConversations;
+      case 'active':
+        return activeConversations;
+      case 'contacts':
+        return contacts;
+      default:
+        return [];
+    }
+  };
+
+  const getCurrentTitle = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Em Espera';
+      case 'active':
+        return 'Conversas Ativas';
+      case 'contacts':
+        return 'Contatos';
+      default:
+        return '';
+    }
+  };
+
+  const getEmptyMessage = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Nenhuma conversa em espera';
+      case 'active':
+        return 'Nenhuma conversa ativa';
+      case 'contacts':
+        return 'Nenhum contato encontrado';
+      default:
+        return '';
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar Esquerda */}
+      <div className="w-80 bg-white border-r flex flex-col">
+          {/* Header */}
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-bold text-gray-800">Chat</h1>
+            <div className="flex gap-2">
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <MessageCircle className="h-4 w-4" />
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <UserPlus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Barra de Pesquisa */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar Conversas"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+                  </div>
+                  
+        {/* Abas */}
+        <div className="p-4 border-b">
+          <div className="flex gap-1 flex-nowrap overflow-x-auto">
+            <TabButton
+              active={activeTab === 'active'}
+              onClick={() => setActiveTab('active')}
+              icon={MessageCircle}
+              count={activeConversations.length}
+            >
+              CHAT
+            </TabButton>
+            <TabButton
+              active={activeTab === 'waiting'}
+              onClick={() => setActiveTab('waiting')}
+              icon={Clock}
+              count={waitingConversations.length}
+            >
+              ESPERA
+            </TabButton>
+            <TabButton
+              active={activeTab === 'contacts'}
+              onClick={() => setActiveTab('contacts')}
+              icon={Users}
+              count={0}
+            >
+              CONTATOS
+            </TabButton>
+            </div>
+          </div>
+                
+        {/* Lista de Conversas/Contatos */}
+        <UnifiedList
+          items={getCurrentList()}
+          onSelect={(item) => {
+            if (activeTab === 'contacts') {
+              handleSelectContact(item as Contact);
+            } else {
+              handleSelectConversation(item as Conversation);
+            }
+          }}
+          selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
+          title={getCurrentTitle()}
+          emptyMessage={getEmptyMessage()}
+          isContacts={activeTab === 'contacts'}
+                  />
+        </div>
+                
+      {/* Área Principal do Chat */}
+      <ChatArea
+        conversation={selectedConversation}
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        onTakeConversation={handleTakeConversation}
+        onFinishConversation={handleFinishConversation}
+        onSendMedia={handleSendMedia}
+        onMessageInput={handleMessageInput}
+      />
+      
+      {/* Popup de Imagem */}
+      {imagePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-4xl bg-white rounded-lg overflow-hidden">
+            {/* Botão de fechar */}
+            <button
+              onClick={() => setImagePopup(null)}
+              className="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            
+            {/* Imagem */}
+            <img
+              src={imagePopup.src}
+              alt={imagePopup.alt}
+              className="max-w-full max-h-full object-contain"
+            />
+            
+            {/* Botões de ação */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3">
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = imagePopup.src;
+                  link.download = `imagem-${Date.now()}.jpg`;
+                  link.click();
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+              <button
+                onClick={() => window.open(imagePopup.src, '_blank')}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600 transition-colors"
+              >
+                <Eye className="h-4 w-4" />
+                Abrir em Nova Aba
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+      alert('Formato de telefone inválido. Use apenas números com DDD.');
+      return;
+    }
+
+    try {
+      const payload = {
+        type: 'contact',
+        contactName: contactName,
+        contactPhone: contactPhone
+      };
+
+      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
+      
+      // Adicionar mensagem ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao enviar contato:', error);
+      alert('Erro ao enviar contato. Tente novamente.');
+    }
+  };
+
+  // Função para reagir a uma mensagem
+  const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!selectedConversation) return;
+
+    try {
+      // Buscar a mensagem para obter o whapiMessageId
+      const message = messages.find(m => m.id === messageId);
+      if (!message || !message.metadata?.whapiMessageId) {
+        console.error('Mensagem não encontrada ou sem whapiMessageId');
+        alert('Não é possível reagir a esta mensagem. ID da Whapi.Cloud não encontrado.');
+        return;
+      }
+
+      const payload = {
+        emoji: emoji
+      };
+
+      const response = await apiClient.post(
+        `/api/whatsapp/conversations/${selectedConversation.id}/messages/${messageId}/react`, 
+        payload
+      );
+      
+      // Adicionar reação ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao reagir à mensagem:', error);
+      alert('Erro ao reagir à mensagem. Tente novamente.');
+    }
+  };
+
+  const getCurrentList = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return waitingConversations;
+      case 'active':
+        return activeConversations;
+      case 'contacts':
+        return contacts;
+      default:
+        return [];
+    }
+  };
+
+  const getCurrentTitle = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Em Espera';
+      case 'active':
+        return 'Conversas Ativas';
+      case 'contacts':
+        return 'Contatos';
+      default:
+        return '';
+    }
+  };
+
+  const getEmptyMessage = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Nenhuma conversa em espera';
+      case 'active':
+        return 'Nenhuma conversa ativa';
+      case 'contacts':
+        return 'Nenhum contato encontrado';
+      default:
+        return '';
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar Esquerda */}
+      <div className="w-80 bg-white border-r flex flex-col">
+          {/* Header */}
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-bold text-gray-800">Chat</h1>
+            <div className="flex gap-2">
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <MessageCircle className="h-4 w-4" />
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <UserPlus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Barra de Pesquisa */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar Conversas"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+                  </div>
+                  
+        {/* Abas */}
+        <div className="p-4 border-b">
+          <div className="flex gap-1 flex-nowrap overflow-x-auto">
+            <TabButton
+              active={activeTab === 'active'}
+              onClick={() => setActiveTab('active')}
+              icon={MessageCircle}
+              count={activeConversations.length}
+            >
+              CHAT
+            </TabButton>
+            <TabButton
+              active={activeTab === 'waiting'}
+              onClick={() => setActiveTab('waiting')}
+              icon={Clock}
+              count={waitingConversations.length}
+            >
+              ESPERA
+            </TabButton>
+            <TabButton
+              active={activeTab === 'contacts'}
+              onClick={() => setActiveTab('contacts')}
+              icon={Users}
+              count={0}
+            >
+              CONTATOS
+            </TabButton>
+            </div>
+          </div>
+                
+        {/* Lista de Conversas/Contatos */}
+        <UnifiedList
+          items={getCurrentList()}
+          onSelect={(item) => {
+            if (activeTab === 'contacts') {
+              handleSelectContact(item as Contact);
+            } else {
+              handleSelectConversation(item as Conversation);
+            }
+          }}
+          selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
+          title={getCurrentTitle()}
+          emptyMessage={getEmptyMessage()}
+          isContacts={activeTab === 'contacts'}
+                  />
+        </div>
+                
+      {/* Área Principal do Chat */}
+      <ChatArea
+        conversation={selectedConversation}
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        onTakeConversation={handleTakeConversation}
+        onFinishConversation={handleFinishConversation}
+        onSendMedia={handleSendMedia}
+        onMessageInput={handleMessageInput}
+      />
+      
+      {/* Popup de Imagem */}
+      {imagePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-4xl bg-white rounded-lg overflow-hidden">
+            {/* Botão de fechar */}
+            <button
+              onClick={() => setImagePopup(null)}
+              className="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            
+            {/* Imagem */}
+            <img
+              src={imagePopup.src}
+              alt={imagePopup.alt}
+              className="max-w-full max-h-full object-contain"
+            />
+            
+            {/* Botões de ação */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3">
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = imagePopup.src;
+                  link.download = `imagem-${Date.now()}.jpg`;
+                  link.click();
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+              <button
+                onClick={() => window.open(imagePopup.src, '_blank')}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600 transition-colors"
+              >
+                <Eye className="h-4 w-4" />
+                Abrir em Nova Aba
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+      alert('Formato de telefone inválido. Use apenas números com DDD.');
+      return;
+    }
+
+    try {
+      const payload = {
+        type: 'contact',
+        contactName: contactName,
+        contactPhone: contactPhone
+      };
+
+      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
+      
+      // Adicionar mensagem ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao enviar contato:', error);
+      alert('Erro ao enviar contato. Tente novamente.');
+    }
+  };
+
+  // Função para reagir a uma mensagem
+  const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!selectedConversation) return;
+
+    try {
+      // Buscar a mensagem para obter o whapiMessageId
+      const message = messages.find(m => m.id === messageId);
+      if (!message || !message.metadata?.whapiMessageId) {
+        console.error('Mensagem não encontrada ou sem whapiMessageId');
+        alert('Não é possível reagir a esta mensagem. ID da Whapi.Cloud não encontrado.');
+        return;
+      }
+
+      const payload = {
+        emoji: emoji
+      };
+
+      const response = await apiClient.post(
+        `/api/whatsapp/conversations/${selectedConversation.id}/messages/${messageId}/react`, 
+        payload
+      );
+      
+      // Adicionar reação ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao reagir à mensagem:', error);
+      alert('Erro ao reagir à mensagem. Tente novamente.');
+    }
+  };
+
+  const getCurrentList = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return waitingConversations;
+      case 'active':
+        return activeConversations;
+      case 'contacts':
+        return contacts;
+      default:
+        return [];
+    }
+  };
+
+  const getCurrentTitle = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Em Espera';
+      case 'active':
+        return 'Conversas Ativas';
+      case 'contacts':
+        return 'Contatos';
+      default:
+        return '';
+    }
+  };
+
+  const getEmptyMessage = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Nenhuma conversa em espera';
+      case 'active':
+        return 'Nenhuma conversa ativa';
+      case 'contacts':
+        return 'Nenhum contato encontrado';
+      default:
+        return '';
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar Esquerda */}
+      <div className="w-80 bg-white border-r flex flex-col">
+          {/* Header */}
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-bold text-gray-800">Chat</h1>
+            <div className="flex gap-2">
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <MessageCircle className="h-4 w-4" />
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <UserPlus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Barra de Pesquisa */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar Conversas"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+                  </div>
+                  
+        {/* Abas */}
+        <div className="p-4 border-b">
+          <div className="flex gap-1 flex-nowrap overflow-x-auto">
+            <TabButton
+              active={activeTab === 'active'}
+              onClick={() => setActiveTab('active')}
+              icon={MessageCircle}
+              count={activeConversations.length}
+            >
+              CHAT
+            </TabButton>
+            <TabButton
+              active={activeTab === 'waiting'}
+              onClick={() => setActiveTab('waiting')}
+              icon={Clock}
+              count={waitingConversations.length}
+            >
+              ESPERA
+            </TabButton>
+            <TabButton
+              active={activeTab === 'contacts'}
+              onClick={() => setActiveTab('contacts')}
+              icon={Users}
+              count={0}
+            >
+              CONTATOS
+            </TabButton>
+            </div>
+          </div>
+                
+        {/* Lista de Conversas/Contatos */}
+        <UnifiedList
+          items={getCurrentList()}
+          onSelect={(item) => {
+            if (activeTab === 'contacts') {
+              handleSelectContact(item as Contact);
+            } else {
+              handleSelectConversation(item as Conversation);
+            }
+          }}
+          selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
+          title={getCurrentTitle()}
+          emptyMessage={getEmptyMessage()}
+          isContacts={activeTab === 'contacts'}
+                  />
+        </div>
+                
+      {/* Área Principal do Chat */}
+      <ChatArea
+        conversation={selectedConversation}
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        onTakeConversation={handleTakeConversation}
+        onFinishConversation={handleFinishConversation}
+        onSendMedia={handleSendMedia}
+        onMessageInput={handleMessageInput}
+      />
+      
+      {/* Popup de Imagem */}
+      {imagePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-4xl bg-white rounded-lg overflow-hidden">
+            {/* Botão de fechar */}
+            <button
+              onClick={() => setImagePopup(null)}
+              className="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            
+            {/* Imagem */}
+            <img
+              src={imagePopup.src}
+              alt={imagePopup.alt}
+              className="max-w-full max-h-full object-contain"
+            />
+            
+            {/* Botões de ação */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3">
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = imagePopup.src;
+                  link.download = `imagem-${Date.now()}.jpg`;
+                  link.click();
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+              <button
+                onClick={() => window.open(imagePopup.src, '_blank')}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600 transition-colors"
+              >
+                <Eye className="h-4 w-4" />
+                Abrir em Nova Aba
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+      alert('Formato de telefone inválido. Use apenas números com DDD.');
+      return;
+    }
+
+    try {
+      const payload = {
+        type: 'contact',
+        contactName: contactName,
+        contactPhone: contactPhone
+      };
+
+      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
+      
+      // Adicionar mensagem ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao enviar contato:', error);
+      alert('Erro ao enviar contato. Tente novamente.');
+    }
+  };
+
+  // Função para reagir a uma mensagem
+  const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!selectedConversation) return;
+
+    try {
+      // Buscar a mensagem para obter o whapiMessageId
+      const message = messages.find(m => m.id === messageId);
+      if (!message || !message.metadata?.whapiMessageId) {
+        console.error('Mensagem não encontrada ou sem whapiMessageId');
+        alert('Não é possível reagir a esta mensagem. ID da Whapi.Cloud não encontrado.');
+        return;
+      }
+
+      const payload = {
+        emoji: emoji
+      };
+
+      const response = await apiClient.post(
+        `/api/whatsapp/conversations/${selectedConversation.id}/messages/${messageId}/react`, 
+        payload
+      );
+      
+      // Adicionar reação ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao reagir à mensagem:', error);
+      alert('Erro ao reagir à mensagem. Tente novamente.');
+    }
+  };
+
+  const getCurrentList = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return waitingConversations;
+      case 'active':
+        return activeConversations;
+      case 'contacts':
+        return contacts;
+      default:
+        return [];
+    }
+  };
+
+  const getCurrentTitle = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Em Espera';
+      case 'active':
+        return 'Conversas Ativas';
+      case 'contacts':
+        return 'Contatos';
+      default:
+        return '';
+    }
+  };
+
+  const getEmptyMessage = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Nenhuma conversa em espera';
+      case 'active':
+        return 'Nenhuma conversa ativa';
+      case 'contacts':
+        return 'Nenhum contato encontrado';
+      default:
+        return '';
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar Esquerda */}
+      <div className="w-80 bg-white border-r flex flex-col">
+          {/* Header */}
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-bold text-gray-800">Chat</h1>
+            <div className="flex gap-2">
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <MessageCircle className="h-4 w-4" />
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <UserPlus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Barra de Pesquisa */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar Conversas"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+                  </div>
+                  
+        {/* Abas */}
+        <div className="p-4 border-b">
+          <div className="flex gap-1 flex-nowrap overflow-x-auto">
+            <TabButton
+              active={activeTab === 'active'}
+              onClick={() => setActiveTab('active')}
+              icon={MessageCircle}
+              count={activeConversations.length}
+            >
+              CHAT
+            </TabButton>
+            <TabButton
+              active={activeTab === 'waiting'}
+              onClick={() => setActiveTab('waiting')}
+              icon={Clock}
+              count={waitingConversations.length}
+            >
+              ESPERA
+            </TabButton>
+            <TabButton
+              active={activeTab === 'contacts'}
+              onClick={() => setActiveTab('contacts')}
+              icon={Users}
+              count={0}
+            >
+              CONTATOS
+            </TabButton>
+            </div>
+          </div>
+                
+        {/* Lista de Conversas/Contatos */}
+        <UnifiedList
+          items={getCurrentList()}
+          onSelect={(item) => {
+            if (activeTab === 'contacts') {
+              handleSelectContact(item as Contact);
+            } else {
+              handleSelectConversation(item as Conversation);
+            }
+          }}
+          selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
+          title={getCurrentTitle()}
+          emptyMessage={getEmptyMessage()}
+          isContacts={activeTab === 'contacts'}
+                  />
+        </div>
+                
+      {/* Área Principal do Chat */}
+      <ChatArea
+        conversation={selectedConversation}
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        onTakeConversation={handleTakeConversation}
+        onFinishConversation={handleFinishConversation}
+        onSendMedia={handleSendMedia}
+        onMessageInput={handleMessageInput}
+      />
+      
+      {/* Popup de Imagem */}
+      {imagePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-4xl bg-white rounded-lg overflow-hidden">
+            {/* Botão de fechar */}
+            <button
+              onClick={() => setImagePopup(null)}
+              className="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            
+            {/* Imagem */}
+            <img
+              src={imagePopup.src}
+              alt={imagePopup.alt}
+              className="max-w-full max-h-full object-contain"
+            />
+            
+            {/* Botões de ação */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3">
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = imagePopup.src;
+                  link.download = `imagem-${Date.now()}.jpg`;
+                  link.click();
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+              <button
+                onClick={() => window.open(imagePopup.src, '_blank')}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600 transition-colors"
+              >
+                <Eye className="h-4 w-4" />
+                Abrir em Nova Aba
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+      alert('Formato de telefone inválido. Use apenas números com DDD.');
+      return;
+    }
+
+    try {
+      const payload = {
+        type: 'contact',
+        contactName: contactName,
+        contactPhone: contactPhone
+      };
+
+      const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
+      
+      // Adicionar mensagem ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao enviar contato:', error);
+      alert('Erro ao enviar contato. Tente novamente.');
+    }
+  };
+
+  // Função para reagir a uma mensagem
+  const handleReactToMessage = async (messageId: string, emoji: string) => {
+    if (!selectedConversation) return;
+
+    try {
+      // Buscar a mensagem para obter o whapiMessageId
+      const message = messages.find(m => m.id === messageId);
+      if (!message || !message.metadata?.whapiMessageId) {
+        console.error('Mensagem não encontrada ou sem whapiMessageId');
+        alert('Não é possível reagir a esta mensagem. ID da Whapi.Cloud não encontrado.');
+        return;
+      }
+
+      const payload = {
+        emoji: emoji
+      };
+
+      const response = await apiClient.post(
+        `/api/whatsapp/conversations/${selectedConversation.id}/messages/${messageId}/react`, 
+        payload
+      );
+      
+      // Adicionar reação ao chat
+      setMessages(prev => [...prev, { ...response.data, status: 'sent' }]);
+      
+    } catch (error) {
+      console.error('Erro ao reagir à mensagem:', error);
+      alert('Erro ao reagir à mensagem. Tente novamente.');
+    }
+  };
+
+  const getCurrentList = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return waitingConversations;
+      case 'active':
+        return activeConversations;
+      case 'contacts':
+        return contacts;
+      default:
+        return [];
+    }
+  };
+
+  const getCurrentTitle = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Em Espera';
+      case 'active':
+        return 'Conversas Ativas';
+      case 'contacts':
+        return 'Contatos';
+      default:
+        return '';
+    }
+  };
+
+  const getEmptyMessage = () => {
+    switch (activeTab) {
+      case 'waiting':
+        return 'Nenhuma conversa em espera';
+      case 'active':
+        return 'Nenhuma conversa ativa';
+      case 'contacts':
+        return 'Nenhum contato encontrado';
+      default:
+        return '';
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100">
+      {/* Sidebar Esquerda */}
+      <div className="w-80 bg-white border-r flex flex-col">
+          {/* Header */}
+        <div className="p-4 border-b">
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-bold text-gray-800">Chat</h1>
+            <div className="flex gap-2">
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <MessageCircle className="h-4 w-4" />
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <UserPlus className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Barra de Pesquisa */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar Conversas"
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+                  </div>
+                  
+        {/* Abas */}
+        <div className="p-4 border-b">
+          <div className="flex gap-1 flex-nowrap overflow-x-auto">
+            <TabButton
+              active={activeTab === 'active'}
+              onClick={() => setActiveTab('active')}
+              icon={MessageCircle}
+              count={activeConversations.length}
+            >
+              CHAT
+            </TabButton>
+            <TabButton
+              active={activeTab === 'waiting'}
+              onClick={() => setActiveTab('waiting')}
+              icon={Clock}
+              count={waitingConversations.length}
+            >
+              ESPERA
+            </TabButton>
+            <TabButton
+              active={activeTab === 'contacts'}
+              onClick={() => setActiveTab('contacts')}
+              icon={Users}
+              count={0}
+            >
+              CONTATOS
+            </TabButton>
+            </div>
+          </div>
+                
+        {/* Lista de Conversas/Contatos */}
+        <UnifiedList
+          items={getCurrentList()}
+          onSelect={(item) => {
+            if (activeTab === 'contacts') {
+              handleSelectContact(item as Contact);
+            } else {
+              handleSelectConversation(item as Conversation);
+            }
+          }}
+          selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
+          title={getCurrentTitle()}
+          emptyMessage={getEmptyMessage()}
+          isContacts={activeTab === 'contacts'}
+                  />
+        </div>
+                
+      {/* Área Principal do Chat */}
+      <ChatArea
+        conversation={selectedConversation}
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        onTakeConversation={handleTakeConversation}
+        onFinishConversation={handleFinishConversation}
+        onSendMedia={handleSendMedia}
+        onMessageInput={handleMessageInput}
+      />
+      
+      {/* Popup de Imagem */}
+      {imagePopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-4xl bg-white rounded-lg overflow-hidden">
+            {/* Botão de fechar */}
+            <button
+              onClick={() => setImagePopup(null)}
+              className="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            
+            {/* Imagem */}
+            <img
+              src={imagePopup.src}
+              alt={imagePopup.alt}
+              className="max-w-full max-h-full object-contain"
+            />
+            
+            {/* Botões de ação */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3">
+              <button
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = imagePopup.src;
+                  link.download = `imagem-${Date.now()}.jpg`;
+                  link.click();
+                }}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Download
+              </button>
+              <button
+                onClick={() => window.open(imagePopup.src, '_blank')}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600 transition-colors"
+              >
+                <Eye className="h-4 w-4" />
+                Abrir em Nova Aba
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

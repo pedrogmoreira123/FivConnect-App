@@ -3,7 +3,8 @@ import { createServer, type Server } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import "./types"; // Import type extensions
 import { storage } from "./storage";
-import { setupEvolutionRoutes } from "./evolution-routes";
+// import { setupEvolutionRoutes } from "./evolution-routes"; // Removido - migrado para Whapi.Cloud
+import { setupWhatsAppRoutes } from "./whatsapp-routes";
 import { 
   insertUserSchema,
   insertClientSchema,
@@ -37,7 +38,7 @@ import bcrypt from "bcryptjs";
 import { Logger } from "./logger";
 
 const loginSchema = z.object({
-  username: z.string().min(1),
+  email: z.string().email(),
   password: z.string().min(1)
 });
 
@@ -52,16 +53,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     };
     
     try {
-      const { username, password } = loginSchema.parse(req.body);
+      const { email, password } = loginSchema.parse(req.body);
       
-      Logger.auth(`Login attempt for username: ${username}`, {
+      Logger.auth(`Login attempt for email: ${email}`, {
         ...requestContext,
-        username,
+        email,
         environment: storage.getCurrentEnvironment()
       });
       
-      const result = await authenticateUserByUsername(
-        username, 
+      const result = await authenticateUser(
+        email, 
         password, 
         undefined, // companyId - let it auto-select
         req.ip,
@@ -69,17 +70,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
       
       if (!result) {
-        Logger.warn(`Login failed for username: ${username} - Invalid credentials or no company association`, {
+        Logger.warn(`Login failed for email: ${email} - Invalid credentials or no company association`, {
           ...requestContext,
-          username,
+          email,
           reason: 'invalid_credentials_or_no_company'
         });
-        return res.status(401).json({ message: "Invalid username or password" });
+        return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      Logger.success(`Login successful for username: ${username}`, {
+      Logger.success(`Login successful for email: ${email}`, {
         ...requestContext,
-        username,
+        email,
         userId: result.user.id,
         companyId: (result.user as any)?.company?.id,
         companyName: (result.user as any)?.company?.name
@@ -1681,7 +1682,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Setup Evolution API routes (io já está configurado no index.ts)
-  setupEvolutionRoutes(app);
+  // setupEvolutionRoutes(app); // Removido - migrado para Whapi.Cloud
+
+  // Setup WhatsApp routes (Whapi.Cloud)
+  setupWhatsAppRoutes(app);
 
   return app;
 }

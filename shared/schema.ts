@@ -34,7 +34,30 @@ export const whatsappConnections = pgTable("whatsapp_connections", {
   isDefault: boolean("is_default").default(false), // Default connection for new conversations
   sessionData: json("session_data"), // WhatsApp session data
   lastSeen: timestamp("last_seen"),
+  // Whapi.Cloud Integration Fields (NOVO)
+  whapiChannelId: text("whapi_channel_id"), // ID do canal na Whapi.Cloud
+  whapiToken: text("whapi_token"), // Token do cliente (será criptografado)
+  providerType: text("provider_type", { 
+    enum: ["evolution", "whapi", "baileys"] 
+  }).notNull().default("whapi"), // Tipo de provider
+  webhookUrl: text("webhook_url"), // URL do webhook configurada
   // Environment field to separate test from production data  
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Channels table - Nova tabela para abstração de providers
+export const channels = pgTable("channels", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ownerId: varchar("owner_id").notNull(), // FK para usuário/empresa
+  providerName: text("provider_name").notNull(), // 'whapi', 'evolution', etc.
+  providerTokenEncrypted: text("provider_token_encrypted").notNull(), // Token criptografado
+  phoneNumber: text("phone_number"), // Número do WhatsApp
+  status: text("status", { 
+    enum: ["active", "inactive", "error", "connecting"] 
+  }).notNull().default("inactive"),
+  // Environment field to separate test from production data
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -45,6 +68,7 @@ export const conversations = pgTable("conversations", {
   contactName: text("contact_name").notNull(),
   contactPhone: text("contact_phone").notNull(),
   clientId: varchar("client_id").references(() => clients.id), // Link to clients table
+  companyId: varchar("company_id").notNull(), // Company that owns this conversation
   whatsappConnectionId: varchar("whatsapp_connection_id").references(() => whatsappConnections.id), // NEW: Link to WhatsApp connection
   status: text("status", { enum: ["in_progress", "waiting", "completed", "closed"] }).notNull().default("waiting"),
   assignedAgentId: varchar("assigned_agent_id").references(() => users.id),
@@ -52,9 +76,16 @@ export const conversations = pgTable("conversations", {
   priority: text("priority", { enum: ["low", "medium", "high", "urgent"] }).default("medium"),
   tags: json("tags"), // Store conversation tags as JSON array
   isGroup: boolean("is_group").default(false), // NEW: WhatsApp group conversations
+  // NOVO: Sistema de Protocolo de Atendimento
+  protocolNumber: text("protocol_number").unique(), // Formato: DDMMAA + número sequencial (ex: 0910250001)
+  isFinished: boolean("is_finished").default(false), // Marca se a conversa foi finalizada
+  finishedAt: timestamp("finished_at"), // Data/hora da finalização
+  finishedBy: varchar("finished_by").references(() => users.id), // Quem finalizou a conversa
   // Environment field to separate test from production data
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   lastMessageAt: timestamp("last_message_at").defaultNow(),
+  lastMessage: text("last_message"), // Última mensagem para exibição na lista
+  lastMessageType: text("last_message_type"), // Tipo da última mensagem
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -64,14 +95,28 @@ export const messages = pgTable("messages", {
   conversationId: varchar("conversation_id").notNull().references(() => conversations.id),
   senderId: varchar("sender_id").references(() => users.id), // For outgoing messages from agents
   content: text("content").notNull(),
-  messageType: text("message_type", { enum: ["text", "image", "audio", "video", "document"] }).default("text"),
+  messageType: text("message_type", { 
+    enum: [
+      "text", "image", "audio", "video", "document", "voice", 
+      "sticker", "location", "contact", "reaction", "gif", 
+      "short_video", "link_preview", "poll", "interactive"
+    ] 
+  }).default("text"),
   direction: text("direction", { enum: ["incoming", "outgoing"] }).notNull(),
   mediaUrl: text("media_url"), // For media messages
+  caption: text("caption"), // For media messages with caption
+  fileName: text("file_name"), // For document messages
+  quotedMessageId: varchar("quoted_message_id"), // For reply messages
+  externalId: varchar("external_id"), // For preventing duplicate messages from external APIs
+  metadata: json("metadata"), // For storing additional data like emoji reactions, location data, etc.
+  processedAt: timestamp("processed_at"), // Timestamp when message was processed by Whapi.Cloud
   // Environment field to separate test from production data
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   isRead: boolean("is_read").default(false),
-  status: text("status", { enum: ["sent", "delivered", "read"] }).default("sent"),
+  status: text("status", { enum: ["sent", "delivered", "read", "failed"] }).default("sent"),
   sentAt: timestamp("sent_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const queues = pgTable("queues", {
@@ -489,12 +534,21 @@ export const insertWhatsappConnectionSchema = createInsertSchema(whatsappConnect
   updatedAt: true,
 });
 
+export const insertChannelSchema = createInsertSchema(channels).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Type definitions
 export type QuickReply = typeof quickReplies.$inferSelect;
 export type InsertQuickReply = z.infer<typeof insertQuickReplySchema>;
 
 export type WhatsappConnection = typeof whatsappConnections.$inferSelect;
 export type InsertWhatsappConnection = z.infer<typeof insertWhatsappConnectionSchema>;
+
+export type Channel = typeof channels.$inferSelect;
+export type InsertChannel = z.infer<typeof insertChannelSchema>;
 
 // Companies/Tenants Table - WhaTicket inspired multi-tenant architecture
 export const companies = pgTable("companies", {
@@ -509,6 +563,8 @@ export const companies = pgTable("companies", {
   maxUsers: integer("max_users").default(1),
   maxConnections: integer("max_connections").default(1),
   maxQueues: integer("max_queues").default(3),
+  // NOVA COLUNA: Limite de canais WhatsApp por empresa
+  whatsappChannelLimit: integer("whatsapp_channel_limit").default(1).notNull(),
   trialEndsAt: timestamp("trial_ends_at"),
   // Environment field
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
@@ -565,4 +621,5 @@ export type InsertUserCompany = z.infer<typeof insertUserCompanySchema>;
 
 export type CompanySettings = typeof companySettings.$inferSelect;
 export type InsertCompanySettings = z.infer<typeof insertCompanySettingsSchema>;
+
 

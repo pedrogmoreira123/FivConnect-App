@@ -1,6 +1,7 @@
 import type { User, Session, Company } from '@shared/schema';
 
 export interface AuthenticatedUser extends Omit<User, 'password'> {
+  companyId: string;
   company?: Company;
 }
 
@@ -13,4 +14,12 @@ declare global {
   }
 }
 
+export {};
+export {};
+export {};
+export {};
+export {};
+export {};
+export {};
+export {};
 export {};

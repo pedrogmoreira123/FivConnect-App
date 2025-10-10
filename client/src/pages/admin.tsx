@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -26,9 +27,14 @@ import {
   Phone,
   Calendar,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  MessageSquare,
+  DollarSign,
+  Calendar as CalendarIcon,
+  Clock
 } from 'lucide-react';
 import type { Company } from '@shared/schema';
+import { CompanyChannelsModal } from '@/components/modals/CompanyChannelsModal';
 
 // Form schemas
 const companySchema = z.object({
@@ -37,7 +43,6 @@ const companySchema = z.object({
   phone: z.string().optional(),
   document: z.string().optional(),
   maxUsers: z.number().min(1, "Must allow at least 1 user").default(5),
-  maxConnections: z.number().min(1, "Must allow at least 1 connection").default(2),
   maxQueues: z.number().min(1, "Must allow at least 1 queue").default(3),
   status: z.enum(["active", "suspended", "canceled", "trial"]).default("trial"),
 });
@@ -64,6 +69,8 @@ export default function AdminPanel() {
   const [showUserModal, setShowUserModal] = useState(false);
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  const [showChannelsModal, setShowChannelsModal] = useState(false);
+  const [selectedCompanyForChannels, setSelectedCompanyForChannels] = useState<{id: string, name: string} | null>(null);
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -72,6 +79,13 @@ export default function AdminPanel() {
   const { data: companies = [], isLoading: loadingCompanies } = useQuery<Company[]>({
     queryKey: ['/api/admin/companies'],
     staleTime: 30000,
+  });
+
+  // Fetch partner balance
+  const { data: partnerBalance, isLoading: loadingBalance } = useQuery({
+    queryKey: ['/api/whatsapp/partner/balance'],
+    queryFn: () => apiRequest('GET', '/api/whatsapp/partner/balance'),
+    refetchInterval: 30000, // Refetch every 30 seconds
   });
 
   // Fetch users for selected company
@@ -90,7 +104,6 @@ export default function AdminPanel() {
       phone: '',
       document: '',
       maxUsers: 5,
-      maxConnections: 2,
       maxQueues: 3,
       status: 'trial',
     },
@@ -194,7 +207,6 @@ export default function AdminPanel() {
       phone: company.phone || '',
       document: company.document || '',
       maxUsers: company.maxUsers || 5,
-      maxConnections: company.maxConnections || 2,
       maxQueues: company.maxQueues || 3,
       status: company.status,
     });
@@ -216,6 +228,11 @@ export default function AdminPanel() {
     setSelectedCompany(company);
     userForm.reset();
     setShowUserModal(true);
+  };
+
+  const handleViewChannels = (company: CompanyWithStats) => {
+    setSelectedCompanyForChannels({ id: company.id, name: company.name });
+    setShowChannelsModal(true);
   };
 
   const getStatusColor = (status: string) => {
@@ -315,102 +332,171 @@ export default function AdminPanel() {
         </Card>
       </div>
 
-      {/* Companies Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {companies.map((company: CompanyWithStats) => (
-          <Card key={company.id} data-testid={`card-company-${company.id}`}>
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <CardTitle className="text-base">{company.name}</CardTitle>
-                  <div className="flex items-center space-x-2">
-                    <Badge 
-                      variant="outline" 
-                      className={`${getStatusColor(company.status)} text-white border-0`}
-                    >
-                      {company.status}
-                    </Badge>
+      {/* Partner Balance */}
+      {partnerBalance?.data && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5" />
+              Saldo do Parceiro Whapi.Cloud
+            </CardTitle>
+            <CardDescription>Informações sobre dias disponíveis e saldo em BRL</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center p-4 bg-blue-50 rounded-lg">
+                <CalendarIcon className="w-6 h-6 mx-auto mb-2 text-blue-600" />
+                <p className="text-2xl font-bold text-blue-900">{partnerBalance.data.daysAvailable}</p>
+                <p className="text-sm text-blue-700">Dias Disponíveis</p>
+              </div>
+              <div className="text-center p-4 bg-green-50 rounded-lg">
+                <DollarSign className="w-6 h-6 mx-auto mb-2 text-green-600" />
+                <p className="text-2xl font-bold text-green-900">R$ {partnerBalance.data.balanceBRL.toFixed(2)}</p>
+                <p className="text-sm text-green-700">Saldo em BRL</p>
+              </div>
+              <div className="text-center p-4 bg-purple-50 rounded-lg">
+                <Clock className="w-6 h-6 mx-auto mb-2 text-purple-600" />
+                <p className="text-2xl font-bold text-purple-900">R$ {partnerBalance.data.pricePerDay.toFixed(2)}</p>
+                <p className="text-sm text-purple-700">Por Dia</p>
+              </div>
+            </div>
+            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+              <p className="text-sm text-gray-600">
+                <strong>Status:</strong> {partnerBalance.data.partnerInfo?.status || 'Ativo'} | 
+                <strong> ID Parceiro:</strong> {partnerBalance.data.partnerInfo?.partner_id || 'N/A'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Companies List */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Empresas</CardTitle>
+          <CardDescription>Lista de todas as empresas cadastradas</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {companies.map((company: CompanyWithStats) => (
+              <div 
+                key={company.id} 
+                className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                data-testid={`card-company-${company.id}`}
+              >
+                {/* Informações da Empresa */}
+                <div className="flex items-center space-x-6 flex-1">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-medium text-gray-900 truncate">{company.name}</h3>
+                    <p className="text-sm text-gray-500 truncate">{company.email}</p>
+                  </div>
+                  
+                  {/* Estatísticas */}
+                  <div className="flex items-center space-x-6 text-sm">
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500">Usuários</p>
+                      <p className="font-semibold">{company.userCount || 0}/{company.maxUsers}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500">Conexões</p>
+                      <p className="font-semibold">{company.connectionCount || 0}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500">Filas</p>
+                      <p className="font-semibold">0/{company.maxQueues}</p>
+                    </div>
                   </div>
                 </div>
-                <div className="flex space-x-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleEditCompany(company)}
-                    data-testid={`button-edit-${company.id}`}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDeleteCompany(company)}
-                    data-testid={`button-delete-${company.id}`}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center text-muted-foreground">
-                  <Mail className="mr-2 h-3 w-3" />
-                  <span className="truncate">{company.email}</span>
-                </div>
-                {company.phone && (
-                  <div className="flex items-center text-muted-foreground">
-                    <Phone className="mr-2 h-3 w-3" />
-                    <span>{company.phone}</span>
-                  </div>
-                )}
-                <div className="flex items-center text-muted-foreground">
-                  <Calendar className="mr-2 h-3 w-3" />
-                  <span>Criada há {formatDistanceToNow(new Date(company.createdAt!))}</span>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t">
-                <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Usuários</p>
-                  <p className="font-semibold">{company.userCount || 0}/{company.maxUsers}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Conexões</p>
-                  <p className="font-semibold">{company.connectionCount || 0}/{company.maxConnections}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Filas</p>
-                  <p className="font-semibold">0/{company.maxQueues}</p>
-                </div>
-              </div>
+                {/* Botões de Ação */}
+                <div className="flex items-center space-x-2">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewUsers(company)}
+                          data-testid={`button-view-users-${company.id}`}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Ver Usuários</p>
+                      </TooltipContent>
+                    </Tooltip>
 
-              <div className="flex space-x-2 pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => handleViewUsers(company)}
-                  data-testid={`button-view-users-${company.id}`}
-                >
-                  <Eye className="mr-2 h-3 w-3" />
-                  Ver Usuários
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => handleAddUser(company)}
-                  data-testid={`button-add-user-${company.id}`}
-                >
-                  <UserPlus className="mr-2 h-3 w-3" />
-                  Adicionar Usuário
-                </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleAddUser(company)}
+                          data-testid={`button-add-user-${company.id}`}
+                        >
+                          <UserPlus className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Adicionar Usuário</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleViewChannels(company)}
+                          data-testid={`button-view-channels-${company.id}`}
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Ver Canais WhatsApp</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditCompany(company)}
+                          data-testid={`button-edit-${company.id}`}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Editar Empresa</p>
+                      </TooltipContent>
+                    </Tooltip>
+
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteCompany(company)}
+                          data-testid={`button-delete-${company.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Excluir Empresa</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Company Modal */}
       <Dialog open={showCompanyModal} onOpenChange={setShowCompanyModal}>
@@ -551,25 +637,6 @@ export default function AdminPanel() {
                   )}
                 />
 
-                <FormField
-                  control={companyForm.control}
-                  name="maxConnections"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Máx. Conexões</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="number" 
-                          min="1" 
-                          {...field} 
-                          onChange={(e) => field.onChange(parseInt(e.target.value))}
-                          data-testid="input-max-connections"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
 
                 <FormField
                   control={companyForm.control}
@@ -809,6 +876,19 @@ export default function AdminPanel() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* Company Channels Modal */}
+      {selectedCompanyForChannels && (
+        <CompanyChannelsModal
+          isOpen={showChannelsModal}
+          onClose={() => {
+            setShowChannelsModal(false);
+            setSelectedCompanyForChannels(null);
+          }}
+          companyId={selectedCompanyForChannels.id}
+          companyName={selectedCompanyForChannels.name}
+        />
+      )}
     </div>
   );
 }

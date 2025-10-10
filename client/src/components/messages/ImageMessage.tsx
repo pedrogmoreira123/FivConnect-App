@@ -1,0 +1,154 @@
+import React, { useState } from 'react';
+import { Download, Eye, X } from 'lucide-react';
+
+interface ImageMessageProps {
+  mediaUrl: string;
+  caption?: string;
+  fileName?: string;
+  messageId: string;
+}
+
+export default function ImageMessage({ mediaUrl, caption, fileName, messageId }: ImageMessageProps) {
+  const [showModal, setShowModal] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [useOriginalUrl, setUseOriginalUrl] = useState(false);
+
+  // Adicionar cache-busting para evitar problemas de cache
+  const getImageUrl = (url: string) => {
+    if (!url) return url;
+    if (useOriginalUrl) return url; // Usar URL original se necessário
+    
+    // Log para debug
+    console.log('[ImageMessage] URL original:', url);
+    
+    const separator = url.includes('?') ? '&' : '?';
+    const finalUrl = `${url}${separator}t=${Date.now()}`;
+    
+    console.log('[ImageMessage] URL final:', finalUrl);
+    return finalUrl;
+  };
+
+  const handleDownload = () => {
+    const link = document.createElement('a');
+    link.href = mediaUrl;
+    link.download = fileName || `imagem_${messageId}.jpg`;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    console.error('Erro ao carregar imagem:', e);
+    console.error('URL da imagem:', mediaUrl);
+    
+    if (retryCount < 2) { // 2 retries with cache-busting
+      setRetryCount(prev => prev + 1);
+      console.log(`[IMAGE] Tentativa ${retryCount + 1} de recarregar imagem`);
+      // Forçar re-render com nova URL
+      setTimeout(() => {
+        const img = e.target as HTMLImageElement;
+        img.src = getImageUrl(mediaUrl);
+      }, 1000);
+    } else if (retryCount === 2 && !useOriginalUrl) { // 1 retry with original URL
+      console.log('[IMAGE] Tentando com URL original');
+      setUseOriginalUrl(true);
+      setRetryCount(prev => prev + 1);
+      setTimeout(() => {
+        const img = e.target as HTMLImageElement;
+        img.src = mediaUrl;
+      }, 1000);
+    } else {
+      console.error('[IMAGE] Máximo de tentativas atingido, marcando como erro');
+      setImageError(true);
+    }
+  };
+
+  if (imageError) {
+    return (
+      <div className="bg-gray-100 rounded-lg p-4 text-center">
+        <p className="text-gray-500 text-sm">Erro ao carregar imagem</p>
+        <button
+          onClick={() => {
+            setImageError(false);
+            setRetryCount(0);
+            setUseOriginalUrl(false);
+          }}
+          className="text-blue-500 text-xs mt-2 hover:underline"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="relative group">
+        <img 
+          src={mediaUrl}
+          alt="Imagem" 
+          className="max-w-xs h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity shadow-md"
+          style={{ maxHeight: '300px', objectFit: 'cover' }}
+          onClick={() => setShowModal(true)}
+          onError={handleImageError}
+        />
+        
+        {/* Botões de ação */}
+        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-black/70 text-white p-2 rounded-full hover:bg-black/90 transition-colors"
+            title="Visualizar imagem"
+          >
+            <Eye className="h-4 w-4" />
+          </button>
+          <button
+            onClick={handleDownload}
+            className="bg-black/70 text-white p-2 rounded-full hover:bg-black/90 transition-colors"
+            title="Baixar imagem"
+          >
+            <Download className="h-4 w-4" />
+          </button>
+        </div>
+        
+        {/* Legenda */}
+        {caption && (
+          <div className="mt-2 text-sm text-gray-700 bg-white/90 backdrop-blur-sm rounded-lg p-2 shadow-sm">
+            {caption}
+          </div>
+        )}
+      </div>
+
+      {/* Modal de visualização */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" onClick={() => setShowModal(false)}>
+          <div className="relative max-w-4xl max-h-[90vh] p-4">
+            <button
+              onClick={() => setShowModal(false)}
+              className="absolute top-2 right-2 bg-black/70 text-white p-2 rounded-full hover:bg-black/90 transition-colors z-10"
+            >
+              <X className="h-6 w-6" />
+            </button>
+            <img 
+              src={mediaUrl}
+              alt="Imagem" 
+              className="max-w-full max-h-full object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+              onError={(e) => {
+                console.error('Erro ao carregar imagem no modal:', mediaUrl);
+                e.currentTarget.src = '/placeholder-image.png';
+              }}
+            />
+            {caption && (
+              <div className="mt-4 text-white text-center bg-black/50 rounded-lg p-3">
+                {caption}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

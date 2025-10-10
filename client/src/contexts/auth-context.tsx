@@ -14,8 +14,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserRole | null>(() => {
-    const savedUser = localStorage.getItem('user');
-    return savedUser ? JSON.parse(savedUser) : null;
+    try {
+      if (typeof window !== 'undefined') {
+        const savedUser = localStorage.getItem('user');
+        return savedUser ? JSON.parse(savedUser) : null;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error loading user from localStorage:', error);
+      return null;
+    }
   });
 
   const login = async (email: string, password: string): Promise<boolean> => {
@@ -35,8 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(userWithInitials);
         
         // Store both user and token
-        localStorage.setItem('user', JSON.stringify(userWithInitials));
-        localStorage.setItem('authToken', token);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('user', JSON.stringify(userWithInitials));
+          localStorage.setItem('authToken', token);
+        }
         
         return true;
       }
@@ -52,10 +62,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      const token = localStorage.getItem('authToken');
-      if (token) {
-        // Call logout API to invalidate session
-        await apiRequest('POST', '/api/auth/logout');
+      if (typeof window !== 'undefined') {
+        const token = localStorage.getItem('authToken');
+        if (token) {
+          // Call logout API to invalidate session
+          await apiRequest('POST', '/api/auth/logout');
+        }
       }
     } catch (error) {
       ClientLogger.error('Logout failed', error, {
@@ -64,10 +76,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
     } finally {
       setUser(null);
-      localStorage.removeItem('user');
-      localStorage.removeItem('authToken');
-      // Also clear theme customization cache
-      localStorage.removeItem('fiv-theme-customization');
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('user');
+        localStorage.removeItem('authToken');
+        // Also clear theme customization cache
+        localStorage.removeItem('fiv-theme-customization');
+      }
     }
   };
 

@@ -15,6 +15,34 @@
       "when": 1759252076293,
       "tag": "0001_gifted_iron_fist",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1759862061798,
+      "tag": "0002_dashing_steel_serpent",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1759862091474,
+      "tag": "0003_same_solo",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1759954820506,
+      "tag": "0004_melted_omega_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1760026645308,
+      "tag": "0005_clear_virginia_dare",
+      "breakpoints": true
     }
   ]
 }

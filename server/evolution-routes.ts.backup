@@ -1,0 +1,1429 @@
+import { Express } from "express";
+import axios from "axios";
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { EvolutionService } from "./evolution-service";
+import { requireAuth, requireRole } from "./auth";
+import { storage } from "./storage";
+import { Logger } from "./logger";
+import { and, eq, desc, isNull } from 'drizzle-orm';
+import { conversations, clients, messages, users, whatsappConnections } from '../shared/schema';
+import { db } from './db';
+import { Pool } from 'pg';
+
+// Pool de conexão direto para SQL
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+// Configuração do multer para upload de arquivos
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, path.join(__dirname, '..', 'public', 'uploads'));
+    },
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+  }),
+  limits: {
+    fileSize: 16 * 1024 * 1024, // 16MB
+    fieldSize: 16 * 1024 * 1024, // 16MB
+    files: 1, // Apenas 1 arquivo por vez
+  },
+});
+import { randomUUID } from 'crypto';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+export function setupEvolutionRoutes(app: Express, io?: any): void {
+  console.log('🔧 Evolution Routes Configuration:');
+  console.log('Evolution API integration enabled');
+  
+  const evolutionService = new EvolutionService(Logger);
+
+  // Função para configurar webhook na Evolution API
+  const configureWebhook = async (instanceName: string) => {
+    try {
+      const webhookUrl = `${process.env.MAIN_APP_URL}/api/whatsapp/webhook`;
+      
+      const webhookConfig = {
+        url: webhookUrl,
+        webhook_by_events: false,
+        webhook_base64: false,
+        events: [
+          "QRCODE_UPDATED",
+          "MESSAGES_UPSERT", 
+          "MESSAGES_UPDATE",
+          "MESSAGES_DELETE",
+          "SEND_MESSAGE",
+          "CONNECTION_UPDATE",
+          "TYPEBOT_START",
+          "TYPEBOT_CHANGE_STATUS"
+        ]
+      };
+
+      console.log(`[WEBHOOK] Configurando webhook para instância: ${instanceName}`);
+      console.log(`[WEBHOOK] URL do webhook: ${webhookUrl}`);
+
+      const response = await axios.post(
+        `${process.env.EVOLUTION_API_URL}/webhook/instance`,
+        webhookConfig,
+        {
+          headers: {
+            'apikey': process.env.EVOLUTION_API_KEY,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      console.log(`[WEBHOOK] Webhook configurado com sucesso para ${instanceName}`);
+      return response.data;
+    } catch (error) {
+      console.error(`[WEBHOOK] Erro ao configurar webhook para ${instanceName}:`, error);
+      throw error;
+    }
+  };
+
+  // Listar conexões por empresa
+  app.get('/api/whatsapp/connections/:companyId', requireAuth, requireRole(['superadmin', 'admin', 'supervisor', 'agent']), async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      
+      // Verificar se o usuário tem acesso à empresa
+      const userCompanyId = req.user?.company?.id;
+      if (req.user?.role !== 'superadmin' && userCompanyId !== companyId) {
+        return res.status(403).json({ message: 'Access denied to this company' });
+      }
+
+      const connections = await storage.getWhatsAppConnectionsByCompany(companyId);
+      res.json(connections);
+    } catch (error) {
+      console.error('Failed to get WhatsApp connections:', error);
+      res.status(500).json({ message: 'Failed to get WhatsApp connections' });
+    }
+  });
+
+  // Criar nova conexão
+  app.post('/api/whatsapp/connections/:companyId', requireAuth, requireRole(['superadmin', 'admin', 'supervisor', 'agent']), async (req, res) => {
+    try {
+      const { companyId } = req.params;
+      const { connectionName } = req.body;
+      
+      // console.log('🔍 [BACKEND] createConnection - Dados recebidos:', { companyId, connectionName });
+      // console.log('🔍 [BACKEND] createConnection - Usuário autenticado:', {
+      //   userId: req.user.id,
+      //   role: req.user.role,
+      //   userCompanyId: req.user.company?.id
+      // });
+      
+      if (!connectionName) {
+        return res.status(400).json({ message: 'Connection name is required' });
+      }
+
+      // Verificar se o usuário tem acesso à empresa
+      const userCompanyId = req.user?.company?.id;
+      if (req.user?.role !== 'superadmin' && userCompanyId !== companyId) {
+        return res.status(403).json({ message: 'Access denied to this company' });
+      }
+      console.log('🔍 [BACKEND] Dados para criação:', { companyId, connectionName });
+
+      // Criar instância na Evolution API
+      const evolutionResponse = await evolutionService.createInstance(connectionName, companyId);
+      const instanceName = evolutionResponse.instanceName || `${companyId}_${connectionName}`;
+      
+      // Obter QR Code imediatamente após criação
+      const qrCodeBase64 = await evolutionService.getQRCode(instanceName);
+      
+      // Salvar no banco de dados
+      const connection = await storage.createWhatsAppConnection({
+        companyId,
+        connectionName,
+        instanceName,
+        status: qrCodeBase64 ? 'qr_ready' : 'pending',
+        qrcode: qrCodeBase64 || null,
+        number: null,
+        profilePictureUrl: null
+      });
+
+      res.status(201).json(connection);
+    } catch (error) {
+      console.error('Failed to create WhatsApp connection:', error);
+      res.status(500).json({ message: 'Failed to create WhatsApp connection' });
+    }
+  });
+
+  // Conectar instância
+  app.post('/api/whatsapp/connections/:companyId/:connectionId/connect', requireAuth, requireRole(['superadmin', 'admin', 'supervisor']), async (req, res) => {
+    try {
+      const { companyId, connectionId } = req.params;
+      
+      // Verificar se o usuário tem acesso à empresa
+      const userCompanyId = req.user?.company?.id;
+      
+      if (req.user?.role !== 'superadmin' && userCompanyId !== companyId) {
+        return res.status(403).json({ message: 'Access denied to this company' });
+      }
+
+      const connection = await storage.getWhatsAppConnection(connectionId);
+      if (!connection || connection.companyId !== companyId) {
+        return res.status(404).json({ message: 'Connection not found' });
+      }
+
+      // Conectar na Evolution API
+      const evolutionResponse = await evolutionService.connectInstance(connection.instanceName);
+      
+      // Atualizar status no banco
+      const updatedConnection = await storage.updateWhatsAppConnection(connectionId, {
+        status: 'connecting',
+        qrcode: evolutionResponse.instance?.qrcode || null,
+        updatedAt: new Date().toISOString()
+      });
+
+      res.json(updatedConnection);
+    } catch (error) {
+      console.error('Failed to connect WhatsApp:', error);
+      res.status(500).json({ message: 'Failed to connect WhatsApp' });
+    }
+  });
+
+  // Desconectar instância
+  app.delete('/api/whatsapp/connections/:companyId/:connectionId', requireAuth, requireRole(['superadmin', 'admin', 'supervisor']), async (req, res) => {
+    try {
+      const { companyId, connectionId } = req.params;
+      
+      // Verificar se o usuário tem acesso à empresa
+      const userCompanyId = req.user?.company?.id;
+      if (req.user?.role !== 'superadmin' && userCompanyId !== companyId) {
+        return res.status(403).json({ message: 'Access denied to this company' });
+      }
+
+      const connection = await storage.getWhatsAppConnection(connectionId);
+      if (!connection || connection.companyId !== companyId) {
+        return res.status(404).json({ message: 'Connection not found' });
+      }
+
+      // Desconectar na Evolution API
+      await evolutionService.deleteInstance(connection.instanceName);
+      
+      // Deletar do banco
+      const success = await storage.deleteWhatsAppConnection(connectionId);
+      
+      if (success) {
+        res.json({ message: 'WhatsApp connection deleted successfully' });
+      } else {
+        res.status(404).json({ message: 'Connection not found' });
+      }
+    } catch (error) {
+      console.error('Failed to delete WhatsApp connection:', error);
+      res.status(500).json({ message: 'Failed to delete WhatsApp connection' });
+    }
+  });
+
+  // Obter QR Code
+  app.get('/api/whatsapp/connections/:companyId/:connectionId/qrcode', requireAuth, requireRole(['superadmin', 'admin', 'supervisor']), async (req, res) => {
+    try {
+      const { companyId, connectionId } = req.params;
+      
+      // Verificar se o usuário tem acesso à empresa
+      const userCompanyId = req.user?.company?.id;
+      if (req.user?.role !== 'superadmin' && userCompanyId !== companyId) {
+        return res.status(403).json({ message: 'Access denied to this company' });
+      }
+
+      const connection = await storage.getWhatsAppConnection(connectionId);
+      if (!connection || connection.companyId !== companyId) {
+        return res.status(404).json({ message: 'Connection not found' });
+      }
+
+      // Obter QR Code da Evolution API usando o instanceName correto
+      const qrCodeBase64 = await evolutionService.getQRCode(connection.instanceName);
+      
+      // Atualizar status no banco se necessário
+      if (qrCodeBase64) {
+        await storage.updateWhatsAppConnection(connectionId, {
+          qrcode: qrCodeBase64,
+          status: 'qr_ready',
+          updatedAt: new Date().toISOString()
+        });
+      }
+      
+          // console.log('🔍 [BACKEND] QR Code response:', {
+          //   instanceName: connection.instanceName,
+          //   qrCodeBase64: qrCodeBase64 ? `${qrCodeBase64.substring(0, 50)}...` : null,
+          //   connectionQrcode: connection.qrcode ? `${connection.qrcode.substring(0, 50)}...` : null,
+          //   status: connection.status
+          // });
+      
+      res.json({
+        qrcode: qrCodeBase64 || connection.qrcode,
+        status: connection.status,
+        number: connection.number
+      });
+    } catch (error) {
+      console.error('Failed to get QR code:', error);
+      res.status(500).json({ message: 'Failed to get QR code' });
+    }
+  });
+
+  // Enviar mensagem
+  app.post('/api/whatsapp/send-message', requireAuth, async (req, res) => {
+    try {
+      const { connectionId, to, message } = req.body;
+      
+      if (!connectionId || !to || !message) {
+        return res.status(400).json({ message: 'Connection ID, phone number, and message are required' });
+      }
+
+      const connection = await storage.getWhatsAppConnection(connectionId);
+      if (!connection) {
+        return res.status(404).json({ message: 'Connection not found' });
+      }
+
+      // Verificar se o usuário tem acesso à conexão
+      if (req.user.role !== 'superadmin' && req.req.user.companyId !== connection.companyId) {
+        return res.status(403).json({ message: 'Access denied to this connection' });
+      }
+
+      // Enviar mensagem via Evolution API
+      const result = await evolutionService.sendMessage(connection.instanceName, to, message);
+      
+      res.json({ 
+        message: 'Message sent successfully',
+        result 
+      });
+    } catch (error) {
+      console.error('Failed to send WhatsApp message:', error);
+      res.status(500).json({ message: 'Failed to send WhatsApp message' });
+    }
+  });
+
+  // --- NOVAS ROTAS DE CONVERSA ---
+
+  // Listar conversas por status (ex: 'waiting', 'in_progress')
+  app.get('/api/whatsapp/conversations', requireAuth, async (req, res) => {
+    const { companyId, id: agentId } = req.user;
+    const { status } = req.query; 
+
+    if (!status || typeof status !== 'string') {
+      return res.status(400).json({ error: 'O status é obrigatório e deve ser uma string.' });
+    }
+
+    // Validar status permitidos
+    const validStatuses = ['waiting', 'in_progress', 'completed', 'closed'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Status inválido. Use: waiting, in_progress, completed ou closed.' });
+    }
+
+    try {
+      // Query SQL com JOIN para buscar a última mensagem
+      let query = `
+        SELECT 
+          c.*,
+          m.content as last_message,
+          m.message_type as last_message_type,
+          m.sent_at as last_message_time
+        FROM conversations c
+        LEFT JOIN (
+          SELECT DISTINCT ON (conversation_id) 
+            conversation_id, content, message_type, sent_at
+          FROM messages 
+          WHERE environment = 'production'
+          ORDER BY conversation_id, sent_at DESC
+        ) m ON c.id = m.conversation_id
+        WHERE c.company_id = $1
+      `;
+      let params = [companyId];
+      
+      if (status === 'waiting') {
+        query += ` AND c.status = $2`;
+        params.push('waiting');
+      } else if (status === 'in_progress') {
+        query += ` AND c.status = $2 AND c.assigned_agent_id = $3`;
+        params.push('in_progress', agentId);
+      } else if (status === 'completed') {
+        query += ` AND c.status = $2`;
+        params.push('completed');
+      } else if (status === 'closed') {
+        query += ` AND c.status = $2`;
+        params.push('closed');
+      }
+      
+      query += ` ORDER BY c.updated_at DESC`;
+
+      const result = await pool.query(query, params);
+      res.json(result.rows);
+    } catch (error) {
+      console.error('❌ Erro ao buscar conversas:', error);
+      res.status(500).json({ error: 'Falha ao buscar conversas.' });
+    }
+  });
+
+
+  // Rota de produção para buscar mensagens de uma conversa
+  app.get('/api/conversations/:conversationId/messages', requireAuth, async (req, res) => {
+    const { conversationId } = req.params;
+    const user = req.user!;
+    
+    try {
+      console.log(`[PRODUCTION] Buscando mensagens para conversa: ${conversationId}`);
+      
+      // Verificar se a conversa pertence à empresa do usuário
+      const conversationCheck = await pool.query(`
+        SELECT id FROM conversations 
+        WHERE id = $1 AND company_id = $2
+      `, [conversationId, req.user.companyId]);
+
+      if (conversationCheck.rows.length === 0) {
+        console.log(`[PRODUCTION] Conversa não encontrada para companyId: ${req.user.companyId}`);
+        return res.status(404).json({ error: 'Conversa não encontrada.' });
+      }
+      
+      // Buscar mensagens da conversa
+      const result = await pool.query(`
+        SELECT * FROM messages 
+        WHERE conversation_id = $1 
+        ORDER BY sent_at ASC
+      `, [conversationId]);
+      
+      console.log(`[PRODUCTION] Encontradas ${result.rows.length} mensagens`);
+      res.json(result.rows);
+    } catch (error) {
+      console.error(`❌ [PRODUCTION] Erro ao buscar mensagens:`, error);
+      res.status(500).json({ error: 'Falha ao buscar mensagens.' });
+    }
+  });
+
+  // Rota de produção para buscar conversas por status
+  app.get('/api/conversations', requireAuth, async (req, res) => {
+    const user = req.user!;
+    const { status } = req.query;
+    
+    try {
+      console.log(`[PRODUCTION] Buscando conversas com status: ${status}`);
+      
+      let query = `
+        SELECT 
+          c.*,
+          m.content as last_message,
+          m.message_type as last_message_type,
+          m.sent_at as last_message_time
+        FROM conversations c
+        LEFT JOIN (
+          SELECT DISTINCT ON (conversation_id) 
+            conversation_id, content, message_type, sent_at
+          FROM messages 
+          WHERE environment = 'production'
+          ORDER BY conversation_id, sent_at DESC
+        ) m ON c.id = m.conversation_id
+        WHERE c.company_id = $1
+      `;
+      let params = [req.user.companyId];
+      
+      if (status === 'waiting') {
+        query += ` AND c.status = $2`;
+        params.push('waiting');
+      } else if (status === 'in_progress') {
+        query += ` AND c.status = $2`;
+        params.push('in_progress');
+      } else if (status === 'completed') {
+        query += ` AND c.status = $2`;
+        params.push('completed');
+      } else if (status === 'closed') {
+        query += ` AND c.status = $2`;
+        params.push('closed');
+      }
+      
+      query += ` ORDER BY c.updated_at DESC`;
+
+      const result = await pool.query(query, params);
+      console.log(`[PRODUCTION] Encontradas ${result.rows.length} conversas`);
+      console.log(`[PRODUCTION] Primeira conversa:`, result.rows[0]);
+      res.json(result.rows);
+    } catch (error) {
+      console.error(`[PRODUCTION] Erro ao buscar conversas:`, error);
+      res.status(500).json({ error: 'Falha ao buscar conversas.' });
+    }
+  });
+
+  // Agente assume uma conversa (TEMPORÁRIO: sem autenticação)
+  app.post('/api/whatsapp/conversations/:conversationId/take', async (req, res) => {
+    const { conversationId } = req.params;
+    // Usar ID real do usuário admin
+    const agentId = 'eb00c0da-b2cf-4a14-b4ef-9a5910147149';
+    const companyId = '59b4b086-9171-4dbf-8177-b7c6d6fd1e33';
+
+    try {
+      const updatedConversation = await db.update(conversations)
+        .set({ assignedAgentId: agentId, status: 'in_progress', updatedAt: new Date() })
+        .where(and(eq(conversations.id, conversationId), isNull(conversations.assignedAgentId)))
+        .returning();
+
+      if (updatedConversation.length === 0) {
+        return res.status(409).json({ error: 'Esta conversa já foi assumida.' });
+      }
+
+      // Notifica todos os clientes da empresa sobre a atualização
+      if (io) io.emit('conversationUpdate', { ...updatedConversation[0], companyId });
+      res.json(updatedConversation[0]);
+    } catch (error) {
+      console.error(`❌ Erro ao assumir a conversa ${conversationId}:`, error);
+      res.status(500).json({ error: 'Falha ao assumir a conversa.' });
+    }
+  });
+
+  // NOTA: Rota de envio de mensagem duplicada removida - ver linha 1187 para implementação completa
+
+  // Endpoint para importar contatos do WhatsApp
+  app.get('/api/whatsapp/import-contacts', requireAuth, async (req, res) => {
+    try {
+      const user = req.user;
+      
+      // Buscar todas as conexões ativas do usuário
+      const connections = await storage.getAllConnections();
+      const userConnections = connections.filter(conn => 
+        conn.companyId === req.user.companyId && conn.status === 'connected'
+      );
+      
+      if (userConnections.length === 0) {
+        return res.status(400).json({ 
+          message: "Nenhuma conexão WhatsApp ativa encontrada" 
+        });
+      }
+      
+      let totalImported = 0;
+      const importedContacts = [];
+      
+      for (const connection of userConnections) {
+        try {
+          // Chamar a Evolution API para buscar contatos
+          const evolutionResponse = await fetch(`${evolutionApiUrl}/chat/findContacts/${connection.instanceName}`, {
+            method: 'GET',
+            headers: {
+              'apikey': evolutionApiKey,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (!evolutionResponse.ok) {
+            console.error(`Erro ao buscar contatos da instância ${connection.instanceName}:`, evolutionResponse.statusText);
+            continue;
+          }
+          
+          const contactsData = await evolutionResponse.json();
+          
+          // Processar cada contato
+          for (const contact of contactsData) {
+            try {
+              // Verificar se o contato já existe
+              const existingClient = await storage.getClientByPhone(contact.id);
+              
+              if (!existingClient) {
+                // Criar novo cliente
+                const newClient = await storage.createClient({
+                  name: contact.name || contact.pushName || 'Contato WhatsApp',
+                  phone: contact.id,
+                  email: null,
+                  cpf: null,
+                  company: null,
+                  address: null,
+                  status: 'active',
+                  companyId: req.user.companyId
+                });
+                
+                importedContacts.push(newClient);
+                totalImported++;
+              }
+            } catch (error) {
+              console.error('Erro ao processar contato:', error);
+              // Continuar com o próximo contato
+            }
+          }
+        } catch (error) {
+          console.error(`Erro ao importar contatos da instância ${connection.instanceName}:`, error);
+          // Continuar com a próxima conexão
+        }
+      }
+      
+      res.json({
+        message: "Contatos importados com sucesso",
+        importedCount: totalImported,
+        contacts: importedContacts
+      });
+      
+    } catch (error) {
+      console.error('Erro ao importar contatos do WhatsApp:', error);
+      res.status(500).json({ 
+        message: "Falha ao importar contatos do WhatsApp",
+        error: error.message 
+      });
+    }
+  });
+
+  // Enviar mídia - ROTA SIMPLIFICADA
+  app.post('/api/whatsapp/conversations/:conversationId/send-media', requireAuth, upload.single('file'), async (req, res) => {
+    console.log('📤 [SEND-MEDIA] Iniciando upload de mídia...');
+    
+    const { conversationId } = req.params;
+    const { quotedMessageId } = req.body;
+    const user = req.user!;
+        const file = req.file;
+    
+    if (!file) {
+      return res.status(400).json({ error: "Arquivo é obrigatório" });
+    }
+    
+    // Validar tamanho do arquivo (16MB)
+    const maxSize = 16 * 1024 * 1024; // 16MB
+    if (file.size > maxSize) {
+      return res.status(413).json({ 
+        error: "Arquivo muito grande. Tamanho máximo permitido: 16MB. Tamanho do arquivo: " + 
+               Math.round(file.size / (1024 * 1024)) + "MB" 
+      });
+    }
+
+    
+    try {
+      // Buscar conversa usando SQL direto
+      const conversationResult = await pool.query(`
+        SELECT * FROM conversations 
+        WHERE id = $1 AND company_id = $2
+      `, [conversationId, req.user.companyId]);
+      
+      if (conversationResult.rows.length === 0) {
+        return res.status(404).json({ error: "Conversa não encontrada." });
+      }
+
+      const conversation = conversationResult.rows[0];
+
+      // Buscar conexão WhatsApp usando SQL direto
+      const connectionResult = await pool.query(`
+        SELECT * FROM whatsapp_connections 
+        WHERE id = $1
+      `, [conversation.whatsapp_connection_id]);
+      
+      if (connectionResult.rows.length === 0) {
+        return res.status(404).json({ error: "Conexão WhatsApp não encontrada." });
+      }
+
+      const connection = connectionResult.rows[0];
+
+      // Determinar tipo de mídia
+      const getMediaType = (file: Express.Multer.File) => {
+        if (file.mimetype.startsWith('image/')) return 'image';
+        if (file.mimetype.startsWith('video/')) return 'video';
+        if (file.mimetype.startsWith('audio/')) return 'audio';
+        return 'document';
+      };
+
+      const mediaType = getMediaType(file);
+      const mediaUrl = `${process.env.MAIN_APP_URL}/uploads/${file.filename}`;
+
+      // Limpar número de telefone (remover @s.whatsapp.net)
+      const cleanNumber = conversation.contact_phone.replace('@s.whatsapp.net', '');
+
+      // Preparar payload para Evolution API (formato simplificado)
+      const payload: any = {
+        number: cleanNumber
+      };
+
+      // Adicionar resposta se especificada
+      if (quotedMessageId) {
+        payload.quoted = {
+          key: {
+            id: quotedMessageId
+          }
+        };
+      }
+
+      // Configurar payload baseado no tipo de mídia (formato Evolution API correto)
+      payload.mediatype = mediaType;
+      payload.media = mediaUrl; // Campo correto para todos os tipos de mídia
+      
+      if (req.body.caption) payload.caption = req.body.caption;
+      if (mediaType === 'document') {
+        payload.fileName = file.originalname || 'documento';
+      }
+
+      console.log(`[SEND-MEDIA] Enviando ${mediaType} para Evolution API - Instance: ${connection.instance_name}`);
+      console.log(`[SEND-MEDIA] Payload:`, JSON.stringify(payload));
+      console.log(`[SEND-MEDIA] EVOLUTION_API_URL:`, process.env.EVOLUTION_API_URL);
+      console.log(`[SEND-MEDIA] EVOLUTION_API_KEY:`, process.env.EVOLUTION_API_KEY ? 'DEFINIDO' : 'UNDEFINED');
+
+      // Enviar via Evolution API - usar endpoints específicos
+      let endpoint;
+      if (mediaType === 'image') {
+        endpoint = 'sendMedia';
+      } else if (mediaType === 'video') {
+        endpoint = 'sendMedia';
+      } else if (mediaType === 'audio') {
+        endpoint = 'sendWhatsAppAudio';
+      } else {
+        endpoint = 'sendMedia';
+      }
+
+      const response = await axios.post(
+        `${process.env.EVOLUTION_API_URL}/message/${endpoint}/${connection.instance_name}`,
+        payload,
+        {
+          headers: {
+            'apikey': process.env.EVOLUTION_API_KEY,
+            'Content-Type': 'application/json'
+          },
+          timeout: 300000 // 5 minutos para vídeos grandes
+        }
+      );
+
+      // Salvar mensagem no banco
+      const messageData = {
+        id: response.data.key?.id || randomUUID(),
+        conversationId: conversationId,
+        content: req.body.caption || '',
+        messageType: mediaType,
+        direction: 'outgoing',
+        status: 'sent',
+        sentAt: new Date(),
+        mediaUrl: mediaUrl,
+        caption: req.body.caption || null,
+        fileName: file.originalname || 'documento',
+        quotedMessageId: quotedMessageId || null
+      };
+
+      const newMessageResult = await pool.query(
+        `INSERT INTO messages (id, conversation_id, content, message_type, direction, environment, status, sent_at, media_url, caption, file_name, quoted_message_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+        [messageData.id, messageData.conversationId, messageData.content, messageData.messageType, messageData.direction, 'production', messageData.status, messageData.sentAt, messageData.mediaUrl, messageData.caption, messageData.fileName, messageData.quotedMessageId]
+      );
+
+      // Emitir evento WebSocket
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`company_${req.user.companyId}`).emit('newMessage', {
+          ...newMessageResult.rows[0],
+          companyId: req.user.companyId,
+        conversationId,
+          direction: 'outgoing'
+        });
+      }
+
+      res.json({
+        message: 'Mídia enviada com sucesso',
+        messageId: newMessageResult.rows[0].id,
+        mediaUrl: mediaUrl,
+        evolutionResponse: response.data
+      });
+
+    } catch (error) {
+      console.error('Erro ao enviar mídia:', error);
+      res.status(500).json({ message: 'Erro ao enviar mídia', error: error.message });
+    }
+  });
+
+  // Finalizar conversa
+  app.post('/api/whatsapp/conversations/:conversationId/finish', requireAuth, async (req, res) => {
+    const { conversationId } = req.params;
+    const user = req.user!;
+    const agentId = user.id;
+
+    try {
+      console.log(`[PRODUCTION] Finalizando conversa: ${conversationId} por agente: ${agentId}`);
+      
+      // Verificar se a conversa pertence à empresa do usuário
+      const conversationCheck = await pool.query(`
+        SELECT id, assigned_agent_id, company_id FROM conversations 
+        WHERE id = $1 AND company_id = $2
+      `, [conversationId, req.user.companyId]);
+
+      if (conversationCheck.rows.length === 0) {
+        return res.status(404).json({ error: "Conversa não encontrada." });
+      }
+
+      const conversation = conversationCheck.rows[0];
+      
+      // Atualizar status da conversa
+      const result = await pool.query(`
+        UPDATE conversations 
+        SET status = $1, updated_at = $2 
+        WHERE id = $3 
+        RETURNING *
+      `, ['completed', new Date(), conversationId]);
+
+      console.log(`[PRODUCTION] Conversa finalizada: ${conversationId}`);
+      
+      if (io) io.emit('conversationUpdate', { ...result.rows[0], companyId: conversation.company_id });
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error(`❌ [PRODUCTION] Erro ao finalizar a conversa ${conversationId}:`, error);
+      res.status(500).json({ error: 'Falha ao finalizar conversa.' });
+    }
+  });
+
+  // ENDPOINT DO WEBHOOK - ROTA PÚBLICA PARA A EVOLUTION API
+  app.post('/api/whatsapp/webhook', async (req, res) => {
+    const event = req.body;
+    const { instance: instanceName, data, event: eventName } = event;
+
+    if (!instanceName || !eventName) {
+      return res.sendStatus(200);
+    }
+
+    console.log(`[WEBHOOK] Evento '${eventName}' recebido para a instância '${instanceName}'`);
+
+    const io = req.app.get('io');
+      const [companyId] = instanceName.split('_');
+
+      try {
+      if (eventName === 'CONNECTION_UPDATE') {
+        const newState = data.state.toUpperCase(); // CONNECTED, CLOSE, etc.
+
+        await storage.updateWhatsAppConnectionByInstanceName(instanceName, {
+          status: newState,
+          updatedAt: new Date().toISOString()
+        });
+
+        console.log(`[WEBHOOK] Status da instância ${instanceName} atualizado para ${newState}`);
+        io.emit('connectionUpdate', { instanceName, status: newState, companyId });
+      }
+
+      if (eventName === 'QRCODE_UPDATED') {
+        const qrCodeBase64 = data.qrcode.base64;
+        io.emit('qrcodeUpdate', { instanceName, qrCode: `data:image/png;base64,${qrCodeBase64}`, companyId });
+        console.log(`[WEBHOOK] Novo QR Code enviado via WebSocket para a instância ${instanceName}`);
+      }
+
+      // --- LÓGICA APRIMORADA PARA CONVERSAS ---
+      if ((eventName === 'MESSAGES_UPSERT' || eventName === 'messages.upsert') && data.key.fromMe === false) {
+        const contactJid = data.key.remoteJid;
+        
+        // FILTRO: Bloquear mensagens de grupos - apenas contatos individuais
+        if (contactJid.includes('@g.us') || contactJid.includes('@newsletter') || contactJid.includes('@broadcast')) {
+          console.log(`[WEBHOOK] Mensagem de grupo/canal ignorada: ${contactJid}`);
+          return res.sendStatus(200);
+        }
+        
+        // Verificar se é um contato individual válido (deve terminar com @s.whatsapp.net)
+        if (!contactJid.includes('@s.whatsapp.net')) {
+          console.log(`[WEBHOOK] Mensagem de origem inválida ignorada: ${contactJid}`);
+          return res.sendStatus(200);
+        }
+        
+        console.log(`[WEBHOOK] ✅ Mensagem de contato individual aceita: ${contactJid}`);
+        console.log(`[WEBHOOK] Conteúdo: ${JSON.stringify(data.message)}`);
+        console.log(`[WEBHOOK] PushName: ${data.pushName || 'N/A'}`);
+        console.log(`[WEBHOOK] Data completa: ${JSON.stringify(data)}`);
+        
+        const messageData = data.message;
+        
+        // Processar diferentes tipos de mensagens - LÓGICA REFATORADA
+        let messageType = 'text';
+        let content = '';
+        let mediaUrl = null;
+        let caption = null;
+        let fileName = null;
+        let quotedMessageId = null;
+        let mimetype = null;
+        
+        // Função para extrair quoted message ID de diferentes contextos
+        const extractQuotedMessageId = (contextInfo: any) => {
+          if (contextInfo?.quotedMessage) {
+            return contextInfo.stanzaId;
+          }
+          return null;
+        };
+        
+        // Mapeador de tipos de mensagem - mais robusto
+        const messageTypeMap = {
+          // Mensagens de texto
+          conversation: () => {
+            messageType = 'text';
+            content = messageData.conversation;
+            return { messageType, content };
+          },
+          
+          extendedTextMessage: () => {
+            messageType = 'text';
+            content = messageData.extendedTextMessage.text || '';
+            quotedMessageId = extractQuotedMessageId(messageData.extendedTextMessage.contextInfo);
+            return { messageType, content };
+          },
+          
+          // Mensagens de mídia
+          imageMessage: () => {
+            messageType = 'image';
+            content = messageData.imageMessage.caption || '[Imagem]';
+            mediaUrl = messageData.imageMessage.url;
+            caption = messageData.imageMessage.caption;
+            mimetype = messageData.imageMessage.mimetype || 'image/jpeg';
+            return { messageType, content };
+          },
+          
+          videoMessage: () => {
+            messageType = 'video';
+            content = messageData.videoMessage.caption || '[Vídeo]';
+            mediaUrl = messageData.videoMessage.url;
+            caption = messageData.videoMessage.caption;
+            mimetype = messageData.videoMessage.mimetype || 'video/mp4';
+            return { messageType, content };
+          },
+          
+          audioMessage: () => {
+            messageType = 'audio';
+            content = '[Áudio]';
+            mediaUrl = messageData.audioMessage.url;
+            mimetype = messageData.audioMessage.mimetype || 'audio/ogg';
+            return { messageType, content };
+          },
+          
+          documentMessage: () => {
+            messageType = 'document';
+            content = messageData.documentMessage.caption || '[Documento]';
+            mediaUrl = messageData.documentMessage.url;
+            caption = messageData.documentMessage.caption;
+            fileName = messageData.documentMessage.fileName;
+            mimetype = messageData.documentMessage.mimetype || 'application/pdf';
+            return { messageType, content };
+          },
+          
+          stickerMessage: () => {
+            messageType = 'sticker';
+            content = '[Sticker]';
+            mediaUrl = messageData.stickerMessage.url;
+            mimetype = messageData.stickerMessage.mimetype || 'image/webp';
+            return { messageType, content };
+          },
+          
+          // Mensagens especiais
+          contactMessage: () => {
+            messageType = 'contact';
+            content = '[Contato]';
+            // Extrair dados do contato se disponível
+            if (messageData.contactMessage.displayName) {
+              content = `[Contato: ${messageData.contactMessage.displayName}]`;
+            }
+            return { messageType, content };
+          },
+          
+          locationMessage: () => {
+            messageType = 'location';
+            content = '[Localização]';
+            if (messageData.locationMessage.degreesLatitude && messageData.locationMessage.degreesLongitude) {
+              content = `[Localização: ${messageData.locationMessage.degreesLatitude}, ${messageData.locationMessage.degreesLongitude}]`;
+            }
+            return { messageType, content };
+          },
+          
+          pollCreationMessage: () => {
+            messageType = 'poll';
+            content = '[Enquete]';
+            if (messageData.pollCreationMessage.name) {
+              content = `[Enquete: ${messageData.pollCreationMessage.name}]`;
+            }
+            return { messageType, content };
+          },
+          
+          reactionMessage: () => {
+            messageType = 'reaction';
+            content = '[Reação]';
+            if (messageData.reactionMessage.text) {
+              content = `[Reação: ${messageData.reactionMessage.text}]`;
+            }
+            return { messageType, content };
+          }
+        };
+        
+        // Processar mensagem usando o mapeador
+        let processed = false;
+        for (const [key, processor] of Object.entries(messageTypeMap)) {
+          if (messageData[key]) {
+            const result = processor();
+            messageType = result.messageType;
+            content = result.content;
+            processed = true;
+            break;
+          }
+        }
+        
+        // Fallback para mensagens não reconhecidas
+        if (!processed) {
+          messageType = 'text';
+          content = '[Mensagem não suportada]';
+          console.log(`[WEBHOOK] ⚠️ Tipo de mensagem não reconhecido:`, Object.keys(messageData));
+        }
+        
+        console.log(`[WEBHOOK] Tipo de mensagem detectado: ${messageType}`);
+        console.log(`[WEBHOOK] Conteúdo: ${content}`);
+        if (mediaUrl) console.log(`[WEBHOOK] URL da mídia: ${mediaUrl}`);
+
+        try {
+          // Buscar cliente existente usando pool direto
+          const clientResult = await pool.query(
+            `SELECT * FROM clients WHERE phone = $1 AND company_id = $2 LIMIT 1`,
+            [contactJid, companyId]
+          );
+          
+          let client = clientResult.rows[0];
+          
+          if (!client) {
+            // Tentar capturar o nome do contato de diferentes formas
+            const contactName = data.pushName || 
+                               data.message?.conversation?.pushName || 
+                               data.message?.extendedTextMessage?.contextInfo?.quotedMessage?.pushName ||
+                               'Cliente';
+            
+            console.log(`[WEBHOOK] Criando novo cliente: ${contactJid} com nome: ${contactName}`);
+            const newClientResult = await pool.query(
+              `INSERT INTO clients (id, name, phone, company_id, environment) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+              [randomUUID(), contactName, contactJid, companyId, 'production']
+            );
+            client = newClientResult.rows[0];
+          }
+
+          // Buscar conversa existente usando pool direto
+          const conversationResult = await pool.query(
+            `SELECT * FROM conversations WHERE contact_phone = $1 AND company_id = $2 LIMIT 1`,
+            [contactJid, companyId]
+          );
+          
+          let conversation = conversationResult.rows[0];
+
+          if (!conversation) {
+            console.log(`[WEBHOOK] Criando nova conversa para: ${contactJid}`);
+            // Buscar o ID da conexão WhatsApp
+            const connectionResult = await pool.query(
+              `SELECT id FROM whatsapp_connections WHERE instance_name = $1 LIMIT 1`,
+              [instanceName]
+            );
+            const connectionId = connectionResult.rows[0]?.id;
+            
+            if (!connectionId) {
+              console.error(`[WEBHOOK] Conexão WhatsApp não encontrada: ${instanceName}`);
+              return;
+            }
+            
+            const newConversationResult = await pool.query(
+              `INSERT INTO conversations (id, contact_name, contact_phone, client_id, company_id, status, whatsapp_connection_id, environment) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+              [randomUUID(), client.name, client.phone, client.id, companyId, 'waiting', connectionId, 'production']
+            );
+            conversation = newConversationResult.rows[0];
+            if (io) io.emit('newConversation', { ...conversation });
+          } else {
+            // Se a conversa já existe e está 'completed' ou 'closed', reabre como 'waiting'
+            if (['completed', 'closed'].includes(conversation.status)) {
+              const updatedConversationResult = await pool.query(
+                `UPDATE conversations SET status = $1, assigned_agent_id = $2, updated_at = $3 WHERE id = $4 RETURNING *`,
+                ['waiting', null, new Date(), conversation.id]
+              );
+              conversation = updatedConversationResult.rows[0];
+              if (io) io.emit('conversationUpdate', conversation);
+            }
+          }
+
+        // Processar mídia se existir - LÓGICA MELHORADA
+        let finalMediaUrl = mediaUrl;
+        let finalCaption = caption;
+        let finalFileName = fileName;
+
+        if (mediaUrl && ['image', 'video', 'audio', 'document', 'sticker'].includes(messageType)) {
+          try {
+            console.log(`[WEBHOOK] Baixando mídia: ${mediaUrl} (tipo: ${messageType})`);
+            
+            // Determinar extensão baseada no mimetype ou tipo
+            const getFileExtension = (mimetype: string, messageType: string) => {
+              if (mimetype) {
+                const ext = mimetype.split('/')[1];
+                if (ext && ext !== 'octet-stream') return ext;
+              }
+              
+              // Fallback baseado no tipo
+              const typeMap = {
+                'image': 'jpg',
+                'video': 'mp4', 
+                'audio': 'ogg',
+                'document': 'pdf',
+                'sticker': 'webp'
+              };
+              return typeMap[messageType] || 'bin';
+            };
+            
+            const fileExtension = getFileExtension(mimetype, messageType);
+            const fileName = `${data.key.id}.${fileExtension}`;
+            const filePath = path.join(__dirname, '..', 'public', 'uploads', fileName);
+            
+            // Garantir que o diretório existe
+            await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+            
+            // Baixar mídia da Evolution API com configurações otimizadas
+            const mediaResponse = await axios.get(mediaUrl, {
+              responseType: 'stream',
+              timeout: 120000, // 2 minutos para mídias grandes
+              maxContentLength: 200 * 1024 * 1024, // 200MB máximo
+              maxBodyLength: 200 * 1024 * 1024, // 200MB máximo
+              headers: {
+                'Accept': '*/*',
+                'User-Agent': 'Mozilla/5.0 (compatible; FivConnect/1.0)',
+                'Cache-Control': 'no-cache'
+              },
+              // Adicionar retry automático
+              validateStatus: (status) => status < 500
+            });
+            
+            // Verificar se a resposta é válida
+            if (mediaResponse.status !== 200) {
+              throw new Error(`HTTP ${mediaResponse.status}: ${mediaResponse.statusText}`);
+            }
+            
+            // Salvar arquivo usando stream com tratamento de erro melhorado
+            const writeStream = fs.createWriteStream(filePath);
+            
+            // Pipe com tratamento de erro
+            mediaResponse.data.pipe(writeStream);
+            
+            // Aguardar o download completar com timeout
+            await new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => {
+                writeStream.destroy();
+                reject(new Error('Timeout no download da mídia'));
+              }, 120000); // 2 minutos
+              
+              writeStream.on('finish', () => {
+                clearTimeout(timeout);
+                resolve(true);
+              });
+              
+              writeStream.on('error', (err) => {
+                clearTimeout(timeout);
+                reject(err);
+              });
+              
+              mediaResponse.data.on('error', (err) => {
+                clearTimeout(timeout);
+                reject(err);
+              });
+            });
+            
+            // Verificar se o arquivo foi salvo corretamente
+            const stats = await fs.promises.stat(filePath);
+            if (stats.size > 0) {
+              finalMediaUrl = `${process.env.MAIN_APP_URL}/uploads/${fileName}`;
+              finalFileName = fileName;
+              console.log(`[WEBHOOK] ✅ Mídia salva: ${finalMediaUrl} (${stats.size} bytes)`);
+            } else {
+              console.log(`[WEBHOOK] ⚠️ Arquivo salvo mas está vazio`);
+              finalMediaUrl = mediaUrl; // Usar URL original como fallback
+            }
+          } catch (mediaError) {
+            console.error(`[WEBHOOK] ❌ Erro ao baixar mídia:`, mediaError.message);
+            // Manter URL original como fallback
+            finalMediaUrl = mediaUrl;
+            console.log(`[WEBHOOK] Usando URL original como fallback: ${finalMediaUrl}`);
+          }
+        }
+
+        // Usar os dados já processados acima
+        const finalContent = content;
+
+        console.log(`[WEBHOOK] Salvando mensagem: ${finalContent}`);
+
+        const newMessageResult = await pool.query(
+          `INSERT INTO messages (id, conversation_id, content, message_type, direction, environment, status, sent_at, media_url, caption, file_name, quoted_message_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+          [data.key.id, conversation.id, finalContent, messageType, 'incoming', 'production', 'delivered', new Date(data.messageTimestamp * 1000), finalMediaUrl, finalCaption, finalFileName, quotedMessageId]
+        );
+
+          console.log(`[WEBHOOK] Mensagem salva com sucesso: ${newMessageResult.rows[0].id}`);
+          
+          // Emitir evento WebSocket com dados completos
+          const messageData = {
+            ...newMessageResult.rows[0],
+            companyId: conversation.company_id,
+            conversationId: conversation.id,
+            direction: 'incoming'
+          };
+          
+          console.log(`[WEBHOOK] Emitindo newMessage:`, messageData);
+          if (io) {
+            io.to(`company_${conversation.company_id}`).emit('newMessage', messageData);
+            console.log(`[WEBHOOK] Evento newMessage emitido para company_${conversation.company_id}`);
+          } else {
+            console.log(`[WEBHOOK] ❌ io não disponível para emitir evento`);
+          }
+      } catch (error) {
+          console.error(`[WEBHOOK] Erro ao processar mensagem:`, error);
+        }
+      }
+
+      // Processar atualizações de status de mensagens
+      if (eventName === 'MESSAGES_UPDATE' || eventName === 'messages.update') {
+        const { key, update } = data;
+        
+        // Validar se os dados necessários existem
+        if (!key || !key.id || !update || !update.status) {
+          console.log(`[WEBHOOK] Dados incompletos para MESSAGES_UPDATE:`, { key, update });
+          return;
+        }
+        
+        const messageId = key.id;
+        const status = update.status;
+        
+        console.log(`[WEBHOOK] Atualizando status da mensagem ${messageId} para ${status}`);
+        
+        try {
+          // Atualizar status da mensagem no banco
+          await pool.query(
+            `UPDATE messages SET status = $1, updated_at = $2 WHERE id = $3`,
+            [status, new Date(), messageId]
+          );
+          
+          // Emitir evento WebSocket para atualizar o frontend
+          if (io) {
+            io.emit('messageStatusUpdate', {
+              messageId,
+              status,
+              companyId
+            });
+            console.log(`[WEBHOOK] Evento messageStatusUpdate emitido para mensagem ${messageId}`);
+          }
+        } catch (error) {
+          console.error(`[WEBHOOK] Erro ao atualizar status da mensagem:`, error);
+        }
+      }
+
+    } catch (error) {
+      console.error(`[WEBHOOK] Erro ao processar evento '${eventName}':`, error);
+    }
+
+    res.sendStatus(200);
+  });
+
+  // Sincronizar status de uma instância específica
+  app.post('/api/whatsapp/sync-status/:instanceName', requireAuth, requireRole(['superadmin', 'admin', 'supervisor']), async (req, res) => {
+    try {
+      const { instanceName } = req.params;
+      const { companyId } = req.user;
+      
+      // Verificar se a instância pertence à empresa
+      if (!instanceName.startsWith(companyId)) {
+        return res.status(403).json({ message: 'Instance does not belong to this company' });
+      }
+
+      // Obter status da Evolution API
+      const response = await axios.get(`${process.env.EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
+        headers: {
+          'apikey': process.env.EVOLUTION_API_KEY,
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const state = response.data?.instance?.state;
+      if (!state) {
+        return res.status(404).json({ message: 'Instance not found in Evolution API' });
+      }
+
+      // Mapear status da Evolution API para nosso banco
+      let newStatus = 'pending';
+      if (state === 'open') {
+        newStatus = 'connected';
+      } else if (state === 'close') {
+        newStatus = 'disconnected';
+      } else if (state === 'connecting') {
+        newStatus = 'connecting';
+      }
+
+      // Atualizar no banco de dados
+      await storage.updateWhatsAppConnectionByInstanceName(instanceName, {
+        status: newStatus
+      });
+
+      // Emitir evento via WebSocket
+      const io = req.app.get('io');
+      const [companyIdFromInstance] = instanceName.split('_');
+      io.emit('connectionUpdate', { 
+        instanceName, 
+        status: newStatus, 
+        companyId: companyIdFromInstance 
+      });
+
+      res.json({ 
+        message: 'Status synchronized successfully',
+        instanceName,
+        status: newStatus,
+        evolutionState: state
+      });
+    } catch (error) {
+      console.error('Failed to sync status:', error);
+      res.status(500).json({ message: 'Failed to sync status' });
+    }
+  });
+
+  // Limpar todas as conexões WhatsApp
+  app.delete('/api/whatsapp/connections/clear-all', requireAuth, requireRole(['superadmin', 'admin']), async (req, res) => {
+    try {
+      const { companyId } = req.user;
+      
+      // Deletar todas as conexões da empresa
+      const deletedConnections = await storage.deleteAllWhatsAppConnections(companyId);
+      
+      res.json({
+        message: 'Todas as conexões WhatsApp foram removidas com sucesso',
+        deletedCount: deletedConnections.length,
+        deletedConnections: deletedConnections.map(conn => ({
+          id: conn.id,
+          connectionName: conn.connectionName,
+          instanceName: conn.instanceName
+        }))
+      });
+    } catch (error) {
+      console.error('Error clearing WhatsApp connections:', error);
+      res.status(500).json({ message: 'Erro ao limpar conexões WhatsApp' });
+    }
+  });
+
+  // Buscar mensagens de uma instância
+  app.get('/api/whatsapp/connections/:companyId/:connectionId/messages', requireAuth, async (req, res) => {
+    try {
+      const { connectionId } = req.params;
+      const { companyId } = req.user;
+      
+      // Buscar a conexão no banco
+      const connection = await storage.getWhatsAppConnectionById(connectionId);
+      if (!connection) {
+        return res.status(404).json({ message: 'Conexão não encontrada' });
+      }
+      
+      // Verificar se a conexão pertence à empresa
+      if (connection.companyId !== companyId) {
+        return res.status(403).json({ message: 'Acesso negado' });
+      }
+      
+      // Buscar mensagens da Evolution API
+      const messages = await evolutionService.getMessages(connection.instanceName);
+      
+      res.json({
+        connectionId,
+        instanceName: connection.instanceName,
+        messages: messages.data || [],
+        total: messages.data?.length || 0
+      });
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      res.status(500).json({ message: 'Erro ao buscar mensagens' });
+    }
+  });
+
+  // Enviar mensagem de texto com suporte a resposta
+  app.post('/api/whatsapp/conversations/:conversationId/send', requireAuth, async (req, res) => {
+    try {
+      const { conversationId } = req.params;
+      const { text, quotedMessageId } = req.body;
+      const { companyId } = req.user;
+
+      if (!text || !text.trim()) {
+        return res.status(400).json({ message: 'Texto da mensagem é obrigatório' });
+      }
+
+      console.log(`[PRODUCTION] Enviando mensagem para conversa: ${conversationId}`);
+
+      // Buscar conversa usando SQL direto
+      const conversationResult = await pool.query(`
+        SELECT * FROM conversations 
+        WHERE id = $1 AND company_id = $2
+      `, [conversationId, companyId]);
+
+      if (conversationResult.rows.length === 0) {
+        return res.status(404).json({ message: 'Conversa não encontrada' });
+      }
+
+      const conversation = conversationResult.rows[0];
+
+      // Buscar conexão WhatsApp usando SQL direto
+      const connectionResult = await pool.query(`
+        SELECT * FROM whatsapp_connections 
+        WHERE id = $1
+      `, [conversation.whatsapp_connection_id]);
+
+      if (connectionResult.rows.length === 0) {
+        return res.status(404).json({ message: 'Conexão WhatsApp não encontrada' });
+      }
+
+      const connection = connectionResult.rows[0];
+
+      // Limpar número de telefone (remover @s.whatsapp.net)
+      const cleanNumber = conversation.contact_phone.replace('@s.whatsapp.net', '');
+
+      // Preparar payload para Evolution API
+      const payload: any = {
+        number: cleanNumber,
+          text: text
+      };
+
+      // Adicionar resposta se especificada
+      if (quotedMessageId) {
+        payload.quoted = {
+          key: {
+            id: quotedMessageId
+          }
+        };
+      }
+
+      console.log(`[PRODUCTION] Enviando para Evolution API - Instance: ${connection.instance_name}, Number: ${cleanNumber}`);
+      console.log(`[PRODUCTION] Payload:`, JSON.stringify(payload));
+
+      // Enviar via Evolution API
+      const response = await axios.post(
+        `${process.env.EVOLUTION_API_URL}/message/sendText/${connection.instance_name}`,
+        payload,
+        {
+          headers: {
+            'apikey': process.env.EVOLUTION_API_KEY,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      console.log(`[PRODUCTION] Mensagem enviada via Evolution API com sucesso`);
+
+      // Salvar mensagem no banco
+      const messageData = {
+        id: response.data.key?.id || randomUUID(),
+        conversationId: conversationId,
+        content: text,
+        messageType: 'text',
+        direction: 'outgoing',
+        status: 'sent',
+        sentAt: new Date(),
+        mediaUrl: null,
+        caption: null,
+        fileName: null
+      };
+
+      const newMessageResult = await pool.query(
+        `INSERT INTO messages (id, conversation_id, content, message_type, direction, environment, status, sent_at, media_url, caption, file_name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+        [messageData.id, messageData.conversationId, messageData.content, messageData.messageType, messageData.direction, 'production', messageData.status, messageData.sentAt, messageData.mediaUrl, messageData.caption, messageData.fileName]
+      );
+
+      // Emitir evento WebSocket
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`company_${req.user.companyId}`).emit('newMessage', {
+          ...newMessageResult.rows[0],
+          companyId: req.user.companyId,
+          conversationId,
+          direction: 'outgoing'
+        });
+      }
+
+      // Retornar mensagem no formato esperado pelo frontend
+      res.json(newMessageResult.rows[0]);
+
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error);
+      res.status(500).json({ message: 'Erro ao enviar mensagem', error: error.message });
+    }
+  });
+
+  // Enviar mídia (imagem, vídeo, áudio, documento)
+
+}

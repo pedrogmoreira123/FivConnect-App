@@ -62,7 +62,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto-js";
 import { db } from "./db";
-import { eq, and, asc, desc } from "drizzle-orm";
+import { eq, and, asc, desc, sql } from "drizzle-orm";
 
 export interface IStorage {
   // User operations
@@ -119,12 +119,15 @@ export interface IStorage {
   getConversationsByStatus(status: string): Promise<Conversation[]>;
   getConversationsByAgent(agentId: string): Promise<Conversation[]>;
   getAllConversations(): Promise<Conversation[]>;
+  getConversationByClient(clientId: string, companyId: string): Promise<Conversation | undefined>;
 
   // Message operations
   getMessage(id: string): Promise<Message | undefined>;
+  getMessageByExternalId(externalId: string): Promise<Message | undefined>;
   createMessage(message: InsertMessage): Promise<Message>;
   getMessagesByConversation(conversationId: string): Promise<Message[]>;
   deleteMessage(id: string): Promise<boolean>;
+  getAllTickets(): Promise<Ticket[]>;
 
   // Queue operations
   getQueue(id: string): Promise<Queue | undefined>;
@@ -212,6 +215,7 @@ export interface IStorage {
   updateCompany(id: string, company: Partial<InsertCompany>): Promise<Company>;
   deleteCompany(id: string): Promise<boolean>;
   getAllCompanies(): Promise<Company[]>;
+  getAllCompaniesWithStats(): Promise<(Company & { userCount: number; connectionCount: number })[]>;
   setCompanyLogoUrl(companyId: string, logoUrl: string): Promise<Company>;
 
   // User-Company operations
@@ -597,8 +601,10 @@ export class DatabaseStorage implements IStorage {
   }
   
   async updateClient(id: string, updates: Partial<InsertClient>): Promise<Client> {
+    console.log('💾 [STORAGE] Atualizando cliente no banco:', id, 'com dados:', updates);
     const [client] = await db.update(clients).set(updates).where(eq(clients.id, id)).returning();
     if (!client) throw new Error("Client not found");
+    console.log('✅ [STORAGE] Cliente atualizado com sucesso:', client);
     return client;
   }
   
@@ -693,20 +699,72 @@ export class DatabaseStorage implements IStorage {
     return message || undefined;
   }
 
+  async getMessageByExternalId(externalId: string): Promise<Message | undefined> {
+    const [message] = await db.select().from(messages)
+      .where(eq(messages.externalId, externalId))
+      .limit(1);
+    return message;
+  }
+
   async createMessage(insertMessage: InsertMessage): Promise<Message> {
     // Tag new messages with current environment
     const messageWithEnv = {
       ...insertMessage,
-      environment: this.getEnvironmentFilter()
+      environment: this.getEnvironmentFilter(),
+      processedAt: new Date() // Marcar como processada no momento da criação
     };
     const [message] = await db.insert(messages).values(messageWithEnv).returning();
+    return message;
+  }
+
+  async updateMessage(id: string, updates: Partial<InsertMessage>): Promise<Message> {
+    const [message] = await db.update(messages)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(messages.id, id))
+      .returning();
     return message;
   }
 
   async getMessagesByConversation(conversationId: string): Promise<Message[]> {
     return await db.select().from(messages)
       .where(eq(messages.conversationId, conversationId))
-      .orderBy(asc(messages.sentAt));
+      .orderBy(desc(messages.sentAt));
+  }
+
+  async getAllTickets(): Promise<Ticket[]> {
+    return await db.select().from(tickets);
+  }
+
+  async getConversationByClient(clientId: string, companyId: string): Promise<Conversation | undefined> {
+    const [conversation] = await db.select().from(conversations)
+      .where(and(
+        eq(conversations.clientId, clientId),
+        eq(conversations.companyId, companyId),
+        eq(conversations.isFinished, false) // Buscar apenas conversas não finalizadas
+      ))
+      .limit(1);
+    return conversation;
+  }
+
+  /**
+   * Buscar o último protocolo do dia para gerar número sequencial
+   */
+  async getLastProtocolOfDay(companyId: string, datePrefix: string): Promise<string | null> {
+    try {
+      const [conversation] = await db.select({ protocolNumber: conversations.protocolNumber })
+        .from(conversations)
+        .where(and(
+          eq(conversations.companyId, companyId),
+          sql`${conversations.protocolNumber} LIKE ${datePrefix + '%'}`
+        ))
+        .orderBy(desc(conversations.protocolNumber))
+        .limit(1);
+      
+      return conversation?.protocolNumber || null;
+    } catch (error) {
+      console.error('❌ Error getting last protocol of day:', error);
+      return null;
+    }
   }
 
   async deleteMessage(id: string): Promise<boolean> {
@@ -1067,6 +1125,36 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(companies.createdAt));
   }
 
+  async getAllCompaniesWithStats(): Promise<(Company & { userCount: number; connectionCount: number })[]> {
+    // Buscar todas as empresas
+    const allCompanies = await this.getAllCompanies();
+    
+    // Para cada empresa, buscar as estatísticas
+    const companiesWithStats = await Promise.all(
+      allCompanies.map(async (company) => {
+        // Contar usuários da empresa
+        const userCountResult = await db.select({ count: sql<number>`count(*)` })
+          .from(userCompanies)
+          .where(eq(userCompanies.companyId, company.id));
+        const userCount = userCountResult[0]?.count || 0;
+
+        // Contar conexões WhatsApp da empresa
+        const connectionCountResult = await db.select({ count: sql<number>`count(*)` })
+          .from(whatsappConnections)
+          .where(eq(whatsappConnections.companyId, company.id));
+        const connectionCount = connectionCountResult[0]?.count || 0;
+
+        return {
+          ...company,
+          userCount,
+          connectionCount
+        };
+      })
+    );
+
+    return companiesWithStats;
+  }
+
   async setCompanyLogoUrl(companyId: string, logoUrl: string): Promise<Company> {
     return await this.updateCompany(companyId, { logoUrl });
   }
@@ -1189,14 +1277,6 @@ export class DatabaseStorage implements IStorage {
   }
 
 
-  async updateConversation(id: string, updates: Partial<InsertConversation>): Promise<Conversation> {
-    const [conversation] = await db.update(conversations)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(conversations.id, id))
-      .returning();
-    if (!conversation) throw new Error("Conversation not found");
-    return conversation;
-  }
 
   // ===== WAHA SESSION METHODS =====
 
@@ -1298,10 +1378,16 @@ export class DatabaseStorage implements IStorage {
     companyId: string;
     connectionName: string;
     instanceName: string;
+    name?: string;
     status?: string;
     qrcode?: string | null;
     number?: string | null;
     profilePictureUrl?: string | null;
+    whapiChannelId?: string;
+    whapiToken?: string;
+    providerType?: string;
+    webhookUrl?: string;
+    isDefault?: boolean;
   }): Promise<WhatsappConnection> {
     try {
       console.log('🔍 [STORAGE] Dados recebidos para createWhatsAppConnection:', {
@@ -1316,11 +1402,16 @@ export class DatabaseStorage implements IStorage {
           companyId: data.companyId,
           connectionName: data.connectionName,
           instanceName: data.instanceName,
-          name: data.connectionName, // Mapear connectionName para name
+          name: data.name || data.connectionName,
           status: data.status || 'disconnected',
           qrcode: data.qrcode,
           number: data.number,
           profilePictureUrl: data.profilePictureUrl,
+          whapiChannelId: data.whapiChannelId,
+          whapiToken: data.whapiToken,
+          providerType: data.providerType || 'whapi',
+          webhookUrl: data.webhookUrl,
+          isDefault: data.isDefault || false,
           environment: this.getCurrentEnvironment()
         })
         .returning();
@@ -1400,6 +1491,8 @@ export class DatabaseStorage implements IStorage {
     status: string;
     qrcode: string | null;
     number: string | null;
+    phone: string | null;
+    name: string | null;
     profilePictureUrl: string | null;
     lastSeen: Date;
     updatedAt: string;
@@ -1495,6 +1588,27 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error('❌ Error getting all WhatsApp connections:', error);
       return [];
+    }
+  }
+
+  /**
+   * Obter conexão WhatsApp ativa para uma empresa
+   */
+  async getActiveWhapiConnection(companyId: string): Promise<WhatsappConnection | null> {
+    try {
+      const [connection] = await db.select()
+        .from(whatsappConnections)
+        .where(and(
+          eq(whatsappConnections.companyId, companyId),
+          eq(whatsappConnections.environment, this.getCurrentEnvironment()),
+          eq(whatsappConnections.status, 'connected')
+        ))
+        .limit(1);
+
+      return connection || null;
+    } catch (error) {
+      console.error('❌ Error getting active Whapi connection:', error);
+      return null;
     }
   }
 

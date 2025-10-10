@@ -1,6 +1,8 @@
 import { Card, CardContent } from '@/components/ui/card';
 import QueueVolumeChart from '@/components/charts/queue-volume-chart';
 import WeeklyPerformanceChart from '@/components/charts/weekly-performance-chart';
+import TicketsTodayChart from '@/components/charts/tickets-today-chart';
+import TicketsPerAgentChart from '@/components/charts/tickets-per-agent-chart';
 import AnnouncementsCard from '@/components/announcements/announcements-card';
 import { useT } from '@/hooks/use-translation';
 import { useQuery } from '@tanstack/react-query';
@@ -35,6 +37,23 @@ export default function DashboardPage() {
     }
   });
 
+  // Fetch new chart data
+  const { data: ticketsTodayData = 0 } = useQuery({
+    queryKey: ['dashboard-tickets-today'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/dashboard/charts/tickets-today');
+      return response.json();
+    }
+  });
+
+  const { data: ticketsPerAgentData = [] } = useQuery({
+    queryKey: ['dashboard-tickets-per-agent'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/dashboard/charts/tickets-per-agent');
+      return response.json();
+    }
+  });
+
   const kpiCards = [
     {
       title: t('dashboard.openConversations'),
@@ -44,7 +63,7 @@ export default function DashboardPage() {
       bgColor: 'bg-primary/10'
     },
     {
-      title: t('dashboard.onlineAgents'),
+      title: t('dashboard.onlineUsers'),
       value: kpiData.onlineAgents,
       icon: UserCheck,
       iconColor: 'text-green-600',
@@ -120,73 +139,16 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* Charts and Activity */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6">
-        <Card>
-          <CardContent className="p-3 sm:p-4 md:p-6">
-            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-3 md:mb-4">
-              {t('dashboard.queueVolume')}
-            </h3>
-            <div className="h-48 sm:h-64 md:h-auto">
-              <QueueVolumeChart data={chartData.queueVolume} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3 sm:p-4 md:p-6">
-            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-3 md:mb-4">
-              {t('dashboard.recentActivity')}
-            </h3>
-            <div className="space-y-3 sm:space-y-4">
-              {recentActivity.map((activity, index) => {
-                const Icon = getActivityIcon(activity.type);
-                const colorClass = getActivityColor(activity.type);
-                
-                return (
-                  <div key={activity.id} className="flex items-start space-x-3" data-testid={`activity-${index}`}>
-                    <div className={`w-6 h-6 sm:w-8 sm:h-8 ${colorClass} rounded-full flex items-center justify-center flex-shrink-0 mt-0.5`}>
-                      <Icon className="text-white" size={12} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs sm:text-sm text-foreground leading-relaxed">
-                        {activity.type === 'handled' && 
-                          t('dashboard.activity.handled', { 
-                            agentName: activity.agentName,
-                            clientName: activity.clientName
-                          })
-                        }
-                        {activity.type === 'completed' && 
-                          t('dashboard.activity.completed', { 
-                            agentName: activity.agentName
-                          })
-                        }
-                        {activity.type === 'assigned' && 
-                          t('dashboard.activity.assigned', { 
-                            agentName: activity.agentName
-                          })
-                        }
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">{activity.timestamp}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Announcements */}
+      {/* Announcements moved to top */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
         <div className="lg:col-span-2">
           <Card>
             <CardContent className="p-3 sm:p-4 md:p-6">
               <h3 className="text-base sm:text-lg font-semibold text-foreground mb-3 md:mb-4">
-                {t('dashboard.weeklyPerformance')}
+                {t('dashboard.queueVolume')}
               </h3>
               <div className="h-48 sm:h-64 md:h-auto">
-                <WeeklyPerformanceChart data={chartData.weeklyPerformance} />
+                <QueueVolumeChart data={chartData.queueVolume} />
               </div>
             </CardContent>
           </Card>
@@ -195,6 +157,45 @@ export default function DashboardPage() {
         <div>
           <AnnouncementsCard />
         </div>
+      </div>
+
+      {/* New Charts Section */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 md:gap-6">
+        <Card>
+          <CardContent className="p-3 sm:p-4 md:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-3 md:mb-4">
+              {t('dashboard.ticketsToday')}
+            </h3>
+            <div className="h-48 sm:h-64 md:h-auto">
+              <TicketsTodayChart data={ticketsTodayData} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3 sm:p-4 md:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-3 md:mb-4">
+              {t('dashboard.ticketsPerAgent')}
+            </h3>
+            <div className="h-48 sm:h-64 md:h-auto">
+              <TicketsPerAgentChart data={ticketsPerAgentData} />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Weekly Performance */}
+      <div className="grid grid-cols-1 gap-4 md:gap-6">
+        <Card>
+          <CardContent className="p-3 sm:p-4 md:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-3 md:mb-4">
+              {t('dashboard.weeklyPerformance')}
+            </h3>
+            <div className="h-48 sm:h-64 md:h-auto">
+              <WeeklyPerformanceChart data={chartData.weeklyPerformance} />
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
