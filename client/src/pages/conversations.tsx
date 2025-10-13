@@ -135,7 +135,9 @@ import {
   Play,
   Download,
   Eye,
-  Reply
+  Reply,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 // Função para formatar duração
@@ -143,6 +145,29 @@ const formatDuration = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+// Função para formatar horário da mensagem
+const formatMessageTime = (timestamp: string) => {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+  
+  if (diffInHours < 24) {
+    return date.toLocaleTimeString('pt-BR', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      timeZone: 'America/Sao_Paulo'
+    });
+  } else if (diffInHours < 48) {
+    return 'Ontem';
+  } else {
+    return date.toLocaleDateString('pt-BR', { 
+      day: '2-digit', 
+      month: '2-digit',
+      timeZone: 'America/Sao_Paulo'
+    });
+  }
 };
 
 // Função para extrair nome do documento
@@ -179,11 +204,11 @@ const formatLastMessagePreview = (lastMessage: string) => {
       case 'video':
         return `🎥 Vídeo ${formattedDuration}`;
       case 'image':
-        return `📷 Imagem`;
+        return `🖼️ Imagem`;
       case 'document':
         return `📄 Documento`;
       case 'sticker':
-        return `🎭 Figurinha`;
+        return `🎭 Sticker`;
       default:
         return lastMessage;
     }
@@ -363,25 +388,25 @@ const EmojiPicker = ({ onEmojiSelect, onClose }: EmojiPickerProps) => {
 const TabButton = ({ active, onClick, children, icon: Icon, count }: TabButtonProps) => (
   <button
     onClick={onClick}
-    className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-1 min-w-0 ${
+    className={`flex items-center justify-center gap-1 px-3 py-2 rounded text-xs font-medium transition-colors whitespace-nowrap flex-1 ${
       active 
         ? 'bg-green-500 text-white' 
         : 'text-gray-600 hover:bg-gray-100'
     }`}
   >
-    <Icon className="h-3 w-3 flex-shrink-0" />
-    <span className="text-xs truncate">{children}</span>
+    <Icon className="h-4 w-4 flex-shrink-0" />
+    <span className="text-xs">{children}</span>
     {count && count > 0 && (
-      <span className="bg-red-500 text-white text-xs rounded-full px-1 py-0.5 min-w-[16px] h-4 flex items-center justify-center">
+      <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5 min-w-[20px] h-5 flex items-center justify-center ml-1">
         {count}
-                        </span>
+      </span>
     )}
   </button>
 );
 
 // Componente de Lista Unificado - CORRIGIDO: Funciona para conversas e contatos
 const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isContacts = false }: UnifiedListProps) => (
-  <div className="flex-1 overflow-y-auto">
+  <div className="conversation-list-container flex-1 overflow-y-auto">
     <div className="p-3 border-b bg-gray-50">
       <h3 className="font-semibold text-gray-700 text-sm">{title}</h3>
     </div>
@@ -405,23 +430,21 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
                   {isContacts ? ((item as Contact).name?.charAt(0) || 'C') : ((item as Conversation).contact_name?.charAt(0) || 'C')}
                         </span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-900 truncate text-sm">
-                  {isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contact_name || (item as any).contactName || 'Cliente')}
-                </p>
-                <p className="text-sm text-gray-500 truncate">
-                  {isContacts ? (item as Contact).phone : formatLastMessagePreview((item as Conversation).last_message || (item as any).lastMessage || '')}
-                </p>
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 truncate text-sm">
+                            {isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contact_name || (item as any).contactName || 'Cliente')}
+                          </p>
+                          <p className="text-sm text-gray-500 truncate">
+                            {isContacts ? (item as Contact).phone : formatLastMessagePreview((item as Conversation).last_message || (item as any).lastMessage || '')}
+                          </p>
                         </div>
-              {!isContacts && (
-                <div className="text-xs text-gray-400">
-                  {(item as Conversation).updated_at && new Date((item as Conversation).updated_at!).toLocaleTimeString('pt-BR', { 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    timeZone: 'America/Sao_Paulo'
-                  })}
-                        </div>
-              )}
+                        {!isContacts && (
+                          <div className="text-xs text-gray-400 ml-2 flex-shrink-0">
+                            {(item as Conversation).updated_at && formatMessageTime((item as Conversation).updated_at!)}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))
@@ -824,12 +847,12 @@ const ChatArea = ({
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
             <span className="text-sm font-medium text-white">
-              {conversation.contact_name?.charAt(0) || 'C'}
+              {(conversation.contact_name || (conversation as any).contactName)?.charAt(0) || 'C'}
                         </span>
                       </div>
           <div>
             <h3 className="font-semibold text-gray-900">
-              {conversation.contact_name || 'Cliente'}
+              {conversation.contact_name || (conversation as any).contactName || 'Cliente'}
                         </h3>
             <p className="text-sm text-gray-500">
               {(conversation.contact_phone || (conversation as any).contactPhone)?.replace('@s.whatsapp.net', '') || 'Número não disponível'}
@@ -1185,18 +1208,32 @@ export default function ConversationsPage() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [imagePopup, setImagePopup] = useState<{ src: string; alt: string } | null>(null);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const { user } = useAuth() as { user: User | null };
+
+  // Calcular mensagens não respondidas
+  const unreadConversations = useMemo(() => {
+    return activeConversations.filter(conv => 
+      conv.unreadCount && conv.unreadCount > 0
+    );
+  }, [activeConversations]);
+
+  const totalUnread = useMemo(() => {
+    return unreadConversations.reduce((acc, conv) => acc + (conv.unreadCount || 0), 0);
+  }, [unreadConversations]);
+
+  const totalPending = waitingConversations.length + totalUnread;
 
   const companyId = useMemo(() => user?.company?.id, [user]);
 
   // Atualizar título da página com contador de não lidas
   useEffect(() => {
-    if (unreadCount > 0) {
-      document.title = `(${unreadCount}) FivConnect - Chat`;
+    if (totalPending > 0) {
+      document.title = `(${totalPending}) FivConnect - Chat`;
     } else {
       document.title = 'FivConnect - Chat';
     }
-  }, [unreadCount]);
+  }, [totalPending]);
 
   useEffect(() => {
     console.log('🔍 [DEBUG] useEffect principal executado. companyId:', companyId, 'user:', user?.id, 'selectedConversation:', selectedConversation?.id);
@@ -1316,7 +1353,18 @@ export default function ConversationsPage() {
     // Polling para conversas
     const pollConversations = async () => {
       try {
-        loadConversations();
+        // Salvar posição do scroll
+        const conversationList = document.querySelector('.conversation-list-container');
+        const scrollPosition = conversationList?.scrollTop || 0;
+        
+        await loadConversations();
+        
+        // Restaurar posição do scroll
+        requestAnimationFrame(() => {
+          if (conversationList) {
+            conversationList.scrollTop = scrollPosition;
+          }
+        });
       } catch (error) {
         console.error('❌ Erro no polling de conversas:', error);
       }
@@ -1620,19 +1668,34 @@ export default function ConversationsPage() {
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar Esquerda */}
-      <div className="w-96 bg-white border-r flex flex-col">
+        <div className={`bg-white border-r flex flex-col transition-all duration-300 ${
+          isSidebarExpanded ? 'w-96' : 'w-20'
+        }`}>
           {/* Header */}
         <div className="p-4 border-b">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-bold text-gray-800">Chat</h1>
-            <div className="flex gap-2">
+            {isSidebarExpanded && <h1 className="text-xl font-bold text-gray-800">Chat</h1>}
+            <button
+              onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              title={isSidebarExpanded ? "Recolher sidebar" : "Expandir sidebar"}
+            >
+              {isSidebarExpanded ? (
+                <ChevronLeft className="h-5 w-5" />
+              ) : (
+                <ChevronRight className="h-5 w-5" />
+              )}
+            </button>
+            {isSidebarExpanded && (
+              <div className="flex gap-2">
               <button className="p-2 hover:bg-gray-100 rounded-lg">
                 <MessageCircle className="h-4 w-4" />
               </button>
               <button className="p-2 hover:bg-gray-100 rounded-lg">
                 <UserPlus className="h-4 w-4" />
               </button>
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Barra de Pesquisa */}
@@ -1648,49 +1711,121 @@ export default function ConversationsPage() {
                   
         {/* Abas */}
         <div className="p-4 border-b">
-          <div className="flex gap-1 overflow-x-hidden">
-            <TabButton
-              active={activeTab === 'active'}
-              onClick={() => setActiveTab('active')}
-              icon={MessageCircle}
-              count={activeConversations.length}
-            >
-              CONVERSAS
-            </TabButton>
-            <TabButton
-              active={activeTab === 'waiting'}
-              onClick={() => setActiveTab('waiting')}
-              icon={Clock}
-              count={waitingConversations.length}
-            >
-              ESPERA
-            </TabButton>
-            <TabButton
-              active={activeTab === 'contacts'}
-              onClick={() => setActiveTab('contacts')}
-              icon={Users}
-              count={0}
-            >
-              CONTATOS
-            </TabButton>
+          {isSidebarExpanded ? (
+            <div className="flex gap-2 w-full">
+              <TabButton
+                active={activeTab === 'active'}
+                onClick={() => setActiveTab('active')}
+                icon={MessageCircle}
+                count={totalUnread}
+              >
+                CONVERSAS
+              </TabButton>
+              <TabButton
+                active={activeTab === 'waiting'}
+                onClick={() => setActiveTab('waiting')}
+                icon={Clock}
+                count={waitingConversations.length}
+              >
+                ESPERA
+              </TabButton>
+              <TabButton
+                active={activeTab === 'contacts'}
+                onClick={() => setActiveTab('contacts')}
+                icon={Users}
+                count={0}
+              >
+                CONTATOS
+              </TabButton>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <button 
+                onClick={() => setActiveTab('active')}
+                className={`p-2 rounded hover:bg-gray-100 transition-colors relative ${
+                  activeTab === 'active' ? 'bg-green-500 text-white' : 'text-gray-600'
+                }`}
+                title="Conversas"
+              >
+                <MessageCircle className="h-5 w-5" />
+                {totalUnread > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1 py-0.5 min-w-[16px] h-4 flex items-center justify-center">
+                    {totalUnread}
+                  </span>
+                )}
+              </button>
+              <button 
+                onClick={() => setActiveTab('waiting')}
+                className={`p-2 rounded hover:bg-gray-100 transition-colors relative ${
+                  activeTab === 'waiting' ? 'bg-green-500 text-white' : 'text-gray-600'
+                }`}
+                title="Espera"
+              >
+                <Clock className="h-5 w-5" />
+                {waitingConversations.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1 py-0.5 min-w-[16px] h-4 flex items-center justify-center">
+                    {waitingConversations.length}
+                  </span>
+                )}
+              </button>
+              <button 
+                onClick={() => setActiveTab('contacts')}
+                className={`p-2 rounded hover:bg-gray-100 transition-colors ${
+                  activeTab === 'contacts' ? 'bg-green-500 text-white' : 'text-gray-600'
+                }`}
+                title="Contatos"
+              >
+                <Users className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+        </div>
                 
         {/* Lista de Conversas/Contatos */}
-        <UnifiedList
-          items={getCurrentList()}
-          onSelect={(item) => {
-            if (activeTab === 'contacts') {
-              handleSelectContact(item as Contact);
-            } else {
-              handleSelectConversation(item as Conversation);
-            }
-          }}
-          selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
-          title={getCurrentTitle()}
-          emptyMessage={getEmptyMessage()}
-          isContacts={activeTab === 'contacts'}
-                  />
+        {isSidebarExpanded ? (
+          <UnifiedList
+            items={getCurrentList()}
+            onSelect={(item) => {
+              if (activeTab === 'contacts') {
+                handleSelectContact(item as Contact);
+              } else {
+                handleSelectConversation(item as Conversation);
+              }
+            }}
+            selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
+            title={getCurrentTitle()}
+            emptyMessage={getEmptyMessage()}
+            isContacts={activeTab === 'contacts'}
+          />
+        ) : (
+          <div className="flex flex-col gap-2 p-2">
+            {getCurrentList().slice(0, 8).map((item) => (
+              <div
+                key={item.id}
+                onClick={() => {
+                  if (activeTab === 'contacts') {
+                    handleSelectContact(item as Contact);
+                  } else {
+                    handleSelectConversation(item as Conversation);
+                  }
+                }}
+                className={`w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors ${
+                  (selectedConversation?.id === item.id || selectedContact?.id === item.id)
+                    ? 'bg-green-500 text-white'
+                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                }`}
+                title={activeTab === 'contacts' ? (item as Contact).name : (item as Conversation).contact_name}
+              >
+                <span className="text-sm font-medium">
+                  {activeTab === 'contacts' 
+                    ? (item as Contact).name?.charAt(0) || 'C'
+                    : (item as Conversation).contact_name?.charAt(0) || 'C'
+                  }
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
         </div>
                 
       {/* Área Principal do Chat */}
