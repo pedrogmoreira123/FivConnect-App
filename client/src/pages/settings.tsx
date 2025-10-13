@@ -43,6 +43,10 @@ export default function SettingsPage() {
   const { t } = useT();
   const { toast } = useToast();
   const { settings, updateSettings } = useSettings();
+  
+  useEffect(() => {
+    document.title = 'FivConnect - Configurações';
+  }, []);
   const { branding } = useThemeCustomization();
   const { soundSettings, updateSoundSettings } = useSound();
   

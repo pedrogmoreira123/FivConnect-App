@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import apiClient from '../lib/api-client';
 import { useAuth } from '../hooks/use-auth';
+import { useThemeCustomization } from '../contexts/theme-customization-context';
+import { useSound } from '../hooks/use-sound';
 import io from 'socket.io-client';
 import { WaveformAudioPlayer } from '../components/WaveformAudioPlayer';
 
@@ -60,6 +62,8 @@ interface TabButtonProps {
   children: React.ReactNode;
   icon: React.ComponentType<{ className?: string }>;
   count?: number;
+  onMuteClick?: () => void;
+  isMuted?: boolean;
 }
 
 interface UnifiedListProps {
@@ -121,7 +125,9 @@ import {
   Phone, 
   Video, 
   MoreVertical,
-  CheckCircle2,
+  Check,
+  CheckCheck,
+  XCircle,
   RefreshCw,
   Archive,
   Trash2,
@@ -130,12 +136,13 @@ import {
   Image,
   FileText,
   X,
-  XCircle,
   Pause,
   Play,
   Download,
   Eye,
   Reply,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 // Função para formatar duração
@@ -190,7 +197,7 @@ const formatLastMessagePreview = (lastMessage: string) => {
   if (!lastMessage) return 'Nenhuma mensagem ainda.';
   
   // Verificar se é mídia com duração no formato [type:duration]
-  const mediaMatch = lastMessage.match(/\[(\w+):(\d+)\]/);
+  const mediaMatch = lastMessage.match(/^\[(\w+):(\d+)\]$/);
   if (mediaMatch) {
     const [, type, duration] = mediaMatch;
     const formattedDuration = formatDuration(parseInt(duration));
@@ -212,11 +219,31 @@ const formatLastMessagePreview = (lastMessage: string) => {
     }
   }
   
-  return lastMessage;
+  // Verificar formatos simples sem duração
+  if (lastMessage.startsWith('[')) {
+    const simpleMatch = lastMessage.match(/^\[(\w+):?(\d*)\]$/);
+    if (simpleMatch) {
+      const [, type] = simpleMatch;
+      switch(type) {
+        case 'image':
+          return '🖼️ Imagem';
+        case 'document':
+          return '📄 Documento';
+        case 'sticker':
+          return '🎭 Figurinha';
+        default:
+          return lastMessage;
+      }
+    }
+  }
+  
+  // Se não for formato de mídia, retornar o texto normal (truncado se necessário)
+  return lastMessage.length > 30 ? lastMessage.substring(0, 30) + '...' : lastMessage;
 };
 
 // Componente de Player de Áudio Moderno - Estilo WhatsApp
 const AudioPlayer = ({ src, messageId }: AudioPlayerProps) => {
+  const { branding } = useThemeCustomization();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -322,7 +349,17 @@ const AudioPlayer = ({ src, messageId }: AudioPlayerProps) => {
         <button
           onClick={togglePlayPause}
           disabled={isLoading}
-          className="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-8 h-8 text-white rounded-full flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ 
+            backgroundColor: `hsl(${branding.colors.primary})`,
+            '--hover-color': `hsl(${branding.colors.primary} / 0.8)`
+          } as React.CSSProperties}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = `hsl(${branding.colors.primary} / 0.8)`;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = `hsl(${branding.colors.primary})`;
+          }}
         >
           {isLoading ? (
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -340,8 +377,11 @@ const AudioPlayer = ({ src, messageId }: AudioPlayerProps) => {
             onClick={handleSeek}
           >
             <div 
-              className="h-full bg-green-500 rounded-full transition-all duration-100"
-              style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+              className="h-full rounded-full transition-all duration-100"
+              style={{ 
+                width: `${duration ? (currentTime / duration) * 100 : 0}%`,
+                backgroundColor: `hsl(${branding.colors.primary})`
+              }}
             />
           </div>
         </div>
@@ -383,27 +423,49 @@ const EmojiPicker = ({ onEmojiSelect, onClose }: EmojiPickerProps) => {
 };
 
 // Componente de Aba
-const TabButton = ({ active, onClick, children, icon: Icon, count }: TabButtonProps) => (
-  <button
-    onClick={onClick}
-    className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded text-xs font-medium transition-colors whitespace-nowrap flex-1 ${
-      active 
-        ? 'bg-green-500 text-white' 
-        : 'text-gray-600 hover:bg-gray-100'
-    }`}
-  >
-    <Icon className="h-4 w-4 flex-shrink-0" />
-    <span className="text-xs">{children}</span>
-    {count && count > 0 && (
-      <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5 min-w-[20px] h-5 flex items-center justify-center ml-0.5 flex-shrink-0">
-        {count}
-      </span>
-    )}
-  </button>
-);
+const TabButton = ({ active, onClick, children, icon: Icon, count, onMuteClick, isMuted }: TabButtonProps) => {
+  const { branding } = useThemeCustomization();
+  
+  return (
+    <div className="flex items-center gap-1 flex-1 min-w-0">
+      <button
+        onClick={onClick}
+        className={`flex items-center justify-center gap-1 px-1.5 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-1 min-w-0 ${
+          active 
+            ? 'text-white' 
+            : 'text-gray-600 hover:bg-gray-100'
+        }`}
+        style={active ? { backgroundColor: `hsl(${branding.colors.primary})` } : undefined}
+      >
+        <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+        <span className="text-[10px] truncate">{children}</span>
+        {count && count > 0 && (
+          <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 min-w-[18px] h-4 flex items-center justify-center flex-shrink-0">
+            {count}
+          </span>
+        )}
+      </button>
+      {onMuteClick && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onMuteClick();
+          }}
+          className="p-1 hover:bg-gray-200 rounded transition-colors"
+          title={isMuted ? "Ativar som" : "Desativar som"}
+        >
+          {isMuted ? <VolumeX className="h-3 w-3 text-gray-500" /> : <Volume2 className="h-3 w-3 text-gray-500" />}
+        </button>
+      )}
+    </div>
+  );
+};
 
 // Componente de Lista Unificado - CORRIGIDO: Funciona para conversas e contatos
-const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isContacts = false }: UnifiedListProps) => (
+const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isContacts = false }: UnifiedListProps) => {
+  const { branding } = useThemeCustomization();
+  
+  return (
   <div className="conversation-list-container flex-1 overflow-y-auto">
     <div className="p-3 border-b bg-gray-50">
       <h3 className="font-semibold text-gray-700 text-sm">{title}</h3>
@@ -423,11 +485,22 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
             }`}
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                <span className="text-sm font-medium text-white">
-                  {isContacts ? ((item as Contact).name?.charAt(0) || 'C') : ((item as Conversation).contact_name?.charAt(0) || 'C')}
-                        </span>
-                      </div>
+              {(item as any).profilePictureUrl ? (
+                <img 
+                  src={(item as any).profilePictureUrl} 
+                  alt={isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contact_name || 'Cliente')} 
+                  className="w-10 h-10 rounded-full object-cover"
+                />
+              ) : (
+                <div 
+                  className="w-10 h-10 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: `hsl(${branding.colors.primary})` }}
+                >
+                  <span className="text-sm font-medium text-white">
+                    {isContacts ? ((item as Contact).name?.charAt(0) || 'C') : ((item as Conversation).contact_name?.charAt(0) || 'C')}
+                  </span>
+                </div>
+              )}
                       <div className="flex items-center justify-between w-full">
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 truncate text-sm">
@@ -438,8 +511,16 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
                           </p>
                         </div>
                         {!isContacts && (
-                          <div className="text-xs text-gray-400 ml-2 flex-shrink-0">
-                            {(item as Conversation).updated_at && formatMessageTime((item as Conversation).updated_at!)}
+                          <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                            {/* Badge de mensagens não lidas */}
+                            {(item as Conversation).unreadCount && (item as Conversation).unreadCount! > 0 && (
+                              <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+                                {(item as Conversation).unreadCount}
+                              </span>
+                            )}
+                            <div className="text-xs text-gray-400">
+                              {(item as Conversation).updated_at && formatMessageTime((item as Conversation).updated_at!)}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -449,7 +530,8 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
               )}
     </div>
   </div>
-);
+  );
+};
 
 
 // Componente de Área de Chat
@@ -464,6 +546,7 @@ const ChatArea = ({
   onImageClick,
   currentUser
 }: ChatAreaProps) => {
+  const { branding } = useThemeCustomization();
   const [text, setText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -472,6 +555,7 @@ const ChatArea = ({
   const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
   const [audioLevel, setAudioLevel] = useState(0);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const previousMessagesLength = useRef(messages.length);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -480,7 +564,11 @@ const ChatArea = ({
   const animationFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Só fazer scroll se novas mensagens foram adicionadas (não em atualizações)
+    if (messages.length > previousMessagesLength.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    previousMessagesLength.current = messages.length;
   }, [messages]);
 
   const handleSend = () => {
@@ -843,11 +931,22 @@ const ChatArea = ({
       {/* Top Bar do Chat */}
       <div className="p-4 border-b bg-white flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-            <span className="text-sm font-medium text-white">
-              {(conversation.contact_name || (conversation as any).contactName)?.charAt(0) || 'C'}
-                        </span>
-                      </div>
+          {(conversation as any).profilePictureUrl ? (
+            <img 
+              src={(conversation as any).profilePictureUrl} 
+              alt={conversation.contact_name || (conversation as any).contactName || 'Cliente'} 
+              className="w-10 h-10 rounded-full object-cover"
+            />
+          ) : (
+            <div 
+              className="w-10 h-10 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: `hsl(${branding.colors.primary})` }}
+            >
+              <span className="text-sm font-medium text-white">
+                {(conversation.contact_name || (conversation as any).contactName)?.charAt(0) || 'C'}
+              </span>
+            </div>
+          )}
           <div>
             <h3 className="font-semibold text-gray-900">
               {conversation.contact_name || (conversation as any).contactName || 'Cliente'}
@@ -859,9 +958,18 @@ const ChatArea = ({
                     </div>
         <div className="flex items-center gap-2">
           {conversation.status === 'waiting' && (
-            <button 
+            <button
               onClick={() => onTakeConversation(conversation.id)}
-              className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium"
+              className="px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
+              style={{ 
+                backgroundColor: `hsl(${branding.colors.primary})`
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = `hsl(${branding.colors.primary} / 0.8)`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = `hsl(${branding.colors.primary})`;
+              }}
             >
               Iniciar Chat
             </button>
@@ -893,27 +1001,29 @@ const ChatArea = ({
             messages.map(message => (
               <div
                 key={message.id}
-                className={`flex ${message.direction === 'outgoing' ? 'justify-end' : 'justify-start'} mb-2`}
+                className={`flex items-start gap-2 group relative mb-2 ${
+                  message.direction === 'outgoing' ? 'justify-end' : 'justify-start'
+                }`}
               >
+                {/* Botão de resposta - FORA da bolha */}
+                {message.direction === 'incoming' && (
+                  <button
+                    onClick={() => handleReplyToMessage(message)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 mt-1"
+                    title="Responder"
+                  >
+                    <Reply className="h-4 w-4 text-gray-600" />
+                  </button>
+                )}
+                
+                {/* Bolha da mensagem */}
                 <div 
-                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl cursor-pointer hover:opacity-90 transition-opacity relative group ${
+                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl relative ${
                       message.direction === 'outgoing'
                     ? 'bg-green-500 text-white rounded-br-md' 
                     : 'bg-white text-gray-900 rounded-bl-md shadow-sm'
                 }`}
-                  onClick={() => handleReplyClick(message)}
                 >
-                  {/* Botão de responder */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleReplyToMessage(message);
-                    }}
-                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-100 hover:bg-gray-200 p-1 rounded"
-                    title="Responder"
-                  >
-                    <Reply className="h-4 w-4" />
-                  </button>
                   {/* Exibir mídia se existir */}
                   {(message.mediaUrl || message.messageType !== 'text') && (
                     <div className="mb-2">
@@ -991,36 +1101,41 @@ const ChatArea = ({
                       })}
                         </span>
                       {message.direction === 'outgoing' && (
-                      <div className="ml-1 flex">
+                      <div className="ml-1 flex items-center gap-0.5">
                         {message.status === 'sending' && (
-                          <div className="w-3 h-3 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                          <div className="w-3 h-3 border-2 border-gray-300 border-t-white rounded-full animate-spin" />
                         )}
                         {message.status === 'sent' && (
-                          <CheckCircle2 className="h-3 w-3 text-gray-400" />
+                          <Check className="h-3 w-3 text-gray-400" />
                         )}
                         {message.status === 'delivered' && (
-                          <>
-                            <CheckCircle2 className="h-3 w-3 text-gray-400" />
-                            <CheckCircle2 className="h-3 w-3 text-gray-400 -ml-1" />
-                          </>
+                          <CheckCheck className="h-3 w-3 text-gray-400" />
                         )}
                         {message.status === 'read' && (
-                          <>
-                            <CheckCircle2 className="h-3 w-3 text-blue-500" />
-                            <CheckCircle2 className="h-3 w-3 text-blue-500 -ml-1" />
-                          </>
+                          <CheckCheck className="h-3 w-3 text-blue-500" />
                         )}
                         {message.status === 'failed' && (
                           <XCircle className="h-3 w-3 text-red-500" />
                         )}
                         {!message.status && (
-                          <CheckCircle2 className="h-3 w-3 text-gray-400" />
+                          <Check className="h-3 w-3 text-gray-400" />
                           )}
                         </div>
                       )}
                     </div>
                   </div>
-                  </div>
+                  
+                  {/* Botão de resposta para mensagens enviadas */}
+                  {message.direction === 'outgoing' && (
+                    <button
+                      onClick={() => handleReplyToMessage(message)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full bg-gray-100 hover:bg-gray-200 mt-1"
+                      title="Responder"
+                    >
+                      <Reply className="h-4 w-4 text-gray-600" />
+                    </button>
+                  )}
+                </div>
                 ))
               )}
           <div ref={messagesEndRef} />
@@ -1107,7 +1222,14 @@ const ChatArea = ({
             {/* Botão de Enviar */}
                           <button
               onClick={handleSendRecording}
-              className="p-1.5 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+              className="p-1.5 text-white rounded-full transition-colors"
+              style={{ backgroundColor: `hsl(${branding.colors.primary})` }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = `hsl(${branding.colors.primary} / 0.8)`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = `hsl(${branding.colors.primary})`;
+              }}
               title="Enviar áudio"
             >
               <Send className="h-3 w-3" />
@@ -1165,7 +1287,14 @@ const ChatArea = ({
             {text.trim() ? (
               <button
                 onClick={handleSend}
-                className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+                className="p-2 text-white rounded-full transition-colors"
+                style={{ backgroundColor: `hsl(${branding.colors.primary})` }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = `hsl(${branding.colors.primary} / 0.8)`;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = `hsl(${branding.colors.primary})`;
+                }}
                 title="Enviar mensagem"
               >
                 <Send className="h-5 w-5" />
@@ -1195,6 +1324,8 @@ const ChatArea = ({
 };
 
 export default function ConversationsPage() {
+  const { branding } = useThemeCustomization();
+  const { playNotificationSound, playWaitingSound, stopWaitingSound, soundSettings, updateSoundSettings } = useSound();
   const [activeTab, setActiveTab] = useState('active');
   const [waitingConversations, setWaitingConversations] = useState<Conversation[]>([]);
   const [activeConversations, setActiveConversations] = useState<Conversation[]>([]);
@@ -1231,6 +1362,15 @@ export default function ConversationsPage() {
       document.title = 'FivConnect - Chat';
     }
   }, [totalPending]);
+
+  // Monitorar conversas em espera para tocar som
+  useEffect(() => {
+    if (waitingConversations.length > 0 && !soundSettings.muteWaiting) {
+      playWaitingSound();
+    } else {
+      stopWaitingSound();
+    }
+  }, [waitingConversations.length, soundSettings.muteWaiting, playWaitingSound, stopWaitingSound]);
 
   useEffect(() => {
     console.log('🔍 [DEBUG] useEffect principal executado. companyId:', companyId, 'user:', user?.id, 'selectedConversation:', selectedConversation?.id);
@@ -1281,7 +1421,7 @@ export default function ConversationsPage() {
         
         // Tocar som de notificação para mensagens recebidas
         if (messageData.direction === 'incoming') {
-          playNotificationSound();
+          playNotificationSound('conversation');
         }
       }
       
@@ -1295,17 +1435,39 @@ export default function ConversationsPage() {
       setMessages(prev => 
         prev.map(msg => 
           msg.id === data.messageId 
-            ? { ...msg, status: data.status }
+            ? { ...msg, status: data.status, isRead: data.status === 'read' }
             : msg
         )
       );
+      
+      // Atualizar também a lista de conversas se necessário
+      if (data.conversationId) {
+        setActiveConversations(prev =>
+          prev.map(conv =>
+            conv.id === data.conversationId
+              ? { ...conv, lastMessageStatus: data.status }
+              : conv
+          )
+        );
+        setWaitingConversations(prev =>
+          prev.map(conv =>
+            conv.id === data.conversationId
+              ? { ...conv, lastMessageStatus: data.status }
+              : conv
+          )
+        );
+      }
     });
 
     socket.on('newConversation', (conversation) => {
       console.log('🔍 [DEBUG] newConversation listener executado:', conversation);
       console.log('💬 Nova conversa criada:', conversation);
       loadConversations();
-      playNotificationSound();
+      
+      // Tocar som para conversas em espera
+      if (conversation.status === 'waiting') {
+        playWaitingSound();
+      }
     });
 
     socket.on('conversationUpdate', (conversation) => {
@@ -1466,6 +1628,15 @@ export default function ConversationsPage() {
       const messagesData = Array.isArray(res.data) ? res.data : [];
       console.log(`[FRONTEND] Carregadas ${messagesData.length} mensagens para conversa ${conversation.id}`);
       setMessages(messagesData);
+      
+      // Marcar mensagens incoming como lidas
+      try {
+        await apiClient.post(`/api/whatsapp/conversations/${conversation.id}/mark-all-read`);
+        console.log(`[FRONTEND] ✅ Mensagens marcadas como lidas para conversa ${conversation.id}`);
+      } catch (markError) {
+        console.error(`[FRONTEND] Erro ao marcar mensagens como lidas:`, markError);
+        // Não falhar a seleção se houver erro na marcação
+      }
     } catch (error) {
       console.error("Erro ao buscar mensagens:", error);
       setMessages([]);
@@ -1593,7 +1764,11 @@ export default function ConversationsPage() {
       const response = await apiClient.post(
         `/api/whatsapp/conversations/${selectedConversation.id}/send-media`, 
         formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
+        {
+          headers: {
+            // NÃO definir Content-Type - axios define automaticamente para FormData
+          }
+        }
       );
 
       // Remover mensagem temporária e adicionar a real
@@ -1602,13 +1777,15 @@ export default function ConversationsPage() {
         return [...withoutTemp, { ...response.data, status: 'sent' }];
       });
 
-    } catch (error) {
-      console.error("Erro ao enviar mídia:", error);
+    } catch (error: any) {
+      console.error("❌ Erro ao enviar mídia:", error);
+      console.error("Detalhes:", error.response?.data);
       
       // Remover mensagem temporária em caso de erro
       setMessages(prev => prev.filter(msg => msg.id !== tempMessage.id));
       
-      alert('Erro ao enviar mídia. Tente novamente.');
+      const errorMessage = error.response?.data?.message || 'Falha ao enviar mídia';
+      alert(`Erro: ${errorMessage}`);
     }
   };
 
@@ -1699,6 +1876,8 @@ export default function ConversationsPage() {
               onClick={() => setActiveTab('active')}
               icon={MessageCircle}
               count={totalUnread}
+              onMuteClick={() => updateSoundSettings({ muteConversations: !soundSettings.muteConversations })}
+              isMuted={soundSettings.muteConversations}
             >
               CONVERSAS
             </TabButton>
@@ -1707,6 +1886,8 @@ export default function ConversationsPage() {
               onClick={() => setActiveTab('waiting')}
               icon={Clock}
               count={waitingConversations.length}
+              onMuteClick={() => updateSoundSettings({ muteWaiting: !soundSettings.muteWaiting })}
+              isMuted={soundSettings.muteWaiting}
             >
               ESPERA
             </TabButton>
@@ -1773,7 +1954,14 @@ export default function ConversationsPage() {
                   link.download = `imagem-${Date.now()}.jpg`;
                   link.click();
                 }}
-                className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg flex items-center gap-2"
+                className="px-4 py-2 text-white rounded-lg flex items-center gap-2 transition-colors"
+                style={{ backgroundColor: `hsl(${branding.colors.primary})` }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = `hsl(${branding.colors.primary} / 0.8)`;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = `hsl(${branding.colors.primary})`;
+                }}
               >
                 <Download className="h-4 w-4" />
                 Download

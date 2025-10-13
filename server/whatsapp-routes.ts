@@ -7,8 +7,8 @@ import { WhapiService } from "./whapi-service";
 import { requireAuth, requireRole } from "./auth";
 import { storage } from "./storage";
 import { Logger } from "./logger";
-import { and, eq, desc, isNull } from 'drizzle-orm';
-import { conversations, clients, messages, users, whatsappConnections } from '../shared/schema';
+import { and, eq, desc, isNull, sql } from 'drizzle-orm';
+import { conversations, clients, messages, users, whatsappConnections, chatSessions } from '../shared/schema';
 import { db } from './db';
 import { Pool } from 'pg';
 import { fileURLToPath } from 'url';
@@ -1606,6 +1606,28 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         if (conversation && (conversation.status === 'finished' || conversation.isFinished)) {
           console.log('[WEBHOOK] Reabrindo conversa finalizada:', conversation.id);
           
+          // Verificar se última sessão está finalizada
+          const chatId = conversation.contactPhone + '@s.whatsapp.net';
+          const lastSession = await db.select()
+            .from(chatSessions)
+            .where(eq(chatSessions.chatId, chatId))
+            .orderBy(desc(chatSessions.createdAt))
+            .limit(1);
+
+          // Se última sessão está finalizada, criar nova sessão
+          if (lastSession.length > 0 && lastSession[0].status === 'finished') {
+            console.log('[WEBHOOK] Criando nova sessão após finalização');
+            await db.insert(chatSessions).values({
+              chatId: chatId,
+              clientId: client.id,
+              companyId: activeConnection.companyId,
+              status: 'waiting',
+              priority: 'medium',
+              startedAt: new Date()
+            });
+            console.log('[WEBHOOK] Nova sessão criada para:', chatId);
+          }
+          
           // Atualizar para status waiting e resetar flags de finalização
           conversation = await storage.updateConversation(conversation.id, {
             status: 'waiting',
@@ -1623,7 +1645,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           
           conversation = await storage.createConversation({
             contactName: client.name,
-            contactPhone: client.phone,
+            contactPhone: formattedPhone, // Usar formato brasileiro +55 11 99999-9999
             clientId: client.id,
             companyId: activeConnection.companyId,
             status: 'waiting',
@@ -1725,9 +1747,9 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         }
       }
 
-      // Atualizar updatedAt da conversa com last_message formatado
+      // Atualizar updatedAt da conversa com lastMessage formatado
       await storage.updateConversation(conversation.id, {
-        last_message: lastMessagePreview
+        lastMessage: lastMessagePreview
       });
       
       console.log('[WEBHOOK] Conversa atualizada com novo updatedAt e last_message:', lastMessagePreview);
@@ -2094,8 +2116,10 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       }
       
       // Normalizar número de telefone
-      const normalizedPhone = phone.replace(/\D/g, '');
-      console.log(`[WhatsApp Routes] 📱 Processando mensagem de: ${normalizedPhone}`);
+      const { normalizePhoneForSearch, formatPhoneForDisplay } = await import('./utils/phone-normalizer');
+      const normalizedPhone = normalizePhoneForSearch(phone);
+      const formattedPhone = formatPhoneForDisplay(normalizedPhone);
+      console.log(`[WhatsApp Routes] 📱 Processando mensagem de: ${normalizedPhone} (formatado: ${formattedPhone})`);
       
       // Buscar ou criar cliente
       let client = await storage.getClientByPhone(normalizedPhone);
@@ -2133,7 +2157,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           console.log(`[WhatsApp Routes] 💬 Criando nova conversa para cliente: ${client.id}`);
           conversation = await storage.createConversation({
             contactName: client.name || `Cliente ${normalizedPhone}`,
-            contactPhone: normalizedPhone,
+            contactPhone: formattedPhone, // Usar formato brasileiro +55 11 99999-9999
             clientId: client.id,
             companyId: '59b4b086-9171-4dbf-8177-b7c6d6fd1e33',
             status: 'waiting'
@@ -2216,8 +2240,31 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       
       console.log(`[WhatsApp Routes] Buscando conversas para empresa: ${companyId}, status: ${status}`);
       
-      // Buscar conversas não finalizadas da empresa
-      const companyConversations = await db.select()
+      // Buscar conversas não finalizadas da empresa com última mensagem e contagem de não lidas
+      const companyConversations = await db.select({
+        id: conversations.id,
+        companyId: conversations.companyId,
+        contactName: conversations.contactName,
+        contactPhone: conversations.contactPhone,
+        status: conversations.status,
+        environment: conversations.environment,
+        createdAt: conversations.createdAt,
+        updatedAt: conversations.updatedAt,
+        lastMessage: sql`(
+          SELECT content 
+          FROM messages 
+          WHERE messages.conversation_id = conversations.id 
+          ORDER BY sent_at DESC 
+          LIMIT 1
+        )`,
+        unreadCount: sql`(
+          SELECT COUNT(*) 
+          FROM messages 
+          WHERE messages.conversation_id = conversations.id 
+          AND messages.direction = 'incoming'
+          AND messages.is_read = false
+        )`
+      })
         .from(conversations)
         .where(and(
           eq(conversations.companyId, companyId),
@@ -2228,7 +2275,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       
       // Garantir ordenação adicional (fallback)
       const sortedConversations = companyConversations.sort((a, b) => 
-        new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+        new Date(b.updatedAt || new Date()).getTime() - new Date(a.updatedAt || new Date()).getTime()
       );
       
       // Garantir que sempre retorna um array válido
@@ -2279,28 +2326,30 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       // Criar URL do arquivo
       const mediaUrl = `${req.protocol}://${req.get('host')}/uploads/${file.filename}`;
       
-      let result;
-      switch (mediaType) {
-        case 'image':
-          result = await whapiService.sendImageMessageWithToken(conversation.contactPhone || '', mediaUrl, '', activeConnection.whapiToken!);
-          break;
-        case 'video':
-          result = await whapiService.sendVideoMessageWithToken(conversation.contactPhone || '', mediaUrl, '', activeConnection.whapiToken!);
-          break;
-        case 'audio':
-          result = await whapiService.sendAudioMessageWithToken(conversation.contactPhone || '', mediaUrl, activeConnection.whapiToken!);
-          break;
-        default:
-          result = await whapiService.sendDocumentMessage(conversation.contactPhone || '', mediaUrl, file.originalname);
-      }
+      // Normalizar número para Whapi
+      const { normalizePhoneForWhapi } = await import('./utils/phone-normalizer');
+      const normalizedPhone = normalizePhoneForWhapi(conversation.contactPhone || '');
+      
+      // Enviar via método unificado
+      const result = await whapiService.sendMediaMessageWithToken(
+        normalizedPhone,
+        mediaType,
+        mediaUrl,
+        {
+          caption: req.body.caption,
+          fileName: file.originalname,
+          token: activeConnection.whapiToken!
+        }
+      );
       
       // Salvar mensagem no banco
       const message = await storage.createMessage({
         conversationId: conversation.id,
         content: `[${mediaType}]`,
-        messageType: mediaType,
+        messageType: mediaType as any,
         direction: 'outgoing',
         status: 'sent',
+        sentAt: new Date(), // Data atual para mensagens de envio
         mediaUrl: mediaUrl,
         fileName: file.originalname,
         externalId: result.id || `temp_${Date.now()}`,
@@ -2350,10 +2399,64 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       if (!conversation || conversation.companyId !== companyId) {
         return res.status(404).json({ message: 'Conversa não encontrada' });
       }
-      
-      const messages = await storage.getMessagesByConversation(conversationId);
+
+      // Buscar última sessão ativa (não finalizada)
+      const chatId = conversation.contactPhone + '@s.whatsapp.net';
+      const activeSession = await db.select()
+        .from(chatSessions)
+        .where(and(
+          eq(chatSessions.chatId, chatId),
+          eq(chatSessions.status, 'in_progress')
+        ))
+        .orderBy(desc(chatSessions.createdAt))
+        .limit(1);
+
+      let conversationMessages;
+      if (activeSession.length > 0) {
+        // Retornar apenas mensagens da sessão ativa (após startedAt)
+        conversationMessages = await storage.getMessagesByConversation(conversationId, activeSession[0].startedAt || undefined);
+        console.log(`[WhatsApp Routes] Carregando mensagens da sessão ativa desde: ${activeSession[0].startedAt}`);
+      } else {
+        // Se não há sessão ativa, retornar todas as mensagens (comportamento padrão)
+        conversationMessages = await storage.getMessagesByConversation(conversationId);
+        console.log(`[WhatsApp Routes] Nenhuma sessão ativa encontrada, carregando todas as mensagens`);
+      }
+
+      // Marcar mensagens incoming como lidas automaticamente
+      try {
+        await db.update(messages)
+          .set({ 
+            status: 'read', 
+            isRead: true, 
+            readAt: new Date() 
+          })
+          .where(and(
+            eq(messages.conversationId, conversationId),
+            eq(messages.direction, 'incoming'),
+            eq(messages.isRead, false)
+          ));
+        console.log(`[WhatsApp Routes] ✅ Mensagens incoming marcadas como lidas para conversa ${conversationId}`);
+      } catch (markError) {
+        console.error(`[WhatsApp Routes] Erro ao marcar mensagens como lidas:`, markError);
+        // Não falhar a requisição se houver erro na marcação
+      }
+
+      // Buscar e atualizar foto de perfil do WhatsApp
+      try {
+        const profilePicUrl = await whapiService.getProfilePicture(conversation.contactPhone);
+        if (profilePicUrl) {
+          await storage.updateConversation(conversationId, { profilePictureUrl: profilePicUrl });
+          if (conversation.clientId) {
+            await storage.updateClient(conversation.clientId, { profilePictureUrl: profilePicUrl });
+          }
+          console.log(`[WhatsApp Routes] Foto de perfil atualizada para conversa ${conversationId}`);
+        }
+      } catch (error) {
+        console.warn(`[WhatsApp Routes] Erro ao atualizar foto de perfil:`, error);
+      }
+
       // Garantir que sempre retorna um array válido
-      res.json(Array.isArray(messages) ? messages : []);
+      res.json(Array.isArray(conversationMessages) ? conversationMessages : []);
     } catch (error: any) {
       console.error('[WhatsApp Routes] Erro ao buscar mensagens:', error);
       res.status(500).json({ message: 'Erro interno ao buscar mensagens' });
@@ -2374,6 +2477,10 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
                     return res.status(404).json({ message: 'Cliente não encontrado' });
                   }
                   
+                  // Formatar telefone do cliente
+                  const { formatPhoneForDisplay } = await import('./utils/phone-normalizer');
+                  const formattedPhone = formatPhoneForDisplay(client.phone);
+                  
                   // Buscar conversa existente
                   const allConversations = await storage.getAllConversations();
                   let conversation = allConversations.find(c => 
@@ -2386,7 +2493,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
                     // Criar nova conversa
                     conversation = await storage.createConversation({
                       contactName: client.name || `Cliente ${client.phone}`,
-                      contactPhone: client.phone,
+                      contactPhone: formattedPhone, // Usar formato brasileiro +55 11 99999-9999
                       clientId: clientId,
                       companyId: companyId,
                       status: 'waiting'
@@ -2400,43 +2507,77 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
                 }
               });
 
-              // Rota para assumir conversa
-              router.post('/conversations/:conversationId/take', requireAuth, async (req, res) => {
-                try {
-                  const { conversationId } = req.params;
-                  const { companyId, id: userId } = req.user!;
-                  
-                  console.log(`[WhatsApp Routes] Assumindo conversa: ${conversationId} pelo usuário: ${userId}`);
-                  
-                  const conversation = await storage.getConversation(conversationId);
-                  if (!conversation || conversation.companyId !== companyId) {
-                    return res.status(404).json({ message: 'Conversa não encontrada' });
-                  }
-                  
-                  // Atualizar conversa para in_progress E atribuir ao usuário
-                  const updatedConversation = await storage.updateConversation(conversationId, {
-                    status: 'in_progress',
-                    assignedAgentId: userId
-                  });
-                  
-                  console.log(`[WhatsApp Routes] ✅ Conversa ${conversationId} assumida pelo usuário ${userId} e status atualizado para in_progress`);
-                  
-                  // Notificar via WebSocket
-          if (io) {
-                    io.to(`company_${companyId}`).emit('conversationUpdate', {
-                      conversationId: conversationId,
-                      status: 'in_progress',
-                      assignedAgentId: userId,
-                      companyId: companyId
-                    });
-                  }
-                  
-                  res.json(updatedConversation);
-                } catch (error: any) {
-                  console.error('[WhatsApp Routes] Erro ao assumir conversa:', error);
-                  res.status(500).json({ message: 'Erro interno ao assumir conversa' });
-                }
-              });
+  // Rota para assumir conversa
+  router.post('/conversations/:conversationId/take', requireAuth, async (req, res) => {
+    try {
+      const { conversationId } = req.params;
+      const { companyId, id: userId } = req.user!;
+      
+      console.log(`[WhatsApp Routes] Assumindo conversa: ${conversationId} pelo usuário: ${userId}`);
+      
+      const conversation = await storage.getConversation(conversationId);
+      if (!conversation || conversation.companyId !== companyId) {
+        return res.status(404).json({ message: 'Conversa não encontrada' });
+      }
+      
+      // Atualizar conversa para in_progress E atribuir ao usuário
+      const updatedConversation = await storage.updateConversation(conversationId, {
+        status: 'in_progress',
+        assignedAgentId: userId
+      });
+      
+      // Criar nova sessão de chat para esta conversa
+      const chatId = conversation.contactPhone + '@s.whatsapp.net';
+      
+      // Verificar se já existe uma sessão ativa
+      const existingSession = await db.select()
+        .from(chatSessions)
+        .where(and(
+          eq(chatSessions.chatId, chatId),
+          eq(chatSessions.status, 'in_progress')
+        ))
+        .limit(1);
+      
+      if (existingSession.length === 0) {
+        // Criar nova sessão de chat
+        await db.insert(chatSessions).values({
+          chatId: chatId,
+          clientId: conversation.clientId,
+          companyId: companyId,
+          status: 'in_progress',
+          priority: 'medium',
+          startedAt: new Date()
+        });
+        console.log(`[WhatsApp Routes] ✅ Nova sessão de chat criada para: ${chatId}`);
+      } else {
+        // Atualizar sessão existente para in_progress
+        await db.update(chatSessions)
+          .set({
+            status: 'in_progress',
+            startedAt: new Date()
+          })
+          .where(eq(chatSessions.id, existingSession[0].id));
+        console.log(`[WhatsApp Routes] ✅ Sessão de chat atualizada para: ${chatId}`);
+      }
+      
+      console.log(`[WhatsApp Routes] ✅ Conversa ${conversationId} assumida pelo usuário ${userId} e status atualizado para in_progress`);
+      
+      // Notificar via WebSocket
+      if (io) {
+        io.to(`company_${companyId}`).emit('conversationUpdate', {
+          conversationId: conversationId,
+          status: 'in_progress',
+          assignedAgentId: userId,
+          companyId: companyId
+        });
+      }
+      
+      res.json(updatedConversation);
+    } catch (error: any) {
+      console.error('[WhatsApp Routes] Erro ao assumir conversa:', error);
+      res.status(500).json({ message: 'Erro interno ao assumir conversa' });
+    }
+  });
 
               // Rota para enviar mensagem (suporte a todos os tipos)
               router.post('/conversations/:conversationId/send', requireAuth, async (req, res) => {
@@ -2480,8 +2621,11 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       let messageType = type;
       
       // Normalizar número de telefone para envio
-      const { normalizePhoneForSearch } = await import('./utils/phone-normalizer');
-      const normalizedPhone = normalizePhoneForSearch(conversation.contactPhone || '');
+      const { normalizePhoneForWhapi } = await import('./utils/phone-normalizer');
+      const normalizedPhone = normalizePhoneForWhapi(conversation.contactPhone || '');
+      
+      console.log(`[WhatsApp Routes] 📞 Telefone original: ${conversation.contactPhone}`);
+      console.log(`[WhatsApp Routes] 📞 Telefone normalizado para Whapi: ${normalizedPhone}`);
       
       // Se tem quotedMessageId, buscar mensagem original
       let quotedMessage = null;
@@ -2500,32 +2644,78 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           break;
           
         case 'image':
-          result = await whapiService.sendImageMessageWithToken(normalizedPhone, mediaUrl, caption, activeConnection.whapiToken!);
+          result = await whapiService.sendMediaMessageWithToken(
+            normalizedPhone, 
+            'image', 
+            mediaUrl, 
+            { 
+              caption, 
+              token: activeConnection.whapiToken! 
+            }
+          );
           messageContent = caption || 'Imagem';
           break;
           
         case 'video':
-          result = await whapiService.sendVideoMessageWithToken(normalizedPhone, mediaUrl, caption, activeConnection.whapiToken!);
+          result = await whapiService.sendMediaMessageWithToken(
+            normalizedPhone, 
+            'video', 
+            mediaUrl, 
+            { 
+              caption, 
+              token: activeConnection.whapiToken! 
+            }
+          );
           messageContent = caption || 'Vídeo';
           break;
           
         case 'audio':
-          result = await whapiService.sendAudioMessageWithToken(normalizedPhone, mediaUrl, activeConnection.whapiToken!);
+          result = await whapiService.sendMediaMessageWithToken(
+            normalizedPhone, 
+            'audio', 
+            mediaUrl, 
+            { 
+              token: activeConnection.whapiToken! 
+            }
+          );
           messageContent = 'Áudio';
           break;
           
         case 'voice':
-          result = await whapiService.sendVoiceMessage(activeConnection.whapiToken!, normalizedPhone, mediaUrl);
+          result = await whapiService.sendMediaMessageWithToken(
+            normalizedPhone, 
+            'voice', 
+            mediaUrl, 
+            { 
+              token: activeConnection.whapiToken! 
+            }
+          );
           messageContent = 'Mensagem de voz';
           break;
           
         case 'document':
-          result = await whapiService.sendDocumentMessage(activeConnection.whapiToken!, normalizedPhone, mediaUrl, filename, caption);
+          result = await whapiService.sendMediaMessageWithToken(
+            normalizedPhone, 
+            'document', 
+            mediaUrl, 
+            { 
+              caption,
+              fileName: filename,
+              token: activeConnection.whapiToken! 
+            }
+          );
           messageContent = caption || filename || 'Documento';
           break;
           
         case 'sticker':
-          result = await whapiService.sendStickerMessageWithToken(normalizedPhone, mediaUrl, activeConnection.whapiToken!);
+          result = await whapiService.sendMediaMessageWithToken(
+            normalizedPhone, 
+            'sticker', 
+            mediaUrl, 
+            { 
+              token: activeConnection.whapiToken! 
+            }
+          );
           messageContent = 'Sticker';
           break;
           
@@ -2568,6 +2758,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           messageType: messageType,
         direction: 'outgoing',
         status: 'sent',
+        sentAt: new Date(), // Data atual para mensagens de envio
           mediaUrl: mediaUrl,
           metadata: {
             whapiMessageId: result.message?.id,
@@ -2643,6 +2834,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           messageType: 'reaction',
           direction: 'outgoing',
           status: 'sent',
+          sentAt: new Date(), // Data atual para mensagens de envio
           metadata: {
             originalMessageId: messageId,
             emoji: emoji
@@ -2695,15 +2887,21 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       const result = await whapiService.markMessageAsRead(activeConnection.whapiToken!, messageId);
       
       if (result) {
-        // Atualizar status no banco
-        await storage.updateMessage(messageId, { status: 'read' });
+        // Atualizar status no banco com novos campos
+        await storage.updateMessage(messageId, { 
+          status: 'read',
+          isRead: true,
+          readAt: new Date()
+        });
         
         // Notificar via WebSocket
         if (io) {
-          io.to(`company_${companyId}`).emit('messageRead', {
+          io.to(`company_${companyId}`).emit('messageStatusUpdate', {
             messageId: messageId,
+            status: 'read',
             conversationId: conversationId,
-            companyId: companyId
+            companyId: companyId,
+            timestamp: new Date().toISOString()
           });
         }
         
@@ -2715,6 +2913,43 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
     } catch (error: any) {
       console.error('[WhatsApp Routes] Erro ao marcar mensagem como lida:', error);
       res.status(500).json({ message: 'Erro interno ao marcar mensagem como lida' });
+    }
+  });
+
+  // Rota para marcar todas as mensagens de uma conversa como lidas
+  router.post('/conversations/:conversationId/mark-all-read', requireAuth, async (req, res) => {
+    try {
+      const { conversationId } = req.params;
+      const { companyId } = req.user!;
+      
+      console.log(`[WhatsApp Routes] Marcando todas as mensagens da conversa ${conversationId} como lidas`);
+      
+      // Verificar se a conversa pertence à empresa
+      const conversation = await storage.getConversation(conversationId);
+      if (!conversation || conversation.companyId !== companyId) {
+        return res.status(404).json({ message: 'Conversa não encontrada' });
+      }
+
+      // Marcar todas as mensagens incoming como lidas
+      await db.update(messages)
+        .set({ 
+          status: 'read', 
+          isRead: true, 
+          readAt: new Date() 
+        })
+        .where(and(
+          eq(messages.conversationId, conversationId),
+          eq(messages.direction, 'incoming'),
+          eq(messages.isRead, false)
+        ));
+
+      console.log(`[WhatsApp Routes] ✅ Mensagens da conversa ${conversationId} marcadas como lidas`);
+      
+      res.json({ success: true, message: 'Mensagens marcadas como lidas' });
+      
+    } catch (error: any) {
+      console.error('[WhatsApp Routes] Erro ao marcar mensagens como lidas:', error);
+      res.status(500).json({ message: 'Erro interno ao marcar mensagens como lidas' });
     }
   });
 
@@ -2907,7 +3142,17 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         protocolNumber: protocolNumber
       });
 
+      // Atualizar chat_sessions correspondente
+      const chatId = conversation.contactPhone + '@s.whatsapp.net';
+      await db.update(chatSessions)
+        .set({
+          status: 'finished',
+          finishedAt: new Date()
+        })
+        .where(eq(chatSessions.chatId, chatId));
+
       console.log(`[WhatsApp Routes] ✅ Conversa ${conversationId} finalizada com protocolo: ${protocolNumber}`);
+      console.log(`[WhatsApp Routes] ✅ Chat session ${chatId} marcada como finalizada`);
 
       // Notificar via WebSocket
       if (io) {
@@ -3227,7 +3472,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         connectionName: 'Canal Teste WONDRW-8N63P',
         instanceName: 'WONDRW-8N63P',
         whapiToken: 'P9WVIZXK9et8nODf0XF9yLWKdqCqcx7M',
-        phone: '5511972244707',
+        number: '5511972244707',
         status: 'connected',
         environment: 'production',
         webhookUrl: 'https://app.fivconnect.net/api/whatsapp/webhook'

@@ -16,36 +16,24 @@ interface SoundHook {
   updateSoundSettings: (settings: Partial<SoundSettings>) => void;
 }
 
-// Create audio context for sounds
-const createBeepSound = (frequency: number, duration: number, volume: number = 0.3) => {
-  if (typeof window === 'undefined' || !window.AudioContext) return null;
-  
-  try {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-
-    oscillator.frequency.value = frequency;
-    oscillator.type = 'sine';
-    gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-    gainNode.gain.linearRampToValueAtTime(volume, audioContext.currentTime + 0.01);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
-
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + duration);
-
-    return { audioContext, oscillator };
-  } catch (error) {
-    console.warn('Error creating audio context:', error);
-    return null;
-  }
+// Play audio file
+const playAudioFile = (src: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const audio = new Audio(src);
+    audio.volume = 0.7;
+    
+    audio.onended = () => resolve();
+    audio.onerror = () => reject(new Error('Failed to play audio'));
+    
+    audio.play().catch(err => {
+      console.warn('Erro ao reproduzir som:', err);
+      reject(err);
+    });
+  });
 };
 
 export function useSound(): SoundHook {
-  const waitingSoundRef = useRef<{ audioContext: AudioContext, oscillator: OscillatorNode } | null>(null);
+  const waitingSoundRef = useRef<HTMLAudioElement | null>(null);
   const waitingSoundIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get settings from localStorage
@@ -83,11 +71,11 @@ export function useSound(): SoundHook {
 
     // Play different sounds based on type
     if (type === 'conversation') {
-      // Single beep for conversations (800Hz, 200ms)
-      createBeepSound(800, 0.2);
+      // Single beep for conversations
+      playAudioFile('/sounds/message.mp3').catch(() => {});
     } else if (type === 'waiting') {
-      // Single beep for waiting (600Hz, 300ms)  
-      createBeepSound(600, 0.3);
+      // Single beep for waiting
+      playAudioFile('/sounds/beep.mp3').catch(() => {});
     }
   }, [soundSettings]);
 
@@ -101,19 +89,14 @@ export function useSound(): SoundHook {
 
     if (soundSettings.waitingSoundType === 'constant') {
       // Play constant sound for waiting
-      const playConstantSound = () => {
-        const result = createBeepSound(400, 0.5, 0.1);
-        if (result) {
-          waitingSoundRef.current = result;
-        }
-      };
-
-      // Play immediately and then repeat every 2 seconds
-      playConstantSound();
-      waitingSoundIntervalRef.current = setInterval(playConstantSound, 2000);
+      const audio = new Audio('/sounds/waiting-loop.mp3');
+      audio.loop = true;
+      audio.volume = 0.5;
+      audio.play().catch(err => console.warn('Erro ao reproduzir som de espera:', err));
+      waitingSoundRef.current = audio;
     } else {
       // Play single bip
-      createBeepSound(400, 0.2);
+      playAudioFile('/sounds/beep.mp3').catch(() => {});
     }
   }, [soundSettings]);
 
@@ -125,8 +108,8 @@ export function useSound(): SoundHook {
 
     if (waitingSoundRef.current) {
       try {
-        waitingSoundRef.current.oscillator.stop();
-        waitingSoundRef.current.audioContext.close();
+        waitingSoundRef.current.pause();
+        waitingSoundRef.current.currentTime = 0;
       } catch (error) {
         // Ignore errors when stopping sounds
       }

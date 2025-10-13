@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,13 +9,21 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/hooks/use-auth';
 import { useT } from '@/hooks/use-translation';
 import { useMobile } from '@/hooks/use-mobile';
 import { useToast } from '@/hooks/use-toast';
+import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import apiClient from '@/lib/api-client';
 import { 
   Search, 
   Filter, 
@@ -31,7 +39,9 @@ import {
   UserPlus,
   Users as UsersIcon,
   X,
-  CalendarDays
+  CalendarDays,
+  Ban,
+  Eye
 } from 'lucide-react';
 
 type TicketStatus = 'open' | 'in_progress' | 'closed' | 'canceled' | 'all';
@@ -52,100 +62,26 @@ interface Ticket {
 }
 
 interface FilterOptions {
+  status: string;
   assignedTo: string;
+  clientId: string;
+  queueId: string;
+  protocolNumber: string;
   priority: string;
   dateFrom: Date | undefined;
   dateTo: Date | undefined;
 }
 
-// Mock data
-const mockTickets: Ticket[] = [
-  {
-    id: '#65774',
-    title: 'Problema com produto',
-    description: 'Cliente relatou problema com o produto entregue',
-    status: 'open',
-    priority: 'medium',
-    assignedTo: 'Guilherme',
-    createdBy: 'System',
-    createdAt: '28/08/2025 13:08',
-    updatedAt: '28/08/2025 13:08',
-    clientName: 'Pedrito Pão Quente / Biaso',
-    clientPhone: '551199062500',
-    tags: ['Atendendo', 'Suporte Técnico', 'Não Informado']
-  },
-  {
-    id: '#65771',
-    title: 'Dúvida sobre serviço',
-    description: 'Cliente com dúvidas sobre serviços disponíveis',
-    status: 'open',
-    priority: 'medium',
-    assignedTo: 'Lúcas',
-    createdBy: 'System',
-    createdAt: '28/08/2025 16:40',
-    updatedAt: '28/08/2025 16:40',
-    clientName: 'Kaitã Sartori - THE Black Tie',
-    clientPhone: '551129404727',
-    tags: ['Atendendo', 'Suporte Técnico', 'Não Informado']
-  },
-  {
-    id: '#65770',
-    title: 'Solicitação de orçamento',
-    description: 'Cliente solicitou orçamento para evento',
-    status: 'in_progress',
-    priority: 'high',
-    assignedTo: 'Guilherme',
-    createdBy: 'System',
-    createdAt: '28/08/2025 16:44',
-    updatedAt: '28/08/2025 16:44',
-    clientName: 'Everton - Impeotto',
-    clientPhone: '551199062500',
-    tags: ['Atendendo', 'Suporte Técnico', 'Não Informado']
-  },
-  {
-    id: '#65769',
-    title: 'Atendimento finalizado',
-    description: 'Cliente teve sua solicitação atendida com sucesso',
-    status: 'closed',
-    priority: 'low',
-    assignedTo: 'Guilherme',
-    createdBy: 'Guilherme',
-    createdAt: '29/08/2025 16:40',
-    updatedAt: '29/08/2025 17:15',
-    clientName: 'Tatiana - Biasa Confeitaria',
-    clientPhone: '551790225579',
-    tags: ['Atendendo', 'Não Informado']
-  },
-  {
-    id: '#65767',
-    title: 'Atendimento cancelado',
-    description: 'Cliente não respondeu às tentativas de contato',
-    status: 'canceled',
-    priority: 'low',
-    assignedTo: 'Lúcas',
-    createdBy: 'System',
-    createdAt: '29/08/2025 10:09',
-    updatedAt: '29/08/2025 10:30',
-    clientName: 'Paulo - PastRão',
-    clientPhone: '555599201585',
-    tags: ['Atendendo', 'Suporte Técnico', 'Não Informado']
+// Função para mapear status do backend para UI
+const mapStatusToUI = (status: string): TicketStatus => {
+  switch (status) {
+    case 'waiting': return 'open';
+    case 'in_progress': return 'in_progress';
+    case 'completed': return 'closed';
+    case 'closed': return 'canceled';
+    default: return 'all';
   }
-];
-
-const mockAgents = [
-  { id: '1', name: 'Guilherme' },
-  { id: '2', name: 'Lúcas' },
-  { id: '3', name: 'Ana Silva' },
-  { id: '4', name: 'João Santos' }
-];
-
-const mockClients = [
-  { id: '1', name: 'Pedrito Pão Quente', phone: '551199062500' },
-  { id: '2', name: 'Kaitã Sartori', phone: '551129404727' },
-  { id: '3', name: 'Everton Impeotto', phone: '551199062500' },
-  { id: '4', name: 'Tatiana Biasa', phone: '551790225579' },
-  { id: '5', name: 'Paulo PastRão', phone: '555599201585' }
-];
+};
 
 const statusLabels = {
   all: 'Todos',
@@ -181,6 +117,10 @@ export default function TicketsPage() {
   const { user } = useAuth();
   const { t } = useT();
   const isMobile = useMobile();
+  
+  useEffect(() => {
+    document.title = 'FivConnect - Atendimentos';
+  }, []);
   const { toast } = useToast();
   
   const [activeTab, setActiveTab] = useState<TicketStatus>('all');
@@ -188,13 +128,28 @@ export default function TicketsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [showNewTicketModal, setShowNewTicketModal] = useState(false);
   const [newTicketType, setNewTicketType] = useState<'agent' | 'client'>('agent');
+  const [periodPreset, setPeriodPreset] = useState<'today' | '7days' | '30days' | 'custom'>('today');
+  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [showConversationModal, setShowConversationModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showFinishModal, setShowFinishModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState<any>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   
   const [filters, setFilters] = useState<FilterOptions>({
-    assignedTo: '',
-    priority: '',
+    status: 'all',
+    assignedTo: 'all',
+    clientId: 'all',
+    queueId: 'all',
+    protocolNumber: '',
+    priority: 'all',
     dateFrom: undefined,
     dateTo: undefined
   });
+
+  const [page, setPage] = useState(1);
+  const limit = 20;
 
   const [newTicket, setNewTicket] = useState({
     title: '',
@@ -206,62 +161,115 @@ export default function TicketsPage() {
     selectedClient: ''
   });
 
-  // RBAC: Filter tickets based on user role
-  const getFilteredTickets = () => {
-    let filteredTickets = mockTickets;
-
-    // Role-based filtering
-    if (user?.role !== 'admin') {
-      filteredTickets = filteredTickets.filter(ticket => 
-        ticket.assignedTo === user?.name
-      );
+  // Aplicar preset de período automaticamente
+  useEffect(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    
+    switch (periodPreset) {
+      case 'today':
+        setFilters(prev => ({
+          ...prev,
+          dateFrom: today,
+          dateTo: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999)
+        }));
+        break;
+      case '7days':
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        setFilters(prev => ({
+          ...prev,
+          dateFrom: weekAgo,
+          dateTo: new Date()
+        }));
+        break;
+      case '30days':
+        const monthAgo = new Date(today);
+        monthAgo.setDate(monthAgo.getDate() - 30);
+        setFilters(prev => ({
+          ...prev,
+          dateFrom: monthAgo,
+          dateTo: new Date()
+        }));
+        break;
+      case 'custom':
+        // Não altera automaticamente
+        break;
     }
+  }, [periodPreset]);
 
-    // Status filtering
-    if (activeTab !== 'all') {
-      filteredTickets = filteredTickets.filter(ticket => ticket.status === activeTab);
-    }
-
-    // Search filtering (ticket ID, client name, agent, phone)
-    if (searchQuery) {
-      filteredTickets = filteredTickets.filter(ticket =>
-        ticket.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ticket.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ticket.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ticket.assignedTo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        ticket.clientPhone.includes(searchQuery)
-      );
-    }
-
-    // Advanced filters
-    if (filters.assignedTo) {
-      filteredTickets = filteredTickets.filter(ticket => 
-        ticket.assignedTo === filters.assignedTo
-      );
-    }
-
-    if (filters.priority) {
-      filteredTickets = filteredTickets.filter(ticket => 
-        ticket.priority === filters.priority
-      );
-    }
-
-    // Date filtering (basic implementation)
-    if (filters.dateFrom || filters.dateTo) {
-      filteredTickets = filteredTickets.filter(ticket => {
-        const ticketDate = new Date(ticket.createdAt.split(' ')[0].split('/').reverse().join('-'));
+  // Query de tickets
+  const { data: ticketsData, isLoading } = useQuery({
+    queryKey: ['tickets', filters, page, searchQuery],
+    queryFn: async () => {
+      try {
+        const params = new URLSearchParams();
+        if (filters.status !== 'all') params.append('status', filters.status);
+        if (filters.assignedTo) params.append('assignedTo', filters.assignedTo);
+        if (filters.clientId) params.append('clientId', filters.clientId);
+        if (filters.queueId) params.append('queueId', filters.queueId);
+        if (filters.protocolNumber) params.append('protocolNumber', filters.protocolNumber);
+        if (filters.dateFrom) params.append('dateFrom', filters.dateFrom.toISOString());
+        if (filters.dateTo) params.append('dateTo', filters.dateTo.toISOString());
+        params.append('page', page.toString());
+        params.append('limit', limit.toString());
         
-        if (filters.dateFrom && ticketDate < filters.dateFrom) return false;
-        if (filters.dateTo && ticketDate > filters.dateTo) return false;
-        
-        return true;
-      });
+        const res = await apiClient.get(`/api/tickets?${params.toString()}`);
+        return res.data || { tickets: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } };
+      } catch (error) {
+        console.error('Erro ao buscar tickets:', error);
+        return { tickets: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } };
+      }
     }
+  });
 
-    return filteredTickets;
-  };
+  // Query de estatísticas
+  const { data: stats } = useQuery({
+    queryKey: ['tickets-stats'],
+    queryFn: async () => {
+      const res = await apiClient.get('/api/tickets/stats');
+      return res.data;
+    }
+  });
 
-  const filteredTickets = getFilteredTickets();
+  // Query de agentes (para filtro)
+  const { data: agents } = useQuery({
+    queryKey: ['users'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/api/users');
+        return res.data || [];
+      } catch (error) {
+        console.error('Erro ao buscar agentes:', error);
+        return [];
+      }
+    }
+  });
+
+  // Query de clientes (para filtro)
+  const { data: clients } = useQuery({
+    queryKey: ['clients'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/api/clients');
+        return res.data || [];
+      } catch (error) {
+        console.error('Erro ao buscar clientes:', error);
+        return [];
+      }
+    }
+  });
+
+  // Query de mensagens do ticket selecionado
+  const { data: conversationData, isLoading: loadingMessages } = useQuery({
+    queryKey: ['ticket-conversation', selectedConversation],
+    queryFn: async () => {
+      if (!selectedConversation) return null;
+      const res = await apiClient.get(`/api/tickets/${selectedConversation}/messages`);
+      return res.data;
+    },
+    enabled: !!selectedConversation
+  });
 
   const getStatusIcon = (status: TicketStatus) => {
     switch (status) {
@@ -273,20 +281,14 @@ export default function TicketsPage() {
     }
   };
 
-  const getTicketCounts = () => {
-    const userTickets = user?.role === 'admin' ? mockTickets : 
-      mockTickets.filter(ticket => ticket.assignedTo === user?.name);
-      
-    return {
-      all: userTickets.length,
-      open: userTickets.filter(t => t.status === 'open').length,
-      in_progress: userTickets.filter(t => t.status === 'in_progress').length,
-      closed: userTickets.filter(t => t.status === 'closed').length,
-      canceled: userTickets.filter(t => t.status === 'canceled').length,
-    };
+  // Usar estatísticas da API
+  const counts = stats || {
+    all: 0,
+    open: 0,
+    in_progress: 0,
+    closed: 0,
+    canceled: 0
   };
-
-  const counts = getTicketCounts();
 
   const handleCreateTicket = () => {
     if (!newTicket.title || !newTicket.assignedTo || (!newTicket.clientName && !newTicket.selectedClient)) {
@@ -299,7 +301,7 @@ export default function TicketsPage() {
     }
 
     const clientInfo = newTicketType === 'client' 
-      ? mockClients.find(c => c.id === newTicket.selectedClient)
+      ? (clients || []).find((c: any) => c.id === newTicket.selectedClient)
       : { name: newTicket.clientName, phone: newTicket.clientPhone };
 
     const newTicketId = `#${Math.floor(Math.random() * 100000)}`;
@@ -335,12 +337,97 @@ export default function TicketsPage() {
 
   const clearFilters = () => {
     setFilters({
-      assignedTo: '',
-      priority: '',
+      status: 'all',
+      assignedTo: 'all',
+      clientId: 'all',
+      queueId: 'all',
+      protocolNumber: '',
+      priority: 'all',
       dateFrom: undefined,
       dateTo: undefined
     });
     setSearchQuery('');
+  };
+
+  const handleAssignTicket = async () => {
+    if (!selectedAgentId || !selectedTicket) return;
+    
+    try {
+      await apiClient.put(`/api/tickets/${selectedTicket.id}/assign`, {
+        agentId: selectedAgentId
+      });
+      
+      toast({ 
+        title: "Atendimento atribuído com sucesso",
+        description: `Ticket ${selectedTicket.protocolNumber || selectedTicket.id.slice(0, 6)} foi atribuído.`
+      });
+      
+      setShowAssignModal(false);
+      setSelectedAgentId('');
+      setSelectedTicket(null);
+      
+      // Recarregar dados
+      window.location.reload();
+    } catch (error) {
+      console.error('Erro ao atribuir:', error);
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Não foi possível atribuir o atendimento."
+      });
+    }
+  };
+
+  const handleFinishTicket = async () => {
+    if (!selectedTicket) return;
+    
+    try {
+      await apiClient.put(`/api/tickets/${selectedTicket.id}/finish`);
+      
+      toast({ 
+        title: "Atendimento fechado com sucesso",
+        description: `Ticket ${selectedTicket.protocolNumber || selectedTicket.id.slice(0, 6)} foi fechado.`
+      });
+      
+      setShowFinishModal(false);
+      setSelectedTicket(null);
+      
+      // Recarregar dados
+      window.location.reload();
+    } catch (error) {
+      console.error('Erro ao fechar:', error);
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Não foi possível fechar o atendimento."
+      });
+    }
+  };
+
+  const handleCancelTicket = async () => {
+    if (!selectedTicket) return;
+    
+    try {
+      await apiClient.put(`/api/tickets/${selectedTicket.id}/cancel`);
+      
+      toast({ 
+        title: "Atendimento cancelado",
+        description: `Ticket ${selectedTicket.protocolNumber || selectedTicket.id.slice(0, 6)} foi cancelado.`
+      });
+      
+      setShowCancelModal(false);
+      setSelectedTicket(null);
+      
+      // Recarregar dados
+      window.location.reload();
+    } catch (error) {
+      console.error('Erro ao cancelar:', error);
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Não foi possível cancelar o atendimento."
+      });
+    }
   };
 
   return (
@@ -356,7 +443,69 @@ export default function TicketsPage() {
             }
           </p>
         </div>
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center gap-2">
+          {/* Período */}
+          <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5">
+            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Período:</span>
+            
+            <Select value={periodPreset} onValueChange={(value: any) => setPeriodPreset(value)}>
+              <SelectTrigger className="h-8 w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Hoje</SelectItem>
+                <SelectItem value="7days">Últimos 7 dias</SelectItem>
+                <SelectItem value="30days">Últimos 30 dias</SelectItem>
+                <SelectItem value="custom">Personalizado</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {periodPreset === 'custom' && (
+              <>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-8">
+                      {filters.dateFrom 
+                        ? format(filters.dateFrom, "dd/MM/yyyy") 
+                        : "Início"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={filters.dateFrom}
+                      onSelect={(date) => setFilters(prev => ({ ...prev, dateFrom: date }))}
+                    />
+                  </PopoverContent>
+                </Popover>
+                <span className="text-muted-foreground">a</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-8">
+                      {filters.dateTo 
+                        ? format(filters.dateTo, "dd/MM/yyyy") 
+                        : "Fim"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={filters.dateTo}
+                      onSelect={(date) => setFilters(prev => ({ ...prev, dateTo: date }))}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </>
+            )}
+            
+            {periodPreset !== 'custom' && (
+              <span className="text-xs text-muted-foreground">
+                {filters.dateFrom && format(filters.dateFrom, "dd/MM")} - {filters.dateTo && format(filters.dateTo, "dd/MM")}
+              </span>
+            )}
+          </div>
+          
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
             <Filter className="h-4 w-4 mr-2" />
             Filtros {showFilters && '(Ativo)'}
@@ -421,7 +570,7 @@ export default function TicketsPage() {
                         <SelectValue placeholder="Selecione um cliente" />
                       </SelectTrigger>
                       <SelectContent>
-                        {mockClients.map((client) => (
+                        {(clients || []).map((client: any) => (
                           <SelectItem key={client.id} value={client.id}>
                             {client.name} - {client.phone}
                           </SelectItem>
@@ -463,7 +612,7 @@ export default function TicketsPage() {
                       <SelectValue placeholder="Selecione um atendente" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockAgents.map((agent) => (
+                      {(agents || []).map((agent: any) => (
                         <SelectItem key={agent.id} value={agent.name}>
                           {agent.name}
                         </SelectItem>
@@ -544,7 +693,7 @@ export default function TicketsPage() {
                 </Button>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 <div className="space-y-2">
                   <Label>Atendente</Label>
                   <Select 
@@ -555,14 +704,65 @@ export default function TicketsPage() {
                       <SelectValue placeholder="Todos" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Todos</SelectItem>
-                      {mockAgents.map((agent) => (
-                        <SelectItem key={agent.id} value={agent.name}>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {(agents || []).map((agent: any) => (
+                        <SelectItem key={agent.id} value={agent.id}>
                           {agent.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                {/* Cliente - NOVO */}
+                <div className="space-y-2">
+                  <Label>Cliente</Label>
+                  <Select 
+                    value={filters.clientId} 
+                    onValueChange={(value) => setFilters(prev => ({ ...prev, clientId: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {(clients || []).map((client: any) => (
+                        <SelectItem key={client.id} value={client.id}>
+                          {client.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Setor (Fila) - NOVO */}
+                <div className="space-y-2">
+                  <Label>Setor</Label>
+                  <Select 
+                    value={filters.queueId} 
+                    onValueChange={(value) => setFilters(prev => ({ ...prev, queueId: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      {/* Buscar filas da API */}
+                      <SelectItem value="support">Suporte</SelectItem>
+                      <SelectItem value="sales">Vendas</SelectItem>
+                      <SelectItem value="financial">Financeiro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Protocolo - NOVO */}
+                <div className="space-y-2">
+                  <Label>Protocolo</Label>
+                  <Input
+                    placeholder="Ex: 0910250001"
+                    value={filters.protocolNumber}
+                    onChange={(e) => setFilters(prev => ({ ...prev, protocolNumber: e.target.value }))}
+                  />
                 </div>
 
                 <div className="space-y-2">
@@ -575,7 +775,7 @@ export default function TicketsPage() {
                       <SelectValue placeholder="Todas" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Todas</SelectItem>
+                      <SelectItem value="all">Todas</SelectItem>
                       {Object.entries(priorityLabels).map(([key, label]) => (
                         <SelectItem key={key} value={key}>
                           {label}
@@ -648,7 +848,10 @@ export default function TicketsPage() {
           {Object.entries(statusLabels).map(([status, label]) => (
             <button
               key={status}
-              onClick={() => setActiveTab(status as TicketStatus)}
+              onClick={() => {
+                setActiveTab(status as TicketStatus);
+                setFilters(prev => ({ ...prev, status: status === 'all' ? 'all' : status }));
+              }}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === status
                   ? 'border-primary text-primary bg-primary/5'
@@ -660,7 +863,10 @@ export default function TicketsPage() {
                 {status !== 'all' && getStatusIcon(status as TicketStatus)}
                 <span>{label}</span>
                 <Badge variant="secondary" className="ml-1">
-                  {counts[status as keyof typeof counts]}
+                  {status === 'all' 
+                    ? (counts.open || 0) + (counts.in_progress || 0) + (counts.closed || 0) + (counts.canceled || 0)
+                    : counts[status as keyof typeof counts] || 0
+                  }
                 </Badge>
               </div>
             </button>
@@ -670,7 +876,11 @@ export default function TicketsPage() {
 
       {/* Tickets List */}
       <div className="flex-1 space-y-3">
-        {filteredTickets.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          </div>
+        ) : !ticketsData?.tickets || ticketsData.tickets.length === 0 ? (
           <div className="text-center py-12">
             <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
               <AlertCircle className="h-8 w-8 text-muted-foreground" />
@@ -686,18 +896,23 @@ export default function TicketsPage() {
             </p>
           </div>
         ) : (
-          filteredTickets.map((ticket) => (
-            <Card key={ticket.id} className="hover:shadow-md transition-shadow cursor-pointer">
+          (ticketsData?.tickets || []).map((ticket: any) => (
+            <Card 
+              key={ticket.id} 
+              className="hover:shadow-md transition-shadow"
+            >
               <CardContent className="p-4 sm:p-6">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="font-semibold text-foreground">{ticket.id}</h3>
+                      <h3 className="font-semibold text-foreground">
+                        {ticket.protocolNumber || `#${ticket.id.slice(0, 6)}`}
+                      </h3>
                       <Badge 
                         variant="secondary" 
-                        className={statusColors[ticket.status]}
+                        className={statusColors[mapStatusToUI(ticket.status)]}
                       >
-                        {statusLabels[ticket.status]}
+                        {statusLabels[mapStatusToUI(ticket.status)]}
                       </Badge>
                       <Badge 
                         variant="outline" 
@@ -707,42 +922,86 @@ export default function TicketsPage() {
                       </Badge>
                     </div>
                     
-                    <h4 className="font-medium text-foreground mb-1">
-                      {ticket.title}
-                    </h4>
-                    
                     <p className="text-sm text-muted-foreground mb-1">
-                      Cliente: {ticket.clientName}
+                      Cliente: {ticket.clientName || ticket.contactName}
                     </p>
                     
                     <p className="text-sm text-muted-foreground mb-2">
-                      Telefone: {ticket.clientPhone}
+                      Telefone: {ticket.contactPhone}
                     </p>
-
-                    <div className="flex flex-wrap gap-1 mb-3">
-                      {ticket.tags.map((tag, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
 
                     <div className="flex items-center space-x-4 text-xs text-muted-foreground">
                       <div className="flex items-center space-x-1">
                         <User className="h-3 w-3" />
-                        <span>Atendente: {ticket.assignedTo}</span>
+                        <span>Atendente: {ticket.assignedAgentName || 'Não atribuído'}</span>
                       </div>
                       <div className="flex items-center space-x-1">
                         <CalendarDays className="h-3 w-3" />
-                        <span>Criado: {ticket.createdAt}</span>
+                        <span>Criado: {format(new Date(ticket.createdAt), "dd/MM/yyyy HH:mm")}</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <Button variant="ghost" size="sm" data-testid={`button-more-${ticket.id}`}>
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={(e) => {
+                            e.stopPropagation(); // Prevenir abertura do modal de conversa
+                          }}
+                          data-testid={`button-more-${ticket.id}`}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedConversation(ticket.id);
+                            setShowConversationModal(true);
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Ver Conversa
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTicket(ticket);
+                            setShowAssignModal(true);
+                          }}
+                        >
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          Atribuir Atendimento
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTicket(ticket);
+                            setShowFinishModal(true);
+                          }}
+                          disabled={ticket.status === 'completed' || ticket.status === 'closed'}
+                        >
+                          <XCircle className="h-4 w-4 mr-2" />
+                          Fechar Atendimento
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTicket(ticket);
+                            setShowCancelModal(true);
+                          }}
+                          disabled={ticket.status === 'completed' || ticket.status === 'closed'}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Ban className="h-4 w-4 mr-2" />
+                          Cancelar Atendimento
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               </CardContent>
@@ -751,22 +1010,259 @@ export default function TicketsPage() {
         )}
       </div>
 
-      {/* Results Summary */}
-      {filteredTickets.length > 0 && (
-        <div className="flex items-center justify-between border-t border-border pt-4">
+      {/* Paginação */}
+      {ticketsData?.pagination && (
+        <div className="flex items-center justify-between border-t pt-4">
           <div className="text-sm text-muted-foreground">
-            Mostrando {filteredTickets.length} de {mockTickets.length} atendimentos
+            Mostrando {ticketsData.tickets.length} de {ticketsData.pagination.total} atendimentos
           </div>
           <div className="flex items-center space-x-2">
-            <Button variant="outline" size="sm" disabled>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              disabled={ticketsData.pagination.page === 1}
+              onClick={() => setPage(prev => prev - 1)}
+            >
               Anterior
             </Button>
-            <Button variant="outline" size="sm" disabled>
+            <span className="text-sm">
+              Página {ticketsData.pagination.page} de {ticketsData.pagination.totalPages}
+            </span>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              disabled={ticketsData.pagination.page === ticketsData.pagination.totalPages}
+              onClick={() => setPage(prev => prev + 1)}
+            >
               Próximo
             </Button>
           </div>
         </div>
       )}
+
+      {/* Modal Atribuir Atendimento */}
+      <Dialog open={showAssignModal} onOpenChange={setShowAssignModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Atribuir Atendimento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Atendente</Label>
+              <Select 
+                value={selectedAgentId}
+                onValueChange={setSelectedAgentId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um atendente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(agents || []).map((agent: any) => (
+                    <SelectItem key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => {
+                setShowAssignModal(false);
+                setSelectedAgentId('');
+                setSelectedTicket(null);
+              }}>
+                Cancelar
+              </Button>
+              <Button onClick={handleAssignTicket} disabled={!selectedAgentId}>
+                Atribuir
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Fechar Atendimento */}
+      <Dialog open={showFinishModal} onOpenChange={setShowFinishModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Fechar Atendimento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Tem certeza que deseja fechar este atendimento?
+            </p>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => {
+                setShowFinishModal(false);
+                setSelectedTicket(null);
+              }}>
+                Cancelar
+              </Button>
+              <Button onClick={handleFinishTicket}>
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Cancelar Atendimento */}
+      <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancelar Atendimento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Tem certeza que deseja cancelar este atendimento? Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => {
+                setShowCancelModal(false);
+                setSelectedTicket(null);
+              }}>
+                Voltar
+              </Button>
+              <Button variant="destructive" onClick={handleCancelTicket}>
+                Cancelar Atendimento
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Visualização de Conversa */}
+      <Dialog open={showConversationModal} onOpenChange={(open) => {
+        setShowConversationModal(open);
+        if (!open) setSelectedConversation(null);
+      }}>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>
+              Conversa - {conversationData?.conversation?.protocolNumber || 'Carregando...'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {loadingMessages ? (
+            <div className="flex items-center justify-center flex-1">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+          ) : conversationData ? (
+            <div className="flex-1 overflow-y-auto space-y-4 p-4">
+              {/* Informações da conversa */}
+              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Cliente:</span>
+                    <p className="font-medium">{conversationData.conversation.contactName}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Telefone:</span>
+                    <p className="font-medium">{conversationData.conversation.contactPhone}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Atendente:</span>
+                    <p className="font-medium">
+                      {conversationData.conversation.assignedAgentName || 'Não atribuído'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Status:</span>
+                    <Badge className={statusColors[mapStatusToUI(conversationData.conversation.status)]}>
+                      {statusLabels[mapStatusToUI(conversationData.conversation.status)]}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Lista de mensagens */}
+              <div className="space-y-3">
+                {conversationData.messages.map((message: any) => (
+                  <div
+                    key={message.id}
+                    className={cn(
+                      "flex",
+                      message.direction === 'outgoing' ? 'justify-end' : 'justify-start'
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "max-w-[70%] rounded-lg p-3 space-y-1",
+                        message.direction === 'outgoing'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted'
+                      )}
+                    >
+                      {message.messageType !== 'text' && (
+                        <div className="text-xs opacity-70 mb-1">
+                          {message.messageType === 'image' && '📷 Imagem'}
+                          {message.messageType === 'video' && '🎥 Vídeo'}
+                          {message.messageType === 'audio' && '🎤 Áudio'}
+                          {message.messageType === 'voice' && '🎤 Mensagem de Voz'}
+                          {message.messageType === 'document' && '📄 Documento'}
+                        </div>
+                      )}
+                      
+                      {message.content && (
+                        <p className="text-sm whitespace-pre-wrap break-words">
+                          {message.content}
+                        </p>
+                      )}
+                      
+                      {message.mediaUrl && (
+                        <div className="mt-2">
+                          {message.messageType === 'image' && (
+                            <img 
+                              src={message.mediaUrl} 
+                              alt="Mídia" 
+                              className="max-w-full rounded"
+                            />
+                          )}
+                          {(message.messageType === 'audio' || message.messageType === 'voice') && (
+                            <audio src={message.mediaUrl} controls className="w-full" />
+                          )}
+                          {message.messageType === 'video' && (
+                            <video src={message.mediaUrl} controls className="max-w-full rounded" />
+                          )}
+                          {message.messageType === 'document' && (
+                            <a 
+                              href={message.mediaUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-xs underline"
+                            >
+                              Baixar documento
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center justify-between gap-2 text-xs opacity-70 mt-1">
+                        <span>
+                          {format(new Date(message.sentAt), "dd/MM/yyyy HH:mm")}
+                        </span>
+                        {message.direction === 'outgoing' && message.status && (
+                          <span className="capitalize">{message.status}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {conversationData.messages.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  Nenhuma mensagem nesta conversa
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+              Erro ao carregar conversa
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -138,7 +138,7 @@ export interface IStorage {
   getMessage(id: string): Promise<Message | undefined>;
   getMessageByExternalId(externalId: string): Promise<Message | undefined>;
   createMessage(message: InsertMessage): Promise<Message>;
-  getMessagesByConversation(conversationId: string): Promise<Message[]>;
+  getMessagesByConversation(conversationId: string, startedAt?: Date): Promise<Message[]>;
   deleteMessage(id: string): Promise<boolean>;
   getAllTickets(): Promise<Ticket[]>;
 
@@ -739,9 +739,16 @@ export class DatabaseStorage implements IStorage {
     return message;
   }
 
-  async getMessagesByConversation(conversationId: string): Promise<Message[]> {
+  async getMessagesByConversation(conversationId: string, startedAt?: Date): Promise<Message[]> {
+    const conditions = [eq(messages.conversationId, conversationId)];
+    
+    // Se startedAt foi fornecido, filtrar mensagens apenas após essa data
+    if (startedAt) {
+      conditions.push(gte(messages.sentAt, startedAt));
+    }
+    
     return await db.select().from(messages)
-      .where(eq(messages.conversationId, conversationId))
+      .where(and(...conditions))
       .orderBy(asc(messages.sentAt)); // Ordem ascendente (mais antiga primeiro)
   }
 

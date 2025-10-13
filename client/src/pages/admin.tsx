@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -67,6 +67,10 @@ export default function AdminPanel() {
   const [selectedCompany, setSelectedCompany] = useState<CompanyWithStats | null>(null);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
+  
+  useEffect(() => {
+    document.title = 'FivConnect - Painel Administrativo';
+  }, []);
   const [showUsersModal, setShowUsersModal] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [showChannelsModal, setShowChannelsModal] = useState(false);

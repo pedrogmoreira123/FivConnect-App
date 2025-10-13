@@ -502,7 +502,7 @@ export class WhapiService {
           });
           this.logger.info(`[WhapiService] Sucesso no endpoint: ${endpoint}`);
           return response.data;
-        } catch (endpointError) {
+        } catch (endpointError: any) {
           this.logger.warn(`[WhapiService] Endpoint ${endpoint} falhou: ${endpointError.response?.status}`);
           continue;
         }
@@ -555,7 +555,7 @@ export class WhapiService {
             status: response.data?.status || 'connected',
             connected: response.data?.connected !== false
           };
-        } catch (endpointError) {
+        } catch (endpointError: any) {
           this.logger.warn(`[WhapiService] Endpoint de status ${endpoint} falhou: ${endpointError.response?.status}`);
           continue;
         }
@@ -929,9 +929,9 @@ export class WhapiService {
       // Automaticamente configurar webhook após criação
       if (response.data.token) {
         try {
-          await this.configureWebhook(response.data.token, process.env.WEBHOOK_URL || 'https://app.fivconnect.net/api/whatsapp/webhook');
+          await this.configureWebhook(response.data.token);
           this.logger.info(`[WhapiService] Webhook configurado automaticamente para o canal ${response.data.id}`);
-        } catch (webhookError) {
+        } catch (webhookError: any) {
           this.logger.warn(`[WhapiService] Erro ao configurar webhook automaticamente:`, webhookError);
         }
       }
@@ -1021,6 +1021,85 @@ export class WhapiService {
     } catch (error: any) {
       this.logger.error(`[WhapiService] Erro ao estender canal:`, error.response?.data || error.message);
       throw error;
+    }
+  }
+
+  /**
+   * Enviar mídia usando endpoint unificado /messages/media/{type}
+   * Suporta: image, video, audio, voice, document, sticker
+   * Documentação: https://whapi.readme.io/reference/sendmediamessage
+   */
+  async sendMediaMessageWithToken(
+    to: string, 
+    mediaType: 'image' | 'video' | 'audio' | 'voice' | 'document' | 'sticker',
+    mediaUrl: string, 
+    options: {
+      caption?: string;
+      fileName?: string;
+      token: string;
+    }
+  ): Promise<any> {
+    this.logger.info(`📤 Enviando ${mediaType} para ${to} via endpoint unificado`);
+    
+    const payload: any = {
+      to: to,
+      media: mediaUrl // Pode ser URL, Base64, ou media_id
+    };
+
+    if (options.caption) {
+      payload.caption = options.caption;
+    }
+    
+    if (mediaType === 'document' && options.fileName) {
+      payload.fileName = options.fileName;
+    }
+
+    try {
+      const response = await axios.post(
+        `${this.apiUrl}messages/media/${mediaType}`,
+        payload,
+        {
+          headers: {
+            'Authorization': `Bearer ${options.token}`,
+            'Content-Type': 'application/json',
+          },
+          timeout: 60000 // 60s para uploads grandes
+        }
+      );
+      
+      this.logger.info(`✅ ${mediaType} enviado com sucesso para ${to}`);
+      return response.data;
+    } catch (error) {
+      this.handleApiError(error, 'sendMediaMessageWithToken');
+      throw new Error(`Falha ao enviar ${mediaType}.`);
+    }
+  }
+
+  /**
+   * Get WhatsApp profile picture
+   */
+  async getProfilePicture(phoneNumber: string, channelToken?: string): Promise<string | null> {
+    try {
+      // Use channel token if provided, otherwise use default token
+      const token = channelToken || this.apiToken;
+      if (!token) {
+        this.logger.warn('[WhapiService] No token available for profile picture request');
+        return null;
+      }
+
+      const chatId = phoneNumber.includes('@') ? phoneNumber : `${phoneNumber}@s.whatsapp.net`;
+      const response = await axios.get(`${this.gateApiUrl}contacts/${chatId}/profile-picture`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000
+      });
+      
+      return response.data?.profilePictureUrl || response.data?.url || null;
+    } catch (error: any) {
+      this.logger.warn(`[WhapiService] Erro ao buscar foto de perfil: ${error.message}`);
+      return null;
     }
   }
 

@@ -174,3 +174,4 @@ export function WaveformAudioPlayer({ src, messageId }: WaveformAudioPlayerProps
     </div>
   );
 }
+

@@ -55,6 +55,10 @@ const WhatsAppSettings: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   
+  useEffect(() => {
+    document.title = 'FivConnect - Conexões Whatsapp';
+  }, []);
+  
   const [connections, setConnections] = useState<WhatsAppConnection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -150,6 +150,10 @@ export default function Financeiro() {
   const [activeTab, setActiveTab] = useState("overview");
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
+  
+  useEffect(() => {
+    document.title = 'FivConnect - Financeiro';
+  }, []);
   const [newFeature, setNewFeature] = useState("");
   
   const { user } = useAuth();

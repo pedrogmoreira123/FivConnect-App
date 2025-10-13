@@ -5,6 +5,7 @@ import "./types"; // Import type extensions
 import { storage } from "./storage";
 // import { setupEvolutionRoutes } from "./evolution-routes"; // Removido - migrado para Whapi.Cloud
 import { setupWhatsAppRoutes } from "./whatsapp-routes";
+import ticketsRoutes from "./tickets-routes";
 import { 
   insertUserSchema,
   insertClientSchema,
@@ -416,7 +417,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         conversationId,
         senderId: req.user.id,
-        direction: 'outgoing'
+        direction: 'outgoing',
+        sentAt: new Date() // Data atual para mensagens de envio
       });
       const message = await storage.createMessage(messageData);
       res.status(201).json(message);
@@ -1687,6 +1689,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Setup WhatsApp routes (Whapi.Cloud)
   const io = app.get('io');
   setupWhatsAppRoutes(app, io);
+
+  // Setup Tickets routes
+  app.use('/api/tickets', ticketsRoutes);
 
   return app;
 }

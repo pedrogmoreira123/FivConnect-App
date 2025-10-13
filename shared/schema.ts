@@ -67,6 +67,7 @@ export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   contactName: text("contact_name").notNull(),
   contactPhone: text("contact_phone").notNull(),
+  profilePictureUrl: text("profile_picture_url"), // WhatsApp profile picture URL
   clientId: varchar("client_id").references(() => clients.id), // Link to clients table
   companyId: varchar("company_id").notNull(), // Company that owns this conversation
   whatsappConnectionId: varchar("whatsapp_connection_id").references(() => whatsappConnections.id), // NEW: Link to WhatsApp connection
@@ -114,6 +115,7 @@ export const messages = pgTable("messages", {
   // Environment field to separate test from production data
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   isRead: boolean("is_read").default(false),
+  readAt: timestamp("read_at"), // Timestamp when message was read
   status: text("status", { enum: ["sent", "delivered", "read", "failed"] }).default("sent"),
   sentAt: timestamp("sent_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
@@ -170,6 +172,7 @@ export const clients = pgTable("clients", {
   phone: text("phone").notNull().unique(),
   email: text("email"),
   notes: text("notes"),
+  profilePictureUrl: text("profile_picture_url"), // WhatsApp profile picture URL
   companyId: varchar("company_id").notNull(), // Company that owns this client
   // Environment field to separate test from production data
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),

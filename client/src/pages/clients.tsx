@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,6 +71,10 @@ export default function ClientsPage() {
   const { t } = useT();
   const isMobile = useMobile();
   const { toast } = useToast();
+  
+  useEffect(() => {
+    document.title = 'FivConnect - Clientes';
+  }, []);
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
@@ -531,6 +535,19 @@ export default function ClientsPage() {
                 data-testid={`client-${client.id}`}
               >
                 <div className="flex items-center space-x-3">
+                  {client.profilePictureUrl ? (
+                    <img 
+                      src={client.profilePictureUrl} 
+                      alt={client.name} 
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
+                      <span className="text-sm font-medium text-primary-foreground">
+                        {client.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-foreground truncate">
                       {client.name}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +22,10 @@ import {
 
 export default function EnhancedReportsPage() {
   const { t } = useT();
+  
+  useEffect(() => {
+    document.title = 'FivConnect - Relatorios';
+  }, []);
   
   // Set default date range to today
   const today = new Date();

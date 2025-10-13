@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import QueueVolumeChart from '@/components/charts/queue-volume-chart';
 import WeeklyPerformanceChart from '@/components/charts/weekly-performance-chart';
@@ -11,6 +12,10 @@ import { MessageCircle, UserCheck, Clock, CheckCircle, User, Check, Plus } from 
 
 export default function DashboardPage() {
   const { t } = useT();
+  
+  useEffect(() => {
+    document.title = 'FivConnect - Dashboard';
+  }, []);
   
   // Fetch real dashboard data
   const { data: kpiData = { openConversations: 0, onlineAgents: 0, avgWaitingTime: '0min', completedConversations: 0 } } = useQuery({
