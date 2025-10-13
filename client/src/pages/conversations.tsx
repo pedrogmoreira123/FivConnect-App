@@ -145,6 +145,23 @@ const formatDuration = (seconds: number) => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
+// Função para extrair nome do documento
+const getDocumentName = (message: Message) => {
+  // Tentar pegar do content primeiro
+  if (message.content && !message.content.startsWith('[')) {
+    return message.content;
+  }
+  
+  // Extrair do URL
+  if (message.mediaUrl) {
+    const urlParts = message.mediaUrl.split('/');
+    const fileName = urlParts[urlParts.length - 1];
+    return decodeURIComponent(fileName);
+  }
+  
+  return 'Documento';
+};
+
 // Função para formatar preview da última mensagem
 const formatLastMessagePreview = (lastMessage: string) => {
   if (!lastMessage) return 'Nenhuma mensagem ainda.';
@@ -165,6 +182,8 @@ const formatLastMessagePreview = (lastMessage: string) => {
         return `📷 Imagem`;
       case 'document':
         return `📄 Documento`;
+      case 'sticker':
+        return `🎭 Figurinha`;
       default:
         return lastMessage;
     }
@@ -388,10 +407,10 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
                       </div>
                       <div className="flex-1 min-w-0">
                 <p className="font-medium text-gray-900 truncate text-sm">
-                  {isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contact_name || 'Cliente')}
+                  {isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contact_name || (item as any).contactName || 'Cliente')}
                 </p>
                 <p className="text-sm text-gray-500 truncate">
-                  {isContacts ? (item as Contact).phone : formatLastMessagePreview((item as Conversation).last_message || '')}
+                  {isContacts ? (item as Contact).phone : formatLastMessagePreview((item as Conversation).last_message || (item as any).lastMessage || '')}
                 </p>
                         </div>
               {!isContacts && (
@@ -813,7 +832,7 @@ const ChatArea = ({
               {conversation.contact_name || 'Cliente'}
                         </h3>
             <p className="text-sm text-gray-500">
-              {conversation.contact_phone?.replace('@s.whatsapp.net', '') || 'Número não disponível'}
+              {(conversation.contact_phone || (conversation as any).contactPhone)?.replace('@s.whatsapp.net', '') || 'Número não disponível'}
                         </p>
                       </div>
                     </div>
@@ -899,6 +918,13 @@ const ChatArea = ({
                           messageId={message.id}
                         />
                       )}
+                      {(message.messageType === 'sticker' || message.messageType === 'stickerMessage') && message.mediaUrl && (
+                        <img 
+                          src={message.mediaUrl} 
+                          alt="Sticker" 
+                          className="max-w-[200px] max-h-[200px] object-contain"
+                        />
+                      )}
                       {(message.messageType === 'document' || message.messageType === 'documentMessage') && (
                         <div className="flex items-center gap-2 p-3 bg-gray-100 rounded-lg">
                           <FileText className="h-6 w-6 text-gray-600" />
@@ -909,7 +935,7 @@ const ChatArea = ({
                               rel="noopener noreferrer"
                               className="text-blue-600 hover:underline font-medium"
                             >
-                              📄 {message.content || 'Documento'}
+                              📄 {getDocumentName(message)}
                             </a>
                             <div className="text-xs text-gray-500 mt-1">
                               Clique para abrir
@@ -928,16 +954,12 @@ const ChatArea = ({
                     </div>
                   )}
 
-                    {/* Só mostrar texto se não for apenas mídia */}
+                    {/* SEMPRE mostrar texto se existir e não for placeholder */}
                     {message.content && 
-                     !message.content.includes('[Mídia:') && 
-                     !message.content.includes('[Mídia: audio]') && 
-                     !message.content.includes('[Mídia: audioMessage]') && 
-                     !message.content.includes('[Mídia: image]') && 
-                     !message.content.includes('[Mídia: video]') && 
-                     !message.content.includes('[Mídia: document]') && 
+                     !message.content.startsWith('[Mídia') && 
+                     !message.content.match(/^\[(\w+):(\d+)\]$/) && 
                      message.content.trim() !== '' && (
-                      <p className="text-sm leading-relaxed">{message.content}</p>
+                      <p className="text-sm leading-relaxed mt-2">{message.content}</p>
                     )}
                   <div className="flex items-center justify-end mt-1">
                     <span className="text-xs opacity-70">
@@ -1687,24 +1709,18 @@ export default function ConversationsPage() {
       {/* Popup de Imagem */}
       {imagePopup && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-          <div className="relative max-w-4xl max-h-4xl bg-white rounded-lg overflow-hidden">
-            {/* Botão de fechar */}
-            <button
-              onClick={() => setImagePopup(null)}
-              className="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-all"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            
+          <div className="relative max-w-4xl max-h-[90vh] flex flex-col">
             {/* Imagem */}
-            <img
-              src={imagePopup.src}
-              alt={imagePopup.alt}
-              className="max-w-full max-h-full object-contain"
-            />
+            <div className="relative bg-black rounded-t-lg overflow-hidden">
+              <img 
+                src={imagePopup.src} 
+                alt={imagePopup.alt}
+                className="max-w-full max-h-[70vh] object-contain"
+              />
+            </div>
             
-            {/* Botões de ação */}
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3">
+            {/* Botões abaixo da imagem */}
+            <div className="bg-gray-800 p-4 rounded-b-lg flex gap-3 justify-center">
               <button
                 onClick={() => {
                   const link = document.createElement('a');
@@ -1712,17 +1728,24 @@ export default function ConversationsPage() {
                   link.download = `imagem-${Date.now()}.jpg`;
                   link.click();
                 }}
-                className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
+                className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg flex items-center gap-2"
               >
                 <Download className="h-4 w-4" />
                 Download
               </button>
               <button
                 onClick={() => window.open(imagePopup.src, '_blank')}
-                className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600 transition-colors"
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg flex items-center gap-2"
               >
                 <Eye className="h-4 w-4" />
                 Abrir em Nova Aba
+              </button>
+              <button
+                onClick={() => setImagePopup(null)}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg flex items-center gap-2"
+              >
+                <X className="h-4 w-4" />
+                Fechar
               </button>
             </div>
           </div>
