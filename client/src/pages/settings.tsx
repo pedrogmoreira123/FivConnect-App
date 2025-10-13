@@ -305,20 +305,70 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium">Notificações Persistentes</h4>
+                <div>
+                  <h3 className="font-semibold text-lg mb-4">Sons de Notificação</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Configure alertas sonoros para mensagens e conversas em espera
+                  </p>
+                </div>
+
+                {/* Som para Novas Mensagens */}
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex-1">
+                    <Label className="font-medium">Som para Novas Mensagens</Label>
                     <p className="text-sm text-muted-foreground">
-                      Alertas contínuos para tickets pendentes
+                      Reproduz um som quando uma nova mensagem chega
                     </p>
                   </div>
                   <Switch
-                    checked={localSettings.notifications.persistent}
-                    onCheckedChange={(value) => handleNotificationChange('persistent', value)}
-                    data-testid="switch-persistent-notifications"
+                    checked={localSettings.notifications.conversationSound}
+                    onCheckedChange={(value) => handleNotificationChange('conversationSound', value)}
+                    data-testid="switch-conversation-sound"
                   />
                 </div>
 
+                {/* Som para Mensagens em Espera */}
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex-1">
+                    <Label className="font-medium">Som para Mensagens em Espera</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Alerta quando há conversas aguardando atendimento
+                    </p>
+                  </div>
+                  <Switch
+                    checked={localSettings.notifications.waitingSound}
+                    onCheckedChange={(value) => handleNotificationChange('waitingSound', value)}
+                    data-testid="switch-waiting-sound"
+                  />
+                </div>
+
+                {/* Tipo de Alerta de Espera */}
+                {localSettings.notifications.waitingSound && (
+                  <div className="ml-4 space-y-3 p-4 bg-muted/50 rounded-lg">
+                    <Label className="font-medium">Tipo de Alerta</Label>
+                    <Select
+                      value={localSettings.notifications.waitingSoundType}
+                      onValueChange={(value) => handleNotificationChange('waitingSoundType', value)}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Selecione o tipo de alerta" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="beep">Bip Único</SelectItem>
+                        <SelectItem value="continuous">Som Constante (Loop)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {localSettings.notifications.waitingSoundType === 'beep' 
+                        ? 'Um único bip será reproduzido quando houver mensagem em espera' 
+                        : 'Um som será reproduzido continuamente até que a mensagem seja atendida'}
+                    </p>
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* Configurações Antigas Mantidas (opcional) */}
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="font-medium">Notificações Pop-up</h4>
@@ -333,36 +383,8 @@ export default function SettingsPage() {
                   />
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium">Notificações do Navegador</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Ativação através do navegador
-                    </p>
-                  </div>
-                  <Switch
-                    checked={localSettings.notifications.browser}
-                    onCheckedChange={(value) => handleNotificationChange('browser', value)}
-                    data-testid="switch-browser-notifications"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium">Sons de Notificação</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Alertas sonoros para novas mensagens
-                    </p>
-                  </div>
-                  <Switch
-                    checked={localSettings.notifications.sound}
-                    onCheckedChange={(value) => handleNotificationChange('sound', value)}
-                    data-testid="switch-sound-notifications"
-                  />
-                </div>
-
-                {/* Configurações Específicas de Som */}
-                {localSettings.notifications.sound && (
+                {/* Configurações Específicas de Som - DEPRECATED */}
+                {false && localSettings.notifications.sound && (
                   <div className="ml-6 space-y-4 border-l-2 border-muted pl-4">
                     <div className="flex items-center justify-between">
                       <div>

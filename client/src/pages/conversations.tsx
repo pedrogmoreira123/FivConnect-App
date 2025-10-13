@@ -2,7 +2,6 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import apiClient from '../lib/api-client';
 import { useAuth } from '../hooks/use-auth';
 import io from 'socket.io-client';
-import { Message } from '../components/messages/types';
 
 // Interfaces e tipos
 interface User {
@@ -14,18 +13,29 @@ interface User {
 
 interface Conversation {
   id: string;
-  contactName?: string;
-  contactPhone?: string;
+  contact_name?: string;
+  contact_phone?: string;
   status: 'waiting' | 'in_progress' | 'finished';
-  lastMessage?: string;
-  updatedAt?: string;
+  last_message?: string;
+  updated_at?: string;
   unreadCount?: number;
   companyId?: string;
   assignedAgentId?: string;
 }
 
-// Usar o tipo Message importado
-type ChatMessage = Message;
+interface Message {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  messageType: string;
+  direction: 'incoming' | 'outgoing';
+  status?: 'sending' | 'sent' | 'delivered' | 'read';
+  mediaUrl?: string;
+  sentAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 interface Contact {
   id: string;
@@ -62,14 +72,12 @@ interface UnifiedListProps {
 
 interface ChatAreaProps {
   conversation: Conversation | null;
-  messages: ChatMessage[];
+  messages: Message[];
   onSendMessage: (text: string, quotedMessageId?: string) => void;
   onTakeConversation: (conversationId: string) => void;
   onFinishConversation: (conversationId: string) => void;
   onSendMedia: (file: File, quotedMessageId?: string) => void;
   onMessageInput?: (text: string) => void;
-  onImageClick?: (src: string, alt: string) => void;
-  currentUser?: User | null;
 }
 
 // Função para tocar som de notificação
@@ -360,44 +368,6 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
   </div>
 );
 
-// Função helper para formatar data/hora de mensagens
-const formatMessageTime = (dateString: string) => {
-  const messageDate = new Date(dateString);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  
-  // Normalizar datas para comparação (ignorar hora)
-  const isToday = messageDate.toDateString() === today.toDateString();
-  const isYesterday = messageDate.toDateString() === yesterday.toDateString();
-  
-  if (isToday) {
-    // Se for hoje, mostrar só hora
-    return messageDate.toLocaleTimeString('pt-BR', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      timeZone: 'America/Sao_Paulo'
-    });
-  } else if (isYesterday) {
-    // Se for ontem, mostrar "Ontem HH:MM"
-    const time = messageDate.toLocaleTimeString('pt-BR', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      timeZone: 'America/Sao_Paulo'
-    });
-    return `Ontem ${time}`;
-  } else {
-    // Se for outro dia, mostrar "DD/MM/YYYY HH:MM"
-    return messageDate.toLocaleString('pt-BR', { 
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit', 
-      minute: '2-digit',
-      timeZone: 'America/Sao_Paulo'
-    });
-  }
-};
 
 // Componente de Área de Chat
 const ChatArea = ({ 
@@ -407,9 +377,7 @@ const ChatArea = ({
   onTakeConversation, 
   onFinishConversation,
   onSendMedia,
-  onMessageInput,
-  onImageClick,
-  currentUser
+  onMessageInput
 }: ChatAreaProps) => {
   const [text, setText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -637,8 +605,7 @@ const ChatArea = ({
       });
       
       // Verificar se o FormData tem o arquivo
-      const formDataEntries = Array.from(formData.entries());
-      for (let [key, value] of formDataEntries) {
+      for (let [key, value] of formData.entries()) {
         console.log('🎤 FormData entry:', key, value);
       }
       
@@ -714,20 +681,20 @@ const ChatArea = ({
       const localUrl = URL.createObjectURL(file);
       
       // Criar mensagem otimista
-      const optimisticMessage: ChatMessage = {
+      const optimisticMessage: Message = {
         id: `temp_${Date.now()}`,
-        conversationId: conversation!.id,
-        senderId: currentUser?.id || 'unknown',
+        conversation_id: conversation!.id,
         content: '',
-        messageType: file.type.startsWith('image/') ? 'image' : 
+        message_type: file.type.startsWith('image/') ? 'image' : 
                      file.type.startsWith('video/') ? 'video' : 
                      file.type.startsWith('audio/') ? 'audio' : 'document',
         direction: 'outgoing',
-        mediaUrl: localUrl,
+        media_url: localUrl,
         status: 'sending',
-        sentAt: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        sent_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        is_read: false,
+        environment: 'production'
       };
 
       // Enviar mídia via função do componente pai
@@ -855,7 +822,7 @@ const ChatArea = ({
                           src={message.mediaUrl} 
                           alt="Imagem" 
                           className="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={() => onImageClick?.(message.mediaUrl || '', 'Imagem')}
+                          onClick={() => setImagePopup({ src: message.mediaUrl, alt: 'Imagem' })}
                         />
                       )}
                       {(message.messageType === 'video' || message.messageType === 'videoMessage') && (
@@ -900,8 +867,12 @@ const ChatArea = ({
                     )}
                   <div className="flex items-center justify-end mt-1">
                     <span className="text-xs opacity-70">
-                      {formatMessageTime(message.sentAt || message.createdAt)}
-                    </span>
+                      {new Date(message.sentAt || message.createdAt).toLocaleTimeString('pt-BR', { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        timeZone: 'America/Sao_Paulo'
+                      })}
+                        </span>
                       {message.direction === 'outgoing' && (
                       <div className="ml-1 flex">
                         {message.status === 'sending' && (
@@ -922,7 +893,7 @@ const ChatArea = ({
                             <CheckCircle2 className="h-3 w-3 text-blue-500 -ml-1" />
                           </>
                         )}
-                        {(message.status as any) === 'failed' && (
+                        {message.status === 'failed' && (
                           <XCircle className="h-3 w-3 text-red-500" />
                         )}
                         {!message.status && (
@@ -1113,13 +1084,11 @@ export default function ConversationsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [imagePopup, setImagePopup] = useState<{ src: string; alt: string } | null>(null);
-  const [socketConnected, setSocketConnected] = useState(false);
-  const [lastPollTime, setLastPollTime] = useState<number>(0);
   const { user } = useAuth() as { user: User | null };
 
   const companyId = useMemo(() => user?.company?.id, [user]);
@@ -1134,6 +1103,7 @@ export default function ConversationsPage() {
   }, [unreadCount]);
 
   useEffect(() => {
+    console.log('🔍 [DEBUG] useEffect principal executado. companyId:', companyId, 'user:', user?.id, 'selectedConversation:', selectedConversation?.id);
     if (!companyId) return;
 
     // Carregar dados iniciais
@@ -1141,7 +1111,6 @@ export default function ConversationsPage() {
     loadContacts();
 
     // Configurar WebSocket
-    console.log('[FRONTEND] Iniciando configuração Socket.IO...');
     const socket = io(window.location.origin, {
       auth: {
         token: localStorage.getItem('authToken') || 'debug-token'
@@ -1152,81 +1121,42 @@ export default function ConversationsPage() {
       autoConnect: true
     });
 
-    console.log('[FRONTEND] Socket.IO configurado:', {
-      url: window.location.origin,
-      transports: ['polling'],
-      authToken: localStorage.getItem('authToken') ? 'presente' : 'ausente'
-    });
-
     // Eventos WebSocket
     socket.on('connect', () => {
-      console.log('🔌 [FRONTEND] WebSocket conectado com sucesso');
-      console.log('[FRONTEND] Socket ID:', socket.id);
-      console.log('[FRONTEND] Socket conectado:', socket.connected);
-      setSocketConnected(true);
+      console.log('🔌 WebSocket conectado');
     });
 
-    socket.on('disconnect', (reason) => {
-      console.log('🔌 [FRONTEND] WebSocket desconectado:', reason);
-      console.log('[FRONTEND] Socket conectado:', socket.connected);
-      setSocketConnected(false);
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('❌ [FRONTEND] Erro de conexão Socket.IO:', error);
-      setSocketConnected(false);
+    socket.on('disconnect', () => {
+      console.log('🔌 WebSocket desconectado');
     });
 
     socket.on('newMessage', (messageData) => {
-      const receivedAt = Date.now();
-      console.log('📨 [FRONTEND] Nova mensagem recebida via WebSocket:', {
-        messageId: messageData.id,
-        conversationId: messageData.conversationId,
-        direction: messageData.direction,
-        content: messageData.content?.substring(0, 50) + '...',
-        selectedConversationId: selectedConversation?.id,
-        belongsToCurrentConversation: selectedConversation && messageData.conversationId === selectedConversation.id,
-        receivedAt: new Date().toISOString()
-      });
-      
-      // Calcular latência se tiver createdAt
-      if (messageData.createdAt) {
-        const latency = receivedAt - new Date(messageData.createdAt).getTime();
-        console.log('[FRONTEND] Latência desde criação:', latency, 'ms');
-      }
+      console.log('🔍 [DEBUG] newMessage listener executado:', messageData);
+      console.log('📨 Nova mensagem recebida via WebSocket:', messageData);
       
       // Verificar se a mensagem pertence à conversa atual
       if (selectedConversation && messageData.conversationId === selectedConversation.id) {
-        console.log('[FRONTEND] Mensagem pertence à conversa atual, atualizando estado...');
         setMessages(prev => {
           // Verificar se a mensagem já existe
           const exists = prev.some(msg => msg.id === messageData.id);
           if (!exists) {
-            console.log('[FRONTEND] Adicionando nova mensagem ao estado');
             // Adicionar nova mensagem e ordenar por timestamp
             const newMessages = [...prev, messageData];
             return newMessages.sort((a, b) => 
-              new Date(a.createdAt || a.sentAt).getTime() - new Date(b.createdAt || b.sentAt).getTime()
+              new Date(a.sentAt || a.createdAt).getTime() - new Date(b.sentAt || b.createdAt).getTime()
             );
-          } else {
-            console.log('[FRONTEND] Mensagem já existe, ignorando');
           }
           return prev;
         });
         
         // Tocar som de notificação para mensagens recebidas
         if (messageData.direction === 'incoming') {
-          console.log('[FRONTEND] Reproduzindo som de notificação');
           playNotificationSound();
         }
-      } else {
-        console.log('[FRONTEND] Mensagem não pertence à conversa atual, apenas atualizando lista');
       }
       
-      // Atualizar lista de conversas apenas para mensagens recebidas (para atualizar preview)
-      if (messageData.direction === 'incoming') {
-        loadConversations();
-      }
+      // Atualizar lista de conversas
+      loadConversations();
     });
 
     socket.on('messageStatusUpdate', (data) => {
@@ -1241,28 +1171,15 @@ export default function ConversationsPage() {
       );
     });
 
-    socket.on('conversationUpdate', (conversationData) => {
-      console.log('[FRONTEND] Conversa atualizada via WebSocket:', conversationData);
-      
-      // Recarregar lista de conversas para refletir mudanças de status
-      loadConversations();
-      
-      // Se for a conversa selecionada, atualizar estado local
-      if (selectedConversation && conversationData.id === selectedConversation.id) {
-        setSelectedConversation(prev => ({
-          ...prev,
-          ...conversationData
-        }));
-      }
-    });
-
     socket.on('newConversation', (conversation) => {
+      console.log('🔍 [DEBUG] newConversation listener executado:', conversation);
       console.log('💬 Nova conversa criada:', conversation);
       loadConversations();
       playNotificationSound();
     });
 
     socket.on('conversationUpdate', (conversation) => {
+      console.log('🔍 [DEBUG] conversationUpdate listener executado:', conversation);
       console.log('🔄 Conversa atualizada:', conversation);
       loadConversations();
     });
@@ -1277,17 +1194,8 @@ export default function ConversationsPage() {
 
     // Fallback: Polling para mensagens da conversa selecionada (caso WebSocket falhe)
     const pollMessages = async () => {
-      // Debounce: evitar chamadas muito frequentes
-      const now = Date.now();
-      if (now - lastPollTime < 5000) { // Mínimo 5 segundos entre chamadas
-        console.log('[FRONTEND] Polling de mensagens ignorado (debounce)');
-        return;
-      }
-      setLastPollTime(now);
-      
       try {
         if (selectedConversation) {
-          console.log('[FRONTEND] Executando polling de mensagens...');
           const response = await apiClient.get(`/api/whatsapp/conversations/${selectedConversation.id}/messages`);
           
           if (response.data && Array.isArray(response.data)) {
@@ -1318,39 +1226,31 @@ export default function ConversationsPage() {
       }
     };
 
-    // Polling inicial apenas
+    // Polling inicial
     pollMessages();
     pollConversations();
 
-    // Remover polling contínuo - WebSocket já cuida da atualização em tempo real
-    // const messagesInterval = setInterval(pollMessages, 10000);
-    // const conversationsInterval = setInterval(pollConversations, 15000);
-    // const syncInterval = setInterval(syncMessages, 30000);
+    // Polling em tempo real para mensagens (3 segundos) e conversas (10 segundos)
+    const messagesInterval = setInterval(pollMessages, 3000);
+    const conversationsInterval = setInterval(pollConversations, 10000);
+    const syncInterval = setInterval(syncMessages, 10000); // Sincronizar a cada 10 segundos
 
     return () => {
-      // clearInterval(messagesInterval);
-      // clearInterval(conversationsInterval);
-      // clearInterval(syncInterval);
+      clearInterval(messagesInterval);
+      clearInterval(conversationsInterval);
+      clearInterval(syncInterval);
       socket.disconnect();
-      console.log('🔄 WebSocket desconectado');
+      console.log('🔄 WebSocket e polling interrompidos');
     };
   }, [companyId, user, selectedConversation]);
 
   const loadConversations = async () => {
     try {
-      console.log('[FRONTEND] Carregando conversas...');
       // Usar rotas de teste temporariamente
       const [waitingRes, activeRes] = await Promise.all([
         apiClient.get('/api/whatsapp/conversations?status=waiting'),
         apiClient.get('/api/whatsapp/conversations?status=in_progress')
       ]);
-      
-      console.log('[FRONTEND] Respostas das APIs:', {
-        waitingStatus: waitingRes.status,
-        waitingDataLength: Array.isArray(waitingRes.data) ? waitingRes.data.length : 'not array',
-        activeStatus: activeRes.status,
-        activeDataLength: Array.isArray(activeRes.data) ? activeRes.data.length : 'not array'
-      });
       
       // Garantir que sempre temos arrays válidos
       const waitingData = Array.isArray(waitingRes.data) ? waitingRes.data : [];
@@ -1395,19 +1295,11 @@ export default function ConversationsPage() {
   };
 
   const handleSelectConversation = async (conversation: Conversation) => {
-    console.log('[FRONTEND] Selecionando conversa:', {
-      conversationId: conversation.id,
-      contactName: conversation.contactName,
-      status: conversation.status,
-      unreadCount: conversation.unreadCount
-    });
-    
     setSelectedConversation(conversation);
     setSelectedContact(null);
     
     // Marcar conversa como lida
     if (conversation.unreadCount && conversation.unreadCount > 0) {
-      console.log('[FRONTEND] Marcando conversa como lida, removendo', conversation.unreadCount, 'mensagens não lidas');
       setUnreadCount(prev => Math.max(0, prev - (conversation.unreadCount || 0)));
       setWaitingConversations(prev => 
         prev.map(conv => 
@@ -1426,26 +1318,15 @@ export default function ConversationsPage() {
     }
     
     try {
-      console.log('[FRONTEND] Carregando mensagens da conversa:', conversation.id);
       // Usar rota de teste temporariamente
       const res = await apiClient.get(`/api/whatsapp/conversations/${conversation.id}/messages`);
-      
-      console.log('[FRONTEND] Resposta da API de mensagens:', {
-        status: res.status,
-        dataType: Array.isArray(res.data) ? 'array' : typeof res.data,
-        dataLength: Array.isArray(res.data) ? res.data.length : 'N/A'
-      });
       
       // Garantir que sempre temos um array válido
       const messagesData = Array.isArray(res.data) ? res.data : [];
       console.log(`[FRONTEND] Carregadas ${messagesData.length} mensagens para conversa ${conversation.id}`);
-      // Ordenar mensagens por data
-      const sortedMessages = messagesData.sort((a, b) => 
-        new Date(a.createdAt || a.sentAt).getTime() - new Date(b.createdAt || b.sentAt).getTime()
-      );
-      setMessages(sortedMessages);
+      setMessages(messagesData);
     } catch (error) {
-      console.error("[FRONTEND] Erro ao buscar mensagens:", error);
+      console.error("Erro ao buscar mensagens:", error);
       setMessages([]);
     }
   };
@@ -1648,22 +1529,13 @@ export default function ConversationsPage() {
         <div className="p-4 border-b">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-bold text-gray-800">Chat</h1>
-            <div className="flex items-center gap-4">
-              {/* Indicador de status de conexão */}
-              <div className="flex items-center space-x-2">
-                <div className={`w-2 h-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span className="text-xs text-gray-500">
-                  {socketConnected ? 'Conectado' : 'Desconectado'}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <button className="p-2 hover:bg-gray-100 rounded-lg">
-                  <MessageCircle className="h-4 w-4" />
-                </button>
-                <button className="p-2 hover:bg-gray-100 rounded-lg">
-                  <UserPlus className="h-4 w-4" />
-                </button>
-              </div>
+            <div className="flex gap-2">
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <MessageCircle className="h-4 w-4" />
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-lg">
+                <UserPlus className="h-4 w-4" />
+              </button>
             </div>
           </div>
 
@@ -1734,8 +1606,6 @@ export default function ConversationsPage() {
         onFinishConversation={handleFinishConversation}
         onSendMedia={handleSendMedia}
         onMessageInput={handleMessageInput}
-        onImageClick={(src, alt) => setImagePopup({ src, alt })}
-        currentUser={user}
       />
       
       {/* Popup de Imagem */}

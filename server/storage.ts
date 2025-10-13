@@ -742,7 +742,7 @@ export class DatabaseStorage implements IStorage {
   async getMessagesByConversation(conversationId: string): Promise<Message[]> {
     return await db.select().from(messages)
       .where(eq(messages.conversationId, conversationId))
-      .orderBy(desc(messages.sentAt));
+      .orderBy(asc(messages.sentAt)); // Ordem ascendente (mais antiga primeiro)
   }
 
   async getAllTickets(): Promise<Ticket[]> {

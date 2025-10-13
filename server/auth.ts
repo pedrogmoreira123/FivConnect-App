@@ -197,11 +197,8 @@ export async function logoutUser(token: string): Promise<boolean> {
  * Validate session and get user
  */
 export async function validateSession(token: string): Promise<{ user: Omit<User, 'password'>; session: any } | null> {
-  console.log('🔍 [BACKEND] validateSession - Iniciando validação do token:', token.substring(0, 20) + '...');
-  
   // First verify the JWT
   const payload = verifyToken(token);
-  console.log('🔍 [BACKEND] validateSession - JWT payload decodificado:', !!payload);
   if (!payload) {
     console.log('❌ [BACKEND] validateSession - JWT inválido ou expirado');
     return null;
@@ -209,7 +206,6 @@ export async function validateSession(token: string): Promise<{ user: Omit<User,
 
   // Check if session exists in database
   const session = await storage.getSession(token);
-  console.log('🔍 [BACKEND] validateSession - Sessão encontrada no banco:', !!session);
   if (!session) {
     console.log('❌ [BACKEND] validateSession - Sessão não encontrada ou expirada');
     return null;
@@ -217,7 +213,6 @@ export async function validateSession(token: string): Promise<{ user: Omit<User,
 
   // Get user
   const user = await storage.getUser(payload.userId);
-  console.log('🔍 [BACKEND] validateSession - Usuário encontrado:', !!user);
   if (!user) {
     console.log('❌ [BACKEND] validateSession - Usuário não encontrado');
     return null;
@@ -235,13 +230,8 @@ export async function validateSession(token: string): Promise<{ user: Omit<User,
     role: payload.role as "admin" | "supervisor" | "agent" | "superadmin",
   };
 
-  console.log('✅ [BACKEND] validateSession - Validação completa bem-sucedida para usuário:', user.id);
-  console.log('🔍 [BACKEND] validateSession - CompanyId preservado do JWT:', payload.companyId);
-  console.log('🔍 [BACKEND] validateSession - User final com companyId:', {
-    userId: finalUser.id,
-    role: finalUser.role,
-    companyId: finalUser.companyId
-  });
+  // Log apenas em caso de erro ou para debug específico
+  // console.log('✅ [BACKEND] validateSession - Validação completa bem-sucedida para usuário:', user.id);
   return {
     user: finalUser,
     session
@@ -256,8 +246,9 @@ export async function requireAuth(req: any, res: any, next: any) {
     const authHeader = req.headers.authorization;
     
     // LOG DE DIAGNÓSTICO 1: Verificar cabeçalho recebido
-    console.log('🔍 [BACKEND] requireAuth - Cabeçalho recebido:', authHeader);
-    console.log('🔍 [BACKEND] requireAuth - URL:', req.url, 'Method:', req.method);
+    // Log apenas para debug específico
+    // console.log('🔍 [BACKEND] requireAuth - Cabeçalho recebido:', authHeader);
+    // console.log('🔍 [BACKEND] requireAuth - URL:', req.url, 'Method:', req.method);
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       console.log('❌ [BACKEND] requireAuth - Cabeçalho ausente ou mal formatado');
@@ -267,12 +258,12 @@ export async function requireAuth(req: any, res: any, next: any) {
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
     
     // LOG DE DIAGNÓSTICO 2: Verificar token extraído
-    console.log('🔍 [BACKEND] requireAuth - Token extraído:', token.substring(0, 20) + '...');
+    // console.log('🔍 [BACKEND] requireAuth - Token extraído:', token.substring(0, 20) + '...');
     
     const validation = await validateSession(token);
     
     // LOG DE DIAGNÓSTICO 3: Verificar resultado da validação
-    console.log('🔍 [BACKEND] requireAuth - Validação bem-sucedida:', !!validation);
+    // console.log('🔍 [BACKEND] requireAuth - Validação bem-sucedida:', !!validation);
     
     if (!validation) {
       console.log('❌ [BACKEND] requireAuth - Token inválido ou expirado');
@@ -291,14 +282,14 @@ export async function requireAuth(req: any, res: any, next: any) {
     };
     req.session = validation.session;
     
-    // LOG DE DIAGNÓSTICO 4: Verificar usuário anexado
-    console.log('✅ [BACKEND] requireAuth - Usuário autenticado:', {
-      userId: req.user.id,
-      role: req.user.role,
-      companyId: req.user.companyId
-    });
+    // LOG DE DIAGNÓSTICO 4: Verificar usuário anexado (comentado para reduzir logs)
+    // console.log('✅ [BACKEND] requireAuth - Usuário autenticado:', {
+    //   userId: req.user.id,
+    //   role: req.user.role,
+    //   companyId: req.user.companyId
+    // });
     
-    console.log('[Auth.ts] FINAL req.user ANTES de next():', req.user);
+    // console.log('[Auth.ts] FINAL req.user ANTES de next():', req.user);
     
     next();
   } catch (error) {

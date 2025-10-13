@@ -10,6 +10,12 @@ export interface Message {
   caption?: string;
   fileName?: string;
   quotedMessageId?: string;
+  quotedMessage?: {
+    id: string;
+    content: string;
+    messageType: string;
+    direction: 'incoming' | 'outgoing';
+  };
   metadata?: {
     whapiMessageId?: string;
     originalMessageId?: string;

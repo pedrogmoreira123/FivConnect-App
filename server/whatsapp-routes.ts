@@ -1496,6 +1496,11 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       const timestamp = messageData.timestamp || Math.floor(Date.now() / 1000);
       const messageType = messageData.type || 'text';
       
+      // Log completo do payload para debug de mídias
+      if (messageType !== 'text') {
+        console.log('[WEBHOOK] Payload completo da mensagem de mídia:', JSON.stringify(messageData, null, 2));
+      }
+      
       // Pular mensagens enviadas por nós
       if (fromMe) {
         console.log('[WEBHOOK] Ignorando mensagem enviada por nós');
@@ -1656,6 +1661,16 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       
       console.log('[WEBHOOK] Mídia detectada:', { mediaUrl, fileName, messageType });
       
+      // Extrair duração de mídias
+      let mediaDuration = 0;
+      if (messageData.audio?.duration) {
+        mediaDuration = messageData.audio.duration;
+      } else if (messageData.voice?.duration) {
+        mediaDuration = messageData.voice.duration;
+      } else if (messageData.video?.duration) {
+        mediaDuration = messageData.video.duration;
+      }
+      
       // Salvar mensagem com timestamp correto
       const message = await storage.createMessage({
             conversationId: conversation.id,
@@ -1672,12 +1687,21 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           timestamp: timestamp,
           from: from,
           to: to,
-          mediaType: messageType
+          mediaType: messageType,
+          duration: mediaDuration,
+          fileName: fileName
         },
         environment: 'production'
       });
       
       console.log('[WEBHOOK] Mensagem salva:', message.id);
+      
+      // Atualizar updatedAt da conversa para garantir ordenação correta
+      await storage.updateConversation(conversation.id, {
+        updatedAt: new Date()
+      });
+      
+      console.log('[WEBHOOK] Conversa atualizada com novo updatedAt');
       
       // Emitir evento Socket.IO para o frontend
       if (ioToUse) {
@@ -1717,10 +1741,26 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         console.log('[WEBHOOK] ⚠️ Socket.IO não disponível - eventos não emitidos');
       }
       
+      // Criar preview de mídia para lastMessage
+      let lastMessagePreview = content;
+      if (messageType === 'voice' || messageType === 'audio') {
+        lastMessagePreview = mediaDuration > 0 
+          ? `[voice:${mediaDuration}]` 
+          : '[voice]';
+      } else if (messageType === 'video') {
+        lastMessagePreview = mediaDuration > 0 
+          ? `[video:${mediaDuration}]` 
+          : '[video]';
+      } else if (messageType === 'image') {
+        lastMessagePreview = '[image]';
+      } else if (messageType === 'document') {
+        lastMessagePreview = '[document]';
+      }
+      
       // Atualizar última mensagem da conversa - NÃO alterar status se já tem usuário atribuído
       const updateData: any = {
         lastMessageAt: new Date(timestamp * 1000),
-        lastMessage: content || `[${messageType}]`,
+        lastMessage: lastMessagePreview,
         lastMessageType: messageType
       };
       
@@ -2154,10 +2194,15 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           eq(conversations.isFinished, false), // Restaurado: mostrar apenas conversas não finalizadas
           status ? eq(conversations.status, status as any) : undefined
         ))
-        .orderBy(desc(conversations.lastMessageAt));
+        .orderBy(desc(conversations.updatedAt));
+      
+      // Garantir ordenação adicional (fallback)
+      const sortedConversations = companyConversations.sort((a, b) => 
+        new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+      );
       
       // Garantir que sempre retorna um array válido
-      res.json(Array.isArray(companyConversations) ? companyConversations : []);
+      res.json(Array.isArray(sortedConversations) ? sortedConversations : []);
     } catch (error: any) {
       console.error('[WhatsApp Routes] Erro ao buscar conversas:', error);
       res.status(500).json({ message: 'Erro interno ao buscar conversas' });
@@ -2408,6 +2453,12 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       const { normalizePhoneForSearch } = await import('./utils/phone-normalizer');
       const normalizedPhone = normalizePhoneForSearch(conversation.contactPhone || '');
       
+      // Se tem quotedMessageId, buscar mensagem original
+      let quotedMessage = null;
+      if (quotedMessageId) {
+        quotedMessage = await storage.getMessage(quotedMessageId);
+      }
+      
       // Enviar mensagem baseada no tipo
       switch (type) {
         case 'text':
@@ -2500,7 +2551,13 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           io.to(`company_${companyId}`).emit('newMessage', {
             ...message,
             conversationId: conversationId,
-            companyId: companyId
+            companyId: companyId,
+            quotedMessage: quotedMessage ? {
+              id: quotedMessage.id,
+              content: quotedMessage.content,
+              messageType: quotedMessage.messageType,
+              direction: quotedMessage.direction
+            } : null
           });
         }
         
