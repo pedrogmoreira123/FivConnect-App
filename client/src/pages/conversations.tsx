@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import apiClient from '../lib/api-client';
 import { useAuth } from '../hooks/use-auth';
 import io from 'socket.io-client';
+import { WaveformAudioPlayer } from '../components/WaveformAudioPlayer';
 
 // Interfaces e tipos
 interface User {
@@ -30,7 +31,7 @@ interface Message {
   content: string;
   messageType: string;
   direction: 'incoming' | 'outgoing';
-  status?: 'sending' | 'sent' | 'delivered' | 'read';
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   mediaUrl?: string;
   sentAt: string;
   createdAt: string;
@@ -78,6 +79,8 @@ interface ChatAreaProps {
   onFinishConversation: (conversationId: string) => void;
   onSendMedia: (file: File, quotedMessageId?: string) => void;
   onMessageInput?: (text: string) => void;
+  onImageClick?: (src: string, alt: string) => void;
+  currentUser?: User | null;
 }
 
 // Função para tocar som de notificação
@@ -131,8 +134,44 @@ import {
   Pause,
   Play,
   Download,
-  Eye
+  Eye,
+  Reply
 } from 'lucide-react';
+
+// Função para formatar duração
+const formatDuration = (seconds: number) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+// Função para formatar preview da última mensagem
+const formatLastMessagePreview = (lastMessage: string) => {
+  if (!lastMessage) return 'Nenhuma mensagem ainda.';
+  
+  // Verificar se é mídia com duração no formato [type:duration]
+  const mediaMatch = lastMessage.match(/\[(\w+):(\d+)\]/);
+  if (mediaMatch) {
+    const [, type, duration] = mediaMatch;
+    const formattedDuration = formatDuration(parseInt(duration));
+    
+    switch(type) {
+      case 'voice':
+      case 'audio':
+        return `🎤 Mensagem de Voz ${formattedDuration}`;
+      case 'video':
+        return `🎥 Vídeo ${formattedDuration}`;
+      case 'image':
+        return `📷 Imagem`;
+      case 'document':
+        return `📄 Documento`;
+      default:
+        return lastMessage;
+    }
+  }
+  
+  return lastMessage;
+};
 
 // Componente de Player de Áudio Moderno - Estilo WhatsApp
 const AudioPlayer = ({ src, messageId }: AudioPlayerProps) => {
@@ -305,14 +344,14 @@ const EmojiPicker = ({ onEmojiSelect, onClose }: EmojiPickerProps) => {
 const TabButton = ({ active, onClick, children, icon: Icon, count }: TabButtonProps) => (
   <button
     onClick={onClick}
-    className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${
+    className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-1 min-w-0 ${
       active 
         ? 'bg-green-500 text-white' 
         : 'text-gray-600 hover:bg-gray-100'
     }`}
   >
-    <Icon className="h-3 w-3" />
-    <span className="text-xs">{children}</span>
+    <Icon className="h-3 w-3 flex-shrink-0" />
+    <span className="text-xs truncate">{children}</span>
     {count && count > 0 && (
       <span className="bg-red-500 text-white text-xs rounded-full px-1 py-0.5 min-w-[16px] h-4 flex items-center justify-center">
         {count}
@@ -344,20 +383,24 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
                 <span className="text-sm font-medium text-white">
-                  {isContacts ? ((item as Contact).name?.charAt(0) || 'C') : ((item as Conversation).contactName?.charAt(0) || 'C')}
+                  {isContacts ? ((item as Contact).name?.charAt(0) || 'C') : ((item as Conversation).contact_name?.charAt(0) || 'C')}
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
                 <p className="font-medium text-gray-900 truncate text-sm">
-                  {isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contactName || 'Cliente')}
+                  {isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contact_name || 'Cliente')}
                 </p>
                 <p className="text-sm text-gray-500 truncate">
-                  {isContacts ? (item as Contact).phone : ((item as Conversation).lastMessage || 'Nenhuma mensagem ainda.')}
+                  {isContacts ? (item as Contact).phone : formatLastMessagePreview((item as Conversation).last_message || '')}
                 </p>
                         </div>
               {!isContacts && (
                 <div className="text-xs text-gray-400">
-                  {(item as Conversation).updatedAt && new Date((item as Conversation).updatedAt!).toLocaleTimeString()}
+                  {(item as Conversation).updated_at && new Date((item as Conversation).updated_at!).toLocaleTimeString('pt-BR', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    timeZone: 'America/Sao_Paulo'
+                  })}
                         </div>
               )}
                     </div>
@@ -377,7 +420,9 @@ const ChatArea = ({
   onTakeConversation, 
   onFinishConversation,
   onSendMedia,
-  onMessageInput
+  onMessageInput,
+  onImageClick,
+  currentUser
 }: ChatAreaProps) => {
   const [text, setText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -605,9 +650,9 @@ const ChatArea = ({
       });
       
       // Verificar se o FormData tem o arquivo
-      for (let [key, value] of formData.entries()) {
+      formData.forEach((value, key) => {
         console.log('🎤 FormData entry:', key, value);
-      }
+      });
       
       // Enviar áudio via API
       const response = await apiClient.post(`/api/whatsapp/conversations/${conversation.id}/send-media`, formData, {
@@ -651,6 +696,10 @@ const ChatArea = ({
     setReplyingTo(null);
   };
 
+  const handleReplyToMessage = (message: Message) => {
+    setReplyingTo(message);
+  };
+
 
   const handleMediaUpload = (mediaType: string) => {
     const input = document.createElement('input');
@@ -683,18 +732,18 @@ const ChatArea = ({
       // Criar mensagem otimista
       const optimisticMessage: Message = {
         id: `temp_${Date.now()}`,
-        conversation_id: conversation!.id,
+        conversationId: conversation!.id,
+        senderId: currentUser?.id || '',
         content: '',
-        message_type: file.type.startsWith('image/') ? 'image' : 
+        messageType: file.type.startsWith('image/') ? 'image' : 
                      file.type.startsWith('video/') ? 'video' : 
                      file.type.startsWith('audio/') ? 'audio' : 'document',
         direction: 'outgoing',
-        media_url: localUrl,
+        mediaUrl: localUrl,
         status: 'sending',
-        sent_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        is_read: false,
-        environment: 'production'
+        sentAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
 
       // Enviar mídia via função do componente pai
@@ -756,15 +805,15 @@ const ChatArea = ({
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
             <span className="text-sm font-medium text-white">
-              {conversation.contactName?.charAt(0) || 'C'}
+              {conversation.contact_name?.charAt(0) || 'C'}
                         </span>
                       </div>
           <div>
             <h3 className="font-semibold text-gray-900">
-              {conversation.contactName || 'Cliente'}
+              {conversation.contact_name || 'Cliente'}
                         </h3>
             <p className="text-sm text-gray-500">
-              {conversation.contactPhone?.replace('@s.whatsapp.net', '') || 'Número não disponível'}
+              {conversation.contact_phone?.replace('@s.whatsapp.net', '') || 'Número não disponível'}
                         </p>
                       </div>
                     </div>
@@ -807,13 +856,24 @@ const ChatArea = ({
                 className={`flex ${message.direction === 'outgoing' ? 'justify-end' : 'justify-start'} mb-2`}
               >
                 <div 
-                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl cursor-pointer hover:opacity-90 transition-opacity ${
+                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl cursor-pointer hover:opacity-90 transition-opacity relative group ${
                       message.direction === 'outgoing'
                     ? 'bg-green-500 text-white rounded-br-md' 
                     : 'bg-white text-gray-900 rounded-bl-md shadow-sm'
                 }`}
                   onClick={() => handleReplyClick(message)}
                 >
+                  {/* Botão de responder */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleReplyToMessage(message);
+                    }}
+                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-100 hover:bg-gray-200 p-1 rounded"
+                    title="Responder"
+                  >
+                    <Reply className="h-4 w-4" />
+                  </button>
                   {/* Exibir mídia se existir */}
                   {(message.mediaUrl || message.messageType !== 'text') && (
                     <div className="mb-2">
@@ -821,33 +881,47 @@ const ChatArea = ({
                         <img 
                           src={message.mediaUrl} 
                           alt="Imagem" 
-                          className="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={() => setImagePopup({ src: message.mediaUrl, alt: 'Imagem' })}
+                          className="max-w-md max-h-96 object-contain rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                          onClick={() => onImageClick?.(message.mediaUrl || '', 'Imagem')}
                         />
                       )}
                       {(message.messageType === 'video' || message.messageType === 'videoMessage') && (
                         <video 
                           src={message.mediaUrl} 
                           controls 
-                          className="max-w-full h-auto rounded-lg"
+                          className="max-w-xl max-h-[28rem] object-contain rounded-lg"
                           preload="metadata"
                         />
                       )}
-                      {(message.messageType === 'audio' || message.messageType === 'audioMessage') && message.mediaUrl && (
-                        <AudioPlayer 
+                      {(message.messageType === 'audio' || message.messageType === 'audioMessage' || message.messageType === 'voice') && message.mediaUrl && (
+                        <WaveformAudioPlayer 
                           src={message.mediaUrl}
                           messageId={message.id}
                         />
                       )}
                       {(message.messageType === 'document' || message.messageType === 'documentMessage') && (
-                        <div className="flex items-center gap-2 p-2 bg-gray-100 rounded">
-                          <FileText className="h-5 w-5" />
+                        <div className="flex items-center gap-2 p-3 bg-gray-100 rounded-lg">
+                          <FileText className="h-6 w-6 text-gray-600" />
+                          <div className="flex-1">
+                            <a 
+                              href={message.mediaUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline font-medium"
+                            >
+                              📄 {message.content || 'Documento'}
+                            </a>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Clique para abrir
+                            </div>
+                          </div>
                           <a 
                             href={message.mediaUrl} 
-                            download 
-                            className="text-sm underline hover:text-blue-600"
+                            download
+                            className="p-1 hover:bg-gray-200 rounded"
+                            title="Baixar documento"
                           >
-                            Documento
+                            <Download className="h-4 w-4 text-gray-600" />
                           </a>
                         </div>
                       )}
@@ -1524,7 +1598,7 @@ export default function ConversationsPage() {
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar Esquerda */}
-      <div className="w-80 bg-white border-r flex flex-col">
+      <div className="w-96 bg-white border-r flex flex-col">
           {/* Header */}
         <div className="p-4 border-b">
           <div className="flex items-center justify-between mb-4">
@@ -1552,7 +1626,7 @@ export default function ConversationsPage() {
                   
         {/* Abas */}
         <div className="p-4 border-b">
-          <div className="flex gap-1 flex-nowrap">
+          <div className="flex gap-1 overflow-x-hidden">
             <TabButton
               active={activeTab === 'active'}
               onClick={() => setActiveTab('active')}
@@ -1606,6 +1680,8 @@ export default function ConversationsPage() {
         onFinishConversation={handleFinishConversation}
         onSendMedia={handleSendMedia}
         onMessageInput={handleMessageInput}
+        onImageClick={(src, alt) => setImagePopup({ src, alt })}
+        currentUser={user}
       />
       
       {/* Popup de Imagem */}
