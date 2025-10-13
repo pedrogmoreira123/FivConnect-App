@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Wifi, WifiOff, QrCode, Trash2, Save, AlertCircle, Calendar, DollarSign, Clock } from 'lucide-react';
+import { X, Settings, Wifi, WifiOff, QrCode, Trash2, Save, AlertCircle, Calendar, DollarSign, Clock, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -65,6 +65,8 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
   const [saving, setSaving] = useState(false);
   const [newLimit, setNewLimit] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [newChannelName, setNewChannelName] = useState('');
 
   // Carregar dados quando o modal abrir
   useEffect(() => {
@@ -88,7 +90,9 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
       if (channelsResponse.status === 'fulfilled') {
         const channelsData: CompanyChannelsData = channelsResponse.value.data;
         setData(channelsData);
-        setNewLimit(channelsData.company.whatsappChannelLimit);
+        // Verificar se company existe antes de acessar whatsappChannelLimit
+        const channelLimit = channelsData.company?.whatsappChannelLimit || 1;
+        setNewLimit(channelLimit);
       } else {
         console.error('Erro ao carregar canais da empresa:', channelsResponse.reason);
         setError('Erro ao carregar dados dos canais. Tente novamente.');
@@ -146,6 +150,32 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
     } catch (error: any) {
       console.error('Erro ao ativar canal de teste:', error);
       setError('Erro ao ativar canal de teste. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCreateChannel = async () => {
+    if (!newChannelName.trim()) {
+      setError('Nome do canal é obrigatório');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      await apiClient.post(`/api/admin/companies/${companyId}/channels/create`, {
+        channelName: newChannelName.trim()
+      });
+      
+      // Recarregar dados para atualizar a interface
+      await loadChannelsData();
+      setShowCreateChannel(false);
+      setNewChannelName('');
+    } catch (error: any) {
+      console.error('Erro ao criar canal:', error);
+      setError('Erro ao criar canal. Tente novamente.');
     } finally {
       setSaving(false);
     }
@@ -302,7 +332,17 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
               {/* Lista de Canais */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Canais WhatsApp ({data.totalChannels})</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>Canais WhatsApp ({data.totalChannels})</CardTitle>
+                    <Button
+                      onClick={() => setShowCreateChannel(true)}
+                      disabled={data.totalChannels >= data.channelLimit}
+                      className="flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Criar Canal
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {data.channels.length === 0 ? (
@@ -413,6 +453,65 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
           </Button>
         </div>
       </div>
+
+      {/* Modal para criar canal */}
+      {showCreateChannel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold">Criar Novo Canal</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowCreateChannel(false);
+                  setNewChannelName('');
+                }}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Nome do Canal
+                  </label>
+                  <Input
+                    value={newChannelName}
+                    onChange={(e) => setNewChannelName(e.target.value)}
+                    placeholder="Ex: Canal Principal"
+                    className="w-full"
+                  />
+                </div>
+                {error && (
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCreateChannel(false);
+                  setNewChannelName('');
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleCreateChannel}
+                disabled={saving || !newChannelName.trim()}
+              >
+                {saving ? 'Criando...' : 'Criar Canal'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

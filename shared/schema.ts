@@ -108,6 +108,7 @@ export const messages = pgTable("messages", {
   fileName: text("file_name"), // For document messages
   quotedMessageId: varchar("quoted_message_id"), // For reply messages
   externalId: varchar("external_id"), // For preventing duplicate messages from external APIs
+  chatId: text("chat_id"), // Chat ID do Whapi.Cloud (ex: 5511943274695@s.whatsapp.net)
   metadata: json("metadata"), // For storing additional data like emoji reactions, location data, etc.
   processedAt: timestamp("processed_at"), // Timestamp when message was processed by Whapi.Cloud
   // Environment field to separate test from production data
@@ -115,6 +116,29 @@ export const messages = pgTable("messages", {
   isRead: boolean("is_read").default(false),
   status: text("status", { enum: ["sent", "delivered", "read", "failed"] }).default("sent"),
   sentAt: timestamp("sent_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Chat Sessions table - Nova tabela para gerenciar sessões de chat
+export const chatSessions = pgTable("chat_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  chatId: text("chat_id").notNull(), // Chat ID do Whapi.Cloud (ex: 5511943274695@s.whatsapp.net)
+  clientId: varchar("client_id").notNull(), // Referência ao cliente
+  agentId: varchar("agent_id"), // ID do agente que assumiu a conversa (pode ser null se não assumida)
+  companyId: varchar("company_id").notNull(), // Empresa da conversa
+  status: text("status", { 
+    enum: ["waiting", "in_progress", "finished", "transferred"] 
+  }).notNull().default("waiting"),
+  priority: text("priority", { 
+    enum: ["low", "medium", "high", "urgent"] 
+  }).notNull().default("medium"),
+  protocolNumber: integer("protocol_number"), // Número do protocolo da conversa
+  startedAt: timestamp("started_at").defaultNow(), // Quando a sessão começou
+  finishedAt: timestamp("finished_at"), // Quando a sessão foi finalizada
+  lastMessageAt: timestamp("last_message_at"), // Timestamp da última mensagem
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -378,6 +402,8 @@ export type Announcement = typeof announcements.$inferSelect;
 export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
 export type Conversation = typeof conversations.$inferSelect;
 export type InsertConversation = z.infer<typeof insertConversationSchema>;
+export type ChatSession = typeof chatSessions.$inferSelect;
+export type InsertChatSession = typeof chatSessions.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Queue = typeof queues.$inferSelect;

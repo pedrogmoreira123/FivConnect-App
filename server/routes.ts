@@ -1685,7 +1685,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // setupEvolutionRoutes(app); // Removido - migrado para Whapi.Cloud
 
   // Setup WhatsApp routes (Whapi.Cloud)
-  setupWhatsAppRoutes(app);
+  const io = app.get('io');
+  setupWhatsAppRoutes(app, io);
 
   return app;
 }

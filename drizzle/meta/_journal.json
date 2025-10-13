@@ -43,6 +43,13 @@
       "when": 1760026645308,
       "tag": "0005_clear_virginia_dare",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1760119142004,
+      "tag": "0006_furry_vanisher",
+      "breakpoints": true
     }
   ]
 }

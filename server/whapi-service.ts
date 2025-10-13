@@ -5,8 +5,16 @@ export class WhapiService {
   private apiUrl: string;
   private apiToken: string;
   private headers: { Authorization: string; 'Content-Type': string };
+  
+  // Partner API properties
+  private partnerToken: string;
+  private projectId: string;
+  private managerApiUrl: string;
+  private gateApiUrl: string;
+  private partnerHeaders: { Authorization: string; 'Content-Type': string; 'Accept': string };
 
   constructor(private logger: Logger) {
+    // Configuração existente da Gate API
     if (!process.env.WHAPI_API_URL || !process.env.WHAPI_API_TOKEN) {
       this.logger.warn('⚠️ WHAPI_API_URL e WHAPI_API_TOKEN não estão configurados - Whapi.Cloud API desabilitada');
       this.apiUrl = '';
@@ -15,15 +23,33 @@ export class WhapiService {
         'Authorization': '',
         'Content-Type': 'application/json',
       };
-      return;
+    } else {
+      this.apiUrl = process.env.WHAPI_API_URL;
+      this.apiToken = process.env.WHAPI_API_TOKEN;
+      this.headers = {
+        'Authorization': `Bearer ${process.env.WHAPI_API_TOKEN}`,
+        'Content-Type': 'application/json',
+      };
+      this.logger.info(`[WhapiService] Inicializado para a URL: ${this.apiUrl}`);
     }
-    this.apiUrl = process.env.WHAPI_API_URL;
-    this.apiToken = process.env.WHAPI_API_TOKEN;
-    this.headers = {
-      'Authorization': `Bearer ${process.env.WHAPI_API_TOKEN}`,
+    
+    // Configuração da Partner API
+    this.partnerToken = process.env.WHAPI_PARTNER_TOKEN || '';
+    this.projectId = process.env.WHAPI_PROJECT_ID || '';
+    this.managerApiUrl = process.env.WHAPI_MANAGER_API_URL || 'https://manager.whapi.cloud/';
+    this.gateApiUrl = process.env.WHAPI_GATE_API_URL || 'https://gate.whapi.cloud/';
+    
+    this.partnerHeaders = {
+      'Authorization': `Bearer ${this.partnerToken}`,
       'Content-Type': 'application/json',
+      'Accept': 'application/json'
     };
-    this.logger.info(`[WhapiService] Inicializado para a URL: ${this.apiUrl}`);
+    
+    if (this.partnerToken && this.projectId) {
+      this.logger.info(`[WhapiService] Partner API configurada - Project ID: ${this.projectId}`);
+    } else {
+      this.logger.warn('⚠️ WHAPI_PARTNER_TOKEN ou WHAPI_PROJECT_ID não configurados - Partner API desabilitada');
+    }
   }
 
   /**
@@ -656,9 +682,9 @@ export class WhapiService {
         return;
       }
       
-      // Normalizar número de telefone
-      const normalizedPhone = from.replace(/@.*$/, '').replace(/\D/g, '');
-      const contactPhone = normalizedPhone.startsWith('55') ? normalizedPhone.substring(2) : normalizedPhone;
+      // Normalizar número de telefone usando utilitário
+      const { normalizePhoneForSearch } = await import('./utils/phone-normalizer');
+      const contactPhone = normalizePhoneForSearch(from);
       
       this.logger.info(`[WhapiService] Processando mensagem de ${messageData.from_name || contactPhone}: ${content}`);
       
@@ -681,23 +707,27 @@ export class WhapiService {
       }
       
       // Buscar ou criar conversa
-      this.logger.info(`[WhapiService] Buscando conversa para cliente: ${client.id}`);
+      this.logger.info(`[WhapiService] Buscando conversa para chatId: ${chatId}`);
       let conversation = await storage.getConversationByClient(client.id, '59b4b086-9171-4dbf-8177-b7c6d6fd1e33');
       
       if (!conversation) {
-        this.logger.info(`[WhapiService] Nenhuma conversa ativa encontrada para cliente ${client.id}, criando nova conversa`);
+        this.logger.info(`[WhapiService] Nenhuma conversa encontrada para cliente ${client.id}, criando nova conversa`);
         conversation = await storage.createConversation({
+          contactName: client.name,
+          contactPhone: client.phone,
           clientId: client.id,
           companyId: '59b4b086-9171-4dbf-8177-b7c6d6fd1e33',
           status: 'waiting',
           priority: 'medium',
           isGroup: false,
-          contactName: messageData.from_name || `Cliente ${contactPhone}`,
-          contactPhone: contactPhone
+          isFinished: false,
+          lastMessageAt: new Date(),
+          lastMessage: content,
+          lastMessageType: messageType
         });
-        this.logger.info(`[WhapiService] ✅ Nova conversa criada: ${conversation.id} com status: ${conversation.status}, isFinished: ${conversation.isFinished}`);
+        this.logger.info(`[WhapiService] ✅ Nova conversa criada: ${conversation.id} com status: ${conversation.status}`);
       } else {
-        this.logger.info(`[WhapiService] ✅ Conversa existente encontrada: ${conversation.id} com status: ${conversation.status}, isFinished: ${conversation.isFinished}`);
+        this.logger.info(`[WhapiService] ✅ Conversa existente encontrada: ${conversation.id} com status: ${conversation.status}`);
       }
       
       // Verificar se mensagem já existe antes de salvar
@@ -714,6 +744,7 @@ export class WhapiService {
         messageType: messageType,
         direction: 'incoming',
         externalId: messageId,
+        chatId: chatId, // Adicionar chatId à mensagem
         metadata: {
           from: from,
           to: to,
@@ -726,9 +757,9 @@ export class WhapiService {
       
       // Atualizar última mensagem da conversa
       await storage.updateConversation(conversation.id, {
+        lastMessageAt: new Date(),
         lastMessage: content,
-        lastMessageType: messageType,
-        lastMessageAt: new Date()
+        lastMessageType: messageType
       });
       
       this.logger.info(`[WhapiService] Mensagem perdida processada com sucesso: ${messageId}`);
@@ -795,4 +826,202 @@ export class WhapiService {
       this.logger.error(`[WhapiService] Erro ao processar mensagens do chat ${chatId}:`, error);
     }
   }
+
+
+  // ===== MÉTODOS PARTNER API =====
+
+  /**
+   * Buscar canais do parceiro
+   * GET /channels
+   */
+  async getPartnerChannels(): Promise<{ channels: any[] }> {
+    try {
+      this.logger.info(`[WhapiService] Buscando canais do parceiro...`);
+      
+      const response = await axios.get(`${this.apiUrl}channels`, {
+        headers: this.headers,
+        timeout: 30000
+      });
+      
+      this.logger.info(`[WhapiService] Canais encontrados: ${response.data?.channels?.length || 0}`);
+      return response.data || { channels: [] };
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao buscar canais do parceiro:`, error.response?.data || error.message);
+      return { channels: [] };
+    }
+  }
+
+  /**
+   * Estender dias de um canal
+   * POST /channels/{channelId}/extend
+   */
+  async extendChannel(channelId: string, days: number): Promise<any> {
+    try {
+      this.logger.info(`[WhapiService] Estendendo canal ${channelId} por ${days} dias...`);
+      
+      const response = await axios.post(`${this.apiUrl}channels/${channelId}/extend`, {
+        days: days
+      }, {
+        headers: this.headers,
+        timeout: 30000
+      });
+      
+      this.logger.info(`[WhapiService] Canal estendido com sucesso`);
+      return response.data;
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao estender canal:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Configurar download automático de mídia
+   * POST /channels/{channelId}/configure
+   */
+  async configureAutoDownload(channelId: string, enableAll: boolean = true): Promise<any> {
+    try {
+      this.logger.info(`[WhapiService] Configurando download automático para canal ${channelId}...`);
+      
+      const response = await axios.post(`${this.apiUrl}channels/${channelId}/configure`, {
+        auto_download: enableAll
+      }, {
+        headers: this.headers,
+        timeout: 30000
+      });
+      
+      this.logger.info(`[WhapiService] Configuração de download automático aplicada`);
+      return response.data;
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao configurar download automático:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+
+
+  // ========================================
+  // PARTNER API METHODS
+  // ========================================
+
+  /**
+   * Criar novo canal no Whapi.Cloud
+   * Documentação: https://support.whapi.cloud/help-desk/partner-documentation/partner-documentation/channel-creation
+   * Usa Partner API: PUT /channels
+   */
+  async createChannel(channelName: string): Promise<any> {
+    try {
+      this.logger.info(`[WhapiService] Criando canal: ${channelName}`);
+      
+      const response = await axios.put(
+        `${this.managerApiUrl}channels`,
+        {
+          name: channelName,
+          projectId: this.projectId
+        },
+        {
+          headers: this.partnerHeaders,
+          timeout: 30000
+        }
+      );
+      
+      this.logger.info(`[WhapiService] Canal criado: ${response.data.id}`);
+      
+      // Automaticamente configurar webhook após criação
+      if (response.data.token) {
+        try {
+          await this.configureWebhook(response.data.token, process.env.WEBHOOK_URL || 'https://app.fivconnect.net/api/whatsapp/webhook');
+          this.logger.info(`[WhapiService] Webhook configurado automaticamente para o canal ${response.data.id}`);
+        } catch (webhookError) {
+          this.logger.warn(`[WhapiService] Erro ao configurar webhook automaticamente:`, webhookError);
+        }
+      }
+      
+      return response.data;
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao criar canal:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Listar canais do projeto
+   * Usa Partner API: GET /channels
+   */
+  async listProjectChannels(): Promise<any[]> {
+    try {
+      this.logger.info(`[WhapiService] Listando canais do projeto ${this.projectId}`);
+      
+      const response = await axios.get(
+        `${this.managerApiUrl}channels`,
+        {
+          headers: this.partnerHeaders,
+          timeout: 30000
+        }
+      );
+      
+      // Filtrar canais do nosso projeto
+      const projectChannels = response.data.filter(
+        (channel: any) => channel.projectId === this.projectId
+      );
+      
+      this.logger.info(`[WhapiService] Canais encontrados: ${projectChannels.length}`);
+      return projectChannels;
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao listar canais:`, error.response?.data || error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Mudar modo do canal (trial -> live)
+   * Documentação: https://support.whapi.cloud/help-desk/partner-documentation/partner-documentation/changing-channel-mode
+   * Usa Partner API: PATCH /channels/{channelId}/mode
+   */
+  async changeChannelMode(channelId: string, mode: 'trial' | 'sandbox' | 'live'): Promise<any> {
+    try {
+      this.logger.info(`[WhapiService] Mudando canal ${channelId} para modo ${mode}`);
+      
+      const response = await axios.patch(
+        `${this.managerApiUrl}channels/${channelId}/mode`,
+        { mode },
+        {
+          headers: this.partnerHeaders,
+          timeout: 30000
+        }
+      );
+      
+      this.logger.info(`[WhapiService] Modo do canal alterado com sucesso`);
+      return response.data;
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao mudar modo:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Estender dias de um canal
+   * Documentação: https://support.whapi.cloud/help-desk/partner-documentation/partner-documentation/channel-extension
+   * Usa Partner API: POST /channels/{channelId}/extend
+   */
+  async extendChannelDays(channelId: string, days: number): Promise<any> {
+    try {
+      this.logger.info(`[WhapiService] Estendendo canal ${channelId} por ${days} dias`);
+      
+      const response = await axios.post(
+        `${this.managerApiUrl}channels/${channelId}/extend`,
+        { days },
+        {
+          headers: this.partnerHeaders,
+          timeout: 30000
+        }
+      );
+      
+      this.logger.info(`[WhapiService] Canal estendido até: ${response.data.activeTill}`);
+      return response.data;
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao estender canal:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
 }

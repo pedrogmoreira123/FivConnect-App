@@ -9,6 +9,8 @@ import {
   type InsertAnnouncement,
   type Conversation,
   type InsertConversation,
+  type ChatSession,
+  type InsertChatSession,
   type Message,
   type InsertMessage,
   type Queue,
@@ -42,6 +44,7 @@ import {
   sessions,
   announcements,
   conversations,
+  chatSessions,
   messages,
   queues,
   settings,
@@ -62,7 +65,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto-js";
 import { db } from "./db";
-import { eq, and, asc, desc, sql } from "drizzle-orm";
+import { eq, and, asc, desc, sql, or, gte } from "drizzle-orm";
 
 export interface IStorage {
   // User operations
@@ -120,6 +123,16 @@ export interface IStorage {
   getConversationsByAgent(agentId: string): Promise<Conversation[]>;
   getAllConversations(): Promise<Conversation[]>;
   getConversationByClient(clientId: string, companyId: string): Promise<Conversation | undefined>;
+
+  // Chat Session operations
+  getChatSession(id: string): Promise<ChatSession | undefined>;
+  getChatSessionByChatId(chatId: string, companyId: string): Promise<ChatSession | undefined>;
+  getActiveChatSessionByClient(clientId: string, companyId: string): Promise<ChatSession | undefined>;
+  createChatSession(session: InsertChatSession): Promise<ChatSession>;
+  updateChatSession(id: string, session: Partial<InsertChatSession>): Promise<ChatSession>;
+  finishChatSession(id: string): Promise<ChatSession>;
+  getChatSessionsByStatus(status: string, companyId: string): Promise<ChatSession[]>;
+  getChatSessionsByAgent(agentId: string, companyId: string): Promise<ChatSession[]>;
 
   // Message operations
   getMessage(id: string): Promise<Message | undefined>;
@@ -196,6 +209,7 @@ export interface IStorage {
   // WhatsApp Connection operations
   createWhatsAppConnection(connection: InsertWhatsappConnection): Promise<WhatsappConnection>;
   getWhatsAppConnection(id: string): Promise<WhatsappConnection | undefined>;
+  getWhatsAppConnectionByPhone(phone: string): Promise<WhatsappConnection | null>;
   getAllWhatsAppConnections(): Promise<WhatsappConnection[]>;
   updateWhatsAppConnection(id: string, updates: Partial<InsertWhatsappConnection>): Promise<WhatsappConnection>;
   deleteWhatsAppConnection(id: string): Promise<boolean>;
@@ -736,14 +750,87 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getConversationByClient(clientId: string, companyId: string): Promise<Conversation | undefined> {
+    // Buscar conversa mais recente do cliente (incluindo finalizadas para permitir reabertura)
     const [conversation] = await db.select().from(conversations)
       .where(and(
         eq(conversations.clientId, clientId),
-        eq(conversations.companyId, companyId),
-        eq(conversations.isFinished, false) // Buscar apenas conversas não finalizadas
+        eq(conversations.companyId, companyId)
       ))
+      .orderBy(desc(conversations.updatedAt))
       .limit(1);
     return conversation;
+  }
+
+  // Chat Session operations
+  async getChatSession(id: string): Promise<ChatSession | undefined> {
+    const [session] = await db.select().from(chatSessions)
+      .where(eq(chatSessions.id, id))
+      .limit(1);
+    return session;
+  }
+
+  async getChatSessionByChatId(chatId: string, companyId: string): Promise<ChatSession | undefined> {
+    const [session] = await db.select().from(chatSessions)
+      .where(and(
+        eq(chatSessions.chatId, chatId),
+        eq(chatSessions.companyId, companyId)
+      ))
+      .limit(1);
+    return session;
+  }
+
+  async getActiveChatSessionByClient(clientId: string, companyId: string): Promise<ChatSession | undefined> {
+    const [session] = await db.select().from(chatSessions)
+      .where(and(
+        eq(chatSessions.clientId, clientId),
+        eq(chatSessions.companyId, companyId),
+        eq(chatSessions.status, 'waiting') // Buscar apenas sessões ativas
+      ))
+      .limit(1);
+    return session;
+  }
+
+  async createChatSession(session: InsertChatSession): Promise<ChatSession> {
+    const [newSession] = await db.insert(chatSessions).values(session).returning();
+    return newSession;
+  }
+
+  async updateChatSession(id: string, session: Partial<InsertChatSession>): Promise<ChatSession> {
+    const [updatedSession] = await db.update(chatSessions)
+      .set({ ...session, updatedAt: new Date() })
+      .where(eq(chatSessions.id, id))
+      .returning();
+    return updatedSession;
+  }
+
+  async finishChatSession(id: string): Promise<ChatSession> {
+    const [finishedSession] = await db.update(chatSessions)
+      .set({ 
+        status: 'finished', 
+        finishedAt: new Date(),
+        updatedAt: new Date() 
+      })
+      .where(eq(chatSessions.id, id))
+      .returning();
+    return finishedSession;
+  }
+
+  async getChatSessionsByStatus(status: string, companyId: string): Promise<ChatSession[]> {
+    return await db.select().from(chatSessions)
+      .where(and(
+        eq(chatSessions.status, status),
+        eq(chatSessions.companyId, companyId)
+      ))
+      .orderBy(desc(chatSessions.lastMessageAt));
+  }
+
+  async getChatSessionsByAgent(agentId: string, companyId: string): Promise<ChatSession[]> {
+    return await db.select().from(chatSessions)
+      .where(and(
+        eq(chatSessions.agentId, agentId),
+        eq(chatSessions.companyId, companyId)
+      ))
+      .orderBy(desc(chatSessions.lastMessageAt));
   }
 
   /**
@@ -1460,6 +1547,92 @@ export class DatabaseStorage implements IStorage {
       return connections;
     } catch (error) {
       console.error('❌ Error getting WhatsApp connections by company:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obter conexão WhatsApp por número de telefone
+   */
+  async getWhatsAppConnectionByPhone(phone: string): Promise<WhatsappConnection | null> {
+    try {
+      // Normalizar telefone (remover formatação)
+      const normalizedPhone = phone.replace(/\D/g, '');
+      
+      const [connection] = await db.select()
+        .from(whatsappConnections)
+        .where(and(
+          eq(whatsappConnections.phone, normalizedPhone),
+          eq(whatsappConnections.environment, this.getCurrentEnvironment()),
+          eq(whatsappConnections.status, 'connected')
+        ))
+        .limit(1);
+      
+      return connection || null;
+    } catch (error) {
+      console.error('❌ Error getting connection by phone:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Obter mensagens recentes (últimos X minutos)
+   */
+  async getRecentMessages(minutes: number = 30): Promise<any[]> {
+    try {
+      const cutoffTime = new Date(Date.now() - minutes * 60 * 1000);
+      
+      const recentMessages = await db.select()
+        .from(messages)
+        .where(gte(messages.createdAt, cutoffTime))
+        .orderBy(desc(messages.createdAt))
+        .limit(100);
+      
+      return recentMessages;
+    } catch (error) {
+      console.error('❌ Error getting recent messages:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obter conversas por número de telefone
+   */
+  async getConversationsByPhone(phone: string): Promise<any[]> {
+    try {
+      // Normalizar telefone
+      const normalizedPhone = phone.replace(/\D/g, '');
+      
+      const conversations = await db.select()
+        .from(conversations)
+        .where(or(
+          eq(conversations.contactPhone, normalizedPhone),
+          eq(conversations.contactPhone, `+${normalizedPhone}`),
+          eq(conversations.contactPhone, `+55${normalizedPhone}`)
+        ))
+        .orderBy(desc(conversations.updatedAt));
+      
+      return conversations;
+    } catch (error) {
+      console.error('❌ Error getting conversations by phone:', error);
+      return [];
+    }
+  }
+
+
+  /**
+   * Obter chat sessions por IDs específicos
+   */
+  async getChatSessionsByIds(ids: string[]): Promise<any[]> {
+    try {
+      const chatSessions = await db.select()
+        .from(chatSessions)
+        .where(or(...ids.map(id => eq(chatSessions.id, id))))
+        .orderBy(desc(chatSessions.createdAt));
+      
+      return chatSessions;
+    } catch (error) {
+      console.error('❌ Error getting chat sessions by IDs:', error);
       return [];
     }
   }
