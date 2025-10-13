@@ -1661,6 +1661,18 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       
       console.log('[WEBHOOK] Mídia detectada:', { mediaUrl, fileName, messageType });
       
+      // Extrair caption se disponível
+      let caption = '';
+      if (messageData.image?.caption) {
+        caption = messageData.image.caption;
+      } else if (messageData.video?.caption) {
+        caption = messageData.video.caption;
+      } else if (messageData.document?.caption) {
+        caption = messageData.document.caption;
+      }
+
+      console.log('[WEBHOOK] Caption detectado:', caption);
+      
       // Extrair duração de mídias
       let mediaDuration = 0;
       if (messageData.audio?.duration) {
@@ -1674,14 +1686,14 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       // Salvar mensagem com timestamp correto
       const message = await storage.createMessage({
             conversationId: conversation.id,
-        content: content,
+        content: caption || content,  // Priorizar caption se existir
         messageType: messageType,
         direction: 'incoming',
         status: 'delivered',
         mediaUrl: mediaUrl || undefined,
         fileName: fileName || undefined,
         externalId: messageId,
-        sentAt: new Date(timestamp * 1000), // Converter timestamp Unix para Date
+        // sentAt: new Date(timestamp * 1000), // Converter timestamp Unix para Date
         metadata: {
           whapiMessageId: messageId,
           timestamp: timestamp,
@@ -1696,12 +1708,29 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       
       console.log('[WEBHOOK] Mensagem salva:', message.id);
       
-      // Atualizar updatedAt da conversa para garantir ordenação correta
+      // Formatar preview da última mensagem
+      let lastMessagePreview = caption || content || '';
+
+      if (mediaUrl) {
+        if (messageType === 'audio' || messageType === 'voice') {
+          lastMessagePreview = `[voice:${mediaDuration}]`;
+        } else if (messageType === 'video') {
+          lastMessagePreview = `[video:${mediaDuration}]`;
+        } else if (messageType === 'image') {
+          lastMessagePreview = caption || '[image:0]';
+        } else if (messageType === 'document') {
+          lastMessagePreview = caption || '[document:0]';
+        } else if (messageType === 'sticker') {
+          lastMessagePreview = '[sticker:0]';
+        }
+      }
+
+      // Atualizar updatedAt da conversa com last_message formatado
       await storage.updateConversation(conversation.id, {
-        updatedAt: new Date()
+        last_message: lastMessagePreview
       });
       
-      console.log('[WEBHOOK] Conversa atualizada com novo updatedAt');
+      console.log('[WEBHOOK] Conversa atualizada com novo updatedAt e last_message:', lastMessagePreview);
       
       // Emitir evento Socket.IO para o frontend
       if (ioToUse) {
@@ -1742,25 +1771,25 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       }
       
       // Criar preview de mídia para lastMessage
-      let lastMessagePreview = content;
+      let lastMessagePreview2 = content;
       if (messageType === 'voice' || messageType === 'audio') {
-        lastMessagePreview = mediaDuration > 0 
+        lastMessagePreview2 = mediaDuration > 0 
           ? `[voice:${mediaDuration}]` 
           : '[voice]';
       } else if (messageType === 'video') {
-        lastMessagePreview = mediaDuration > 0 
+        lastMessagePreview2 = mediaDuration > 0 
           ? `[video:${mediaDuration}]` 
           : '[video]';
       } else if (messageType === 'image') {
-        lastMessagePreview = '[image]';
+        lastMessagePreview2 = '[image]';
       } else if (messageType === 'document') {
-        lastMessagePreview = '[document]';
+        lastMessagePreview2 = '[document]';
       }
       
       // Atualizar última mensagem da conversa - NÃO alterar status se já tem usuário atribuído
       const updateData: any = {
         lastMessageAt: new Date(timestamp * 1000),
-        lastMessage: lastMessagePreview,
+        lastMessage: lastMessagePreview2,
         lastMessageType: messageType
       };
       

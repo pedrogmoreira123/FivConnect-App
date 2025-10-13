@@ -136,8 +136,6 @@ import {
   Download,
   Eye,
   Reply,
-  ChevronLeft,
-  ChevronRight
 } from 'lucide-react';
 
 // Função para formatar duração
@@ -388,7 +386,7 @@ const EmojiPicker = ({ onEmojiSelect, onClose }: EmojiPickerProps) => {
 const TabButton = ({ active, onClick, children, icon: Icon, count }: TabButtonProps) => (
   <button
     onClick={onClick}
-    className={`flex items-center justify-center gap-1 px-3 py-2 rounded text-xs font-medium transition-colors whitespace-nowrap flex-1 ${
+    className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded text-xs font-medium transition-colors whitespace-nowrap flex-1 ${
       active 
         ? 'bg-green-500 text-white' 
         : 'text-gray-600 hover:bg-gray-100'
@@ -397,7 +395,7 @@ const TabButton = ({ active, onClick, children, icon: Icon, count }: TabButtonPr
     <Icon className="h-4 w-4 flex-shrink-0" />
     <span className="text-xs">{children}</span>
     {count && count > 0 && (
-      <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5 min-w-[20px] h-5 flex items-center justify-center ml-1">
+      <span className="bg-red-500 text-white text-xs rounded-full px-2 py-0.5 min-w-[20px] h-5 flex items-center justify-center ml-0.5 flex-shrink-0">
         {count}
       </span>
     )}
@@ -1208,7 +1206,6 @@ export default function ConversationsPage() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [imagePopup, setImagePopup] = useState<{ src: string; alt: string } | null>(null);
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
   const { user } = useAuth() as { user: User | null };
 
   // Calcular mensagens não respondidas
@@ -1668,34 +1665,19 @@ export default function ConversationsPage() {
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar Esquerda */}
-        <div className={`bg-white border-r flex flex-col transition-all duration-300 ${
-          isSidebarExpanded ? 'w-96' : 'w-20'
-        }`}>
+        <div className="w-96 bg-white border-r flex flex-col">
           {/* Header */}
         <div className="p-4 border-b">
           <div className="flex items-center justify-between mb-4">
-            {isSidebarExpanded && <h1 className="text-xl font-bold text-gray-800">Chat</h1>}
-            <button
-              onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              title={isSidebarExpanded ? "Recolher sidebar" : "Expandir sidebar"}
-            >
-              {isSidebarExpanded ? (
-                <ChevronLeft className="h-5 w-5" />
-              ) : (
-                <ChevronRight className="h-5 w-5" />
-              )}
-            </button>
-            {isSidebarExpanded && (
-              <div className="flex gap-2">
+            <h1 className="text-xl font-bold text-gray-800">Chat</h1>
+            <div className="flex gap-2">
               <button className="p-2 hover:bg-gray-100 rounded-lg">
                 <MessageCircle className="h-4 w-4" />
               </button>
               <button className="p-2 hover:bg-gray-100 rounded-lg">
                 <UserPlus className="h-4 w-4" />
               </button>
-              </div>
-            )}
+            </div>
           </div>
 
           {/* Barra de Pesquisa */}
@@ -1711,121 +1693,49 @@ export default function ConversationsPage() {
                   
         {/* Abas */}
         <div className="p-4 border-b">
-          {isSidebarExpanded ? (
-            <div className="flex gap-2 w-full">
-              <TabButton
-                active={activeTab === 'active'}
-                onClick={() => setActiveTab('active')}
-                icon={MessageCircle}
-                count={totalUnread}
-              >
-                CONVERSAS
-              </TabButton>
-              <TabButton
-                active={activeTab === 'waiting'}
-                onClick={() => setActiveTab('waiting')}
-                icon={Clock}
-                count={waitingConversations.length}
-              >
-                ESPERA
-              </TabButton>
-              <TabButton
-                active={activeTab === 'contacts'}
-                onClick={() => setActiveTab('contacts')}
-                icon={Users}
-                count={0}
-              >
-                CONTATOS
-              </TabButton>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <button 
-                onClick={() => setActiveTab('active')}
-                className={`p-2 rounded hover:bg-gray-100 transition-colors relative ${
-                  activeTab === 'active' ? 'bg-green-500 text-white' : 'text-gray-600'
-                }`}
-                title="Conversas"
-              >
-                <MessageCircle className="h-5 w-5" />
-                {totalUnread > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1 py-0.5 min-w-[16px] h-4 flex items-center justify-center">
-                    {totalUnread}
-                  </span>
-                )}
-              </button>
-              <button 
-                onClick={() => setActiveTab('waiting')}
-                className={`p-2 rounded hover:bg-gray-100 transition-colors relative ${
-                  activeTab === 'waiting' ? 'bg-green-500 text-white' : 'text-gray-600'
-                }`}
-                title="Espera"
-              >
-                <Clock className="h-5 w-5" />
-                {waitingConversations.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-1 py-0.5 min-w-[16px] h-4 flex items-center justify-center">
-                    {waitingConversations.length}
-                  </span>
-                )}
-              </button>
-              <button 
-                onClick={() => setActiveTab('contacts')}
-                className={`p-2 rounded hover:bg-gray-100 transition-colors ${
-                  activeTab === 'contacts' ? 'bg-green-500 text-white' : 'text-gray-600'
-                }`}
-                title="Contatos"
-              >
-                <Users className="h-5 w-5" />
-              </button>
-            </div>
-          )}
+          <div className="flex gap-2 w-full">
+            <TabButton
+              active={activeTab === 'active'}
+              onClick={() => setActiveTab('active')}
+              icon={MessageCircle}
+              count={totalUnread}
+            >
+              CONVERSAS
+            </TabButton>
+            <TabButton
+              active={activeTab === 'waiting'}
+              onClick={() => setActiveTab('waiting')}
+              icon={Clock}
+              count={waitingConversations.length}
+            >
+              ESPERA
+            </TabButton>
+            <TabButton
+              active={activeTab === 'contacts'}
+              onClick={() => setActiveTab('contacts')}
+              icon={Users}
+              count={0}
+            >
+              CONTATOS
+            </TabButton>
+          </div>
         </div>
                 
         {/* Lista de Conversas/Contatos */}
-        {isSidebarExpanded ? (
-          <UnifiedList
-            items={getCurrentList()}
-            onSelect={(item) => {
-              if (activeTab === 'contacts') {
-                handleSelectContact(item as Contact);
-              } else {
-                handleSelectConversation(item as Conversation);
-              }
-            }}
-            selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
-            title={getCurrentTitle()}
-            emptyMessage={getEmptyMessage()}
-            isContacts={activeTab === 'contacts'}
-          />
-        ) : (
-          <div className="flex flex-col gap-2 p-2">
-            {getCurrentList().slice(0, 8).map((item) => (
-              <div
-                key={item.id}
-                onClick={() => {
-                  if (activeTab === 'contacts') {
-                    handleSelectContact(item as Contact);
-                  } else {
-                    handleSelectConversation(item as Conversation);
-                  }
-                }}
-                className={`w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-colors ${
-                  (selectedConversation?.id === item.id || selectedContact?.id === item.id)
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                }`}
-                title={activeTab === 'contacts' ? (item as Contact).name : (item as Conversation).contact_name}
-              >
-                <span className="text-sm font-medium">
-                  {activeTab === 'contacts' 
-                    ? (item as Contact).name?.charAt(0) || 'C'
-                    : (item as Conversation).contact_name?.charAt(0) || 'C'
-                  }
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+        <UnifiedList
+          items={getCurrentList()}
+          onSelect={(item) => {
+            if (activeTab === 'contacts') {
+              handleSelectContact(item as Contact);
+            } else {
+              handleSelectConversation(item as Conversation);
+            }
+          }}
+          selectedId={activeTab === 'contacts' ? selectedContact?.id : selectedConversation?.id}
+          title={getCurrentTitle()}
+          emptyMessage={getEmptyMessage()}
+          isContacts={activeTab === 'contacts'}
+        />
         </div>
                 
       {/* Área Principal do Chat */}
