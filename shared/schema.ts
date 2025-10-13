@@ -341,7 +341,6 @@ export const insertConversationSchema = createInsertSchema(conversations).omit({
 
 export const insertMessageSchema = createInsertSchema(messages).omit({
   id: true,
-  sentAt: true,
 });
 
 export const insertQueueSchema = createInsertSchema(queues).omit({

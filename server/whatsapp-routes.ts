@@ -1693,7 +1693,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         mediaUrl: mediaUrl || undefined,
         fileName: fileName || undefined,
         externalId: messageId,
-        // sentAt: new Date(timestamp * 1000), // Converter timestamp Unix para Date
+        sentAt: new Date(timestamp * 1000), // Converter timestamp Unix para Date
         metadata: {
           whapiMessageId: messageId,
           timestamp: timestamp,
@@ -2152,6 +2152,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         caption: caption,
         fileName: fileName,
         externalId: messageId,
+        sentAt: new Date(timestamp * 1000), // Converter timestamp Unix para Date
         metadata: {
           from: phone,
           timestamp: timestamp,
