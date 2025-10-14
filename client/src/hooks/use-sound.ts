@@ -16,18 +16,49 @@ interface SoundHook {
   updateSoundSettings: (settings: Partial<SoundSettings>) => void;
 }
 
-// Play audio file
-const playAudioFile = (src: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
+// Generate beep sound programmatically
+const createBeepSound = (frequency: number = 800, duration: number = 200): Promise<void> => {
+  return new Promise((resolve) => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = frequency;
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + duration / 1000);
+      
+      oscillator.onended = () => resolve();
+    } catch (error) {
+      console.warn('Erro ao criar som programático:', error);
+      resolve();
+    }
+  });
+};
+
+// Play audio file with fallback
+const playAudioFile = (src: string, fallbackFrequency: number = 800): Promise<void> => {
+  return new Promise((resolve) => {
     const audio = new Audio(src);
     audio.volume = 0.7;
     
     audio.onended = () => resolve();
-    audio.onerror = () => reject(new Error('Failed to play audio'));
+    audio.onerror = () => {
+      console.warn('Erro ao reproduzir arquivo de som, usando fallback:', src);
+      createBeepSound(fallbackFrequency).then(resolve);
+    };
     
     audio.play().catch(err => {
       console.warn('Erro ao reproduzir som:', err);
-      reject(err);
+      createBeepSound(fallbackFrequency).then(resolve);
     });
   });
 };
@@ -71,11 +102,11 @@ export function useSound(): SoundHook {
 
     // Play different sounds based on type
     if (type === 'conversation') {
-      // Single beep for conversations
-      playAudioFile('/sounds/message.mp3').catch(() => {});
+      // Single beep for conversations (higher frequency)
+      playAudioFile('/sounds/message.mp3', 1000).catch(() => {});
     } else if (type === 'waiting') {
-      // Single beep for waiting
-      playAudioFile('/sounds/beep.mp3').catch(() => {});
+      // Single beep for waiting (lower frequency)
+      playAudioFile('/sounds/beep.mp3', 600).catch(() => {});
     }
   }, [soundSettings]);
 
@@ -92,11 +123,26 @@ export function useSound(): SoundHook {
       const audio = new Audio('/sounds/waiting-loop.mp3');
       audio.loop = true;
       audio.volume = 0.5;
-      audio.play().catch(err => console.warn('Erro ao reproduzir som de espera:', err));
+      audio.onerror = () => {
+        console.warn('Erro ao reproduzir som de espera em loop, usando fallback');
+        // Fallback: play beep every 2 seconds
+        const interval = setInterval(() => {
+          createBeepSound(600, 300).catch(() => {});
+        }, 2000);
+        waitingSoundIntervalRef.current = interval;
+      };
+      audio.play().catch(err => {
+        console.warn('Erro ao reproduzir som de espera:', err);
+        // Fallback: play beep every 2 seconds
+        const interval = setInterval(() => {
+          createBeepSound(600, 300).catch(() => {});
+        }, 2000);
+        waitingSoundIntervalRef.current = interval;
+      });
       waitingSoundRef.current = audio;
     } else {
       // Play single bip
-      playAudioFile('/sounds/beep.mp3').catch(() => {});
+      playAudioFile('/sounds/beep.mp3', 600).catch(() => {});
     }
   }, [soundSettings]);
 
