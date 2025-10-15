@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useInstanceStatus } from "@/hooks/use-instance-status";
 import { InstanceLockScreen } from "@/components/instance/instance-lock-screen";
 import { PaymentNotificationBanner } from "@/components/instance/payment-notification-banner";
+import { PageLoader } from "@/components/ui/loading-spinner";
 import "./lib/i18n"; // Initialize i18n
 
 // Lazy load pages for better performance
@@ -52,11 +53,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   
   // Show loading while checking instance status
   if (isStatusLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <PageLoader text="Verificando status da instância..." />;
   }
   
   // Check if instance is suspended - block all access
@@ -87,14 +84,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Loading component for Suspense
-function PageLoader() {
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-    </div>
-  );
-}
+// Loading component for Suspense - using imported PageLoader
 
 function Router() {
   return (

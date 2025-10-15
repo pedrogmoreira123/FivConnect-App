@@ -1240,36 +1240,36 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       
       // Processar de forma assíncrona (não bloqueia resposta)
       setImmediate(async () => {
-        try {
-          console.log('='.repeat(80));
-          console.log('[WEBHOOK RECEIVED] Timestamp:', new Date().toISOString());
+    try {
+      console.log('='.repeat(80));
+      console.log('[WEBHOOK RECEIVED] Timestamp:', new Date().toISOString());
           console.log('[WEBHOOK] IP Origem:', req.ip);
           console.log('[WEBHOOK] X-Real-IP:', req.headers['x-real-ip']);
           console.log('[WEBHOOK] X-Forwarded-For:', req.headers['x-forwarded-for']);
           console.log('[WEBHOOK] User-Agent:', req.headers['user-agent']);
           console.log('[WEBHOOK] Content-Type:', req.headers['content-type']);
-          console.log('[WEBHOOK RECEIVED] Body:', JSON.stringify(req.body, null, 2));
-          console.log('[WEBHOOK HEADERS]', JSON.stringify(req.headers, null, 2));
-          console.log('[WEBHOOK] io disponível:', io ? 'SIM' : 'NÃO');
+      console.log('[WEBHOOK RECEIVED] Body:', JSON.stringify(req.body, null, 2));
+      console.log('[WEBHOOK HEADERS]', JSON.stringify(req.headers, null, 2));
+      console.log('[WEBHOOK] io disponível:', io ? 'SIM' : 'NÃO');
           console.log('[WEBHOOK] Raw Body Size:', JSON.stringify(req.body).length, 'bytes');
           console.log('[WEBHOOK] Event Type:', req.body?.event || 'unknown');
           console.log('[WEBHOOK] Data Keys:', req.body?.data ? Object.keys(req.body.data) : 'no data');
           console.log('[WEBHOOK] Payload completo:', JSON.stringify(req.body, null, 2));
-          console.log('='.repeat(80));
-          
-          // Validar assinatura HMAC se disponível
-          const signature = req.headers['x-whapi-signature'] || req.headers['x-signature'];
-          if (signature) {
-            console.log('[WEBHOOK] Assinatura recebida:', signature);
-            // TODO: Implementar validação HMAC se necessário
-          }
-          
-          // Processar diferentes tipos de webhook da Whapi.Cloud
-          const webhookData = req.body;
-          
-          // Processar eventos conforme documentação oficial Whapi.Cloud
-          await processWebhookEvent(webhookData, io);
-        } catch (error: any) {
+      console.log('='.repeat(80));
+      
+      // Validar assinatura HMAC se disponível
+      const signature = req.headers['x-whapi-signature'] || req.headers['x-signature'];
+      if (signature) {
+        console.log('[WEBHOOK] Assinatura recebida:', signature);
+        // TODO: Implementar validação HMAC se necessário
+      }
+      
+      // Processar diferentes tipos de webhook da Whapi.Cloud
+      const webhookData = req.body;
+      
+      // Processar eventos conforme documentação oficial Whapi.Cloud
+      await processWebhookEvent(webhookData, io);
+    } catch (error: any) {
           console.error('[WEBHOOK] Erro no processamento assíncrono:', error);
         }
       });
@@ -1600,60 +1600,50 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       // Buscar conversa (incluindo finalizadas)
       let conversation = await storage.getConversationByClient(client.id, activeConnection.companyId);
       
-      // Se não encontrou OU se está finalizada, criar/reabrir
+      // Se não encontrou OU se está finalizada, criar NOVA conversa
       if (!conversation || conversation.status === 'finished' || conversation.isFinished) {
-        // Se existe mas está finalizada, reabrir
-        if (conversation && (conversation.status === 'finished' || conversation.isFinished)) {
-          console.log('[WEBHOOK] Reabrindo conversa finalizada:', conversation.id);
-          
-          // Verificar se última sessão está finalizada
-          const chatId = conversation.contactPhone + '@s.whatsapp.net';
-          const lastSession = await db.select()
-            .from(chatSessions)
-            .where(eq(chatSessions.chatId, chatId))
-            .orderBy(desc(chatSessions.createdAt))
-            .limit(1);
-
-          // Se última sessão está finalizada, criar nova sessão
-          if (lastSession.length > 0 && lastSession[0].status === 'finished') {
-            console.log('[WEBHOOK] Criando nova sessão após finalização');
-            await db.insert(chatSessions).values({
-              chatId: chatId,
-              clientId: client.id,
-              companyId: activeConnection.companyId,
-              status: 'waiting',
-              priority: 'medium',
-              startedAt: new Date()
-            });
-            console.log('[WEBHOOK] Nova sessão criada para:', chatId);
-          }
-          
-          // Atualizar para status waiting e resetar flags de finalização
-          conversation = await storage.updateConversation(conversation.id, {
+        // SEMPRE criar nova conversa com novo protocolo quando finalizada
+        console.log('[WEBHOOK] Criando NOVA conversa (conversa anterior estava finalizada ou não existe)');
+        
+        const { ProtocolGenerator } = await import('./utils/protocol-generator');
+        const protocolNumber = await ProtocolGenerator.generateSequentialProtocolNumber(activeConnection.companyId, storage);
+        
+        conversation = await storage.createConversation({
+          contactName: client.name,
+          contactPhone: formattedPhone, // Usar formato brasileiro +55 11 99999-9999
+          clientId: client.id,
+          companyId: activeConnection.companyId,
+          status: 'waiting',
+          priority: 'medium',
+          protocolNumber: protocolNumber,
+          environment: 'production'
+        });
+        console.log('[WEBHOOK] ✅ Nova conversa criada:', conversation.id, 'com protocolo:', protocolNumber);
+        
+        // Criar nova sessão de chat para a nova conversa
+        const chatId = conversation.contactPhone + '@s.whatsapp.net';
+        const newSession = await db.insert(chatSessions).values({
+          chatId: chatId,
+          clientId: client.id,
+          companyId: activeConnection.companyId,
+          status: 'waiting',
+          priority: 'medium',
+          startedAt: new Date()
+        }).returning();
+        console.log('[WEBHOOK] ✅ Nova sessão criada para nova conversa:', newSession[0]?.id, 'com startedAt:', newSession[0]?.startedAt);
+        
+        // Notificar via WebSocket que uma nova conversa foi criada
+        if (io) {
+          io.to(`company_${activeConnection.companyId}`).emit('newConversation', {
+            id: conversation.id,
+            contactName: conversation.contactName,
+            contactPhone: conversation.contactPhone,
             status: 'waiting',
-            isFinished: false,
-            finishedAt: null,
-            finishedBy: null,
-            assignedAgentId: null // Remover agente anterior
-          });
-          
-          console.log('[WEBHOOK] Conversa reaberta:', conversation.id);
-        } else {
-          // Criar nova conversa
-          const { ProtocolGenerator } = await import('./utils/protocol-generator');
-          const protocolNumber = await ProtocolGenerator.generateSequentialProtocolNumber(activeConnection.companyId, storage);
-          
-          conversation = await storage.createConversation({
-            contactName: client.name,
-            contactPhone: formattedPhone, // Usar formato brasileiro +55 11 99999-9999
-            clientId: client.id,
-            companyId: activeConnection.companyId,
-            status: 'waiting',
-            priority: 'medium',
             protocolNumber: protocolNumber,
-            environment: 'production'
+            clientId: client.id,
+            companyId: activeConnection.companyId
           });
-          console.log('[WEBHOOK] Conversa criada:', conversation.id, 'com protocolo:', protocolNumber);
+          console.log('[WEBHOOK] ✅ Evento newConversation emitido para nova conversa:', conversation.id);
         }
       }
       
@@ -2139,30 +2129,23 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         c.contactPhone === normalizedPhone
       );
 
-      // Verificar se está finalizada ou não existe
+      // Verificar se está finalizada ou não existe - SEMPRE criar nova conversa
       if (!conversation || conversation.status === 'finished' || conversation.isFinished) {
-        if (conversation && (conversation.status === 'finished' || conversation.isFinished)) {
-          // Reabrir conversa finalizada
-          console.log(`[WhatsApp Routes] 🔄 Reabrindo conversa finalizada: ${conversation.id}`);
-          conversation = await storage.updateConversation(conversation.id, {
-            status: 'waiting',
-            isFinished: false,
-            finishedAt: null,
-            finishedBy: null,
-            assignedAgentId: null
-          });
-          console.log(`[WhatsApp Routes] ✅ Conversa reaberta: ${conversation.id}`);
-        } else {
-          // Criar nova conversa
-          console.log(`[WhatsApp Routes] 💬 Criando nova conversa para cliente: ${client.id}`);
-          conversation = await storage.createConversation({
-            contactName: client.name || `Cliente ${normalizedPhone}`,
-            contactPhone: formattedPhone, // Usar formato brasileiro +55 11 99999-9999
-            clientId: client.id,
-            companyId: '59b4b086-9171-4dbf-8177-b7c6d6fd1e33',
-            status: 'waiting'
-          });
-        }
+        // SEMPRE criar nova conversa com novo protocolo quando finalizada
+        console.log(`[WhatsApp Routes] 💬 Criando NOVA conversa (conversa anterior estava finalizada ou não existe) para cliente: ${client.id}`);
+        
+        const { ProtocolGenerator } = await import('./utils/protocol-generator');
+        const protocolNumber = await ProtocolGenerator.generateSequentialProtocolNumber('59b4b086-9171-4dbf-8177-b7c6d6fd1e33', storage);
+        
+        conversation = await storage.createConversation({
+          contactName: client.name || `Cliente ${normalizedPhone}`,
+          contactPhone: formattedPhone, // Usar formato brasileiro +55 11 99999-9999
+          clientId: client.id,
+          companyId: '59b4b086-9171-4dbf-8177-b7c6d6fd1e33',
+          status: 'waiting',
+          protocolNumber: protocolNumber
+        });
+        console.log(`[WhatsApp Routes] ✅ Nova conversa criada: ${conversation.id} com protocolo: ${protocolNumber}`);
       }
 
       // Salvar mensagem no banco
@@ -2399,7 +2382,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       if (!conversation || conversation.companyId !== companyId) {
         return res.status(404).json({ message: 'Conversa não encontrada' });
       }
-
+      
       // Buscar última sessão ativa (não finalizada)
       const chatId = conversation.contactPhone + '@s.whatsapp.net';
       const activeSession = await db.select()
@@ -2507,77 +2490,90 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
                 }
               });
 
-  // Rota para assumir conversa
-  router.post('/conversations/:conversationId/take', requireAuth, async (req, res) => {
-    try {
-      const { conversationId } = req.params;
-      const { companyId, id: userId } = req.user!;
-      
-      console.log(`[WhatsApp Routes] Assumindo conversa: ${conversationId} pelo usuário: ${userId}`);
-      
-      const conversation = await storage.getConversation(conversationId);
-      if (!conversation || conversation.companyId !== companyId) {
-        return res.status(404).json({ message: 'Conversa não encontrada' });
-      }
-      
-      // Atualizar conversa para in_progress E atribuir ao usuário
-      const updatedConversation = await storage.updateConversation(conversationId, {
-        status: 'in_progress',
-        assignedAgentId: userId
-      });
+              // Rota para assumir conversa
+              router.post('/conversations/:conversationId/take', requireAuth, async (req, res) => {
+                try {
+                  const { conversationId } = req.params;
+                  const { companyId, id: userId } = req.user!;
+                  
+                  console.log(`[WhatsApp Routes] Assumindo conversa: ${conversationId} pelo usuário: ${userId}`);
+                  
+                  const conversation = await storage.getConversation(conversationId);
+                  if (!conversation || conversation.companyId !== companyId) {
+                    return res.status(404).json({ message: 'Conversa não encontrada' });
+                  }
+                  
+                  // Atualizar conversa para in_progress E atribuir ao usuário
+                  const updatedConversation = await storage.updateConversation(conversationId, {
+                    status: 'in_progress',
+                    assignedAgentId: userId
+                  });
       
       // Criar nova sessão de chat para esta conversa
       const chatId = conversation.contactPhone + '@s.whatsapp.net';
       
-      // Verificar se já existe uma sessão ativa
-      const existingSession = await db.select()
+      // Verificar se já existe uma sessão ativa OU finalizada recentemente
+      const existingSessions = await db.select()
         .from(chatSessions)
-        .where(and(
-          eq(chatSessions.chatId, chatId),
-          eq(chatSessions.status, 'in_progress')
-        ))
+        .where(eq(chatSessions.chatId, chatId))
+        .orderBy(desc(chatSessions.startedAt))
         .limit(1);
-      
-      if (existingSession.length === 0) {
-        // Criar nova sessão de chat
+
+      if (existingSessions.length === 0) {
+        // Nenhuma sessão existe - criar nova
         await db.insert(chatSessions).values({
           chatId: chatId,
-          clientId: conversation.clientId,
+          clientId: conversation.clientId || '',
           companyId: companyId,
           status: 'in_progress',
           priority: 'medium',
           startedAt: new Date()
         });
-        console.log(`[WhatsApp Routes] ✅ Nova sessão de chat criada para: ${chatId}`);
+        console.log(`[WhatsApp Routes] Nova sessão de chat criada para: ${chatId}`);
       } else {
-        // Atualizar sessão existente para in_progress
-        await db.update(chatSessions)
-          .set({
+        const lastSession = existingSessions[0];
+        
+        if (lastSession.status === 'finished') {
+          // Sessão finalizada - criar NOVA sessão
+          await db.insert(chatSessions).values({
+            chatId: chatId,
+            clientId: conversation.clientId || '',
+            companyId: companyId,
             status: 'in_progress',
+            priority: 'medium',
             startedAt: new Date()
-          })
-          .where(eq(chatSessions.id, existingSession[0].id));
-        console.log(`[WhatsApp Routes] ✅ Sessão de chat atualizada para: ${chatId}`);
+          });
+          console.log(`[WhatsApp Routes] Nova sessão criada (anterior estava finalizada) para: ${chatId}`);
+        } else {
+          // Sessão já em progresso - apenas atualizar timestamp
+          await db.update(chatSessions)
+            .set({
+              status: 'in_progress',
+              updatedAt: new Date()
+            })
+            .where(eq(chatSessions.id, lastSession.id));
+          console.log(`[WhatsApp Routes] Sessão existente atualizada para: ${chatId}`);
+        }
       }
-      
-      console.log(`[WhatsApp Routes] ✅ Conversa ${conversationId} assumida pelo usuário ${userId} e status atualizado para in_progress`);
-      
-      // Notificar via WebSocket
-      if (io) {
-        io.to(`company_${companyId}`).emit('conversationUpdate', {
-          conversationId: conversationId,
-          status: 'in_progress',
-          assignedAgentId: userId,
-          companyId: companyId
-        });
-      }
-      
-      res.json(updatedConversation);
-    } catch (error: any) {
-      console.error('[WhatsApp Routes] Erro ao assumir conversa:', error);
-      res.status(500).json({ message: 'Erro interno ao assumir conversa' });
-    }
-  });
+                  
+                  console.log(`[WhatsApp Routes] ✅ Conversa ${conversationId} assumida pelo usuário ${userId} e status atualizado para in_progress`);
+                  
+                  // Notificar via WebSocket
+          if (io) {
+                    io.to(`company_${companyId}`).emit('conversationUpdate', {
+                      conversationId: conversationId,
+                      status: 'in_progress',
+                      assignedAgentId: userId,
+                      companyId: companyId
+                    });
+                  }
+                  
+                  res.json(updatedConversation);
+                } catch (error: any) {
+                  console.error('[WhatsApp Routes] Erro ao assumir conversa:', error);
+                  res.status(500).json({ message: 'Erro interno ao assumir conversa' });
+                }
+              });
 
               // Rota para enviar mensagem (suporte a todos os tipos)
               router.post('/conversations/:conversationId/send', requireAuth, async (req, res) => {

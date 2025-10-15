@@ -5,6 +5,7 @@ import { useThemeCustomization } from '../contexts/theme-customization-context';
 import { useSound } from '../hooks/use-sound';
 import io from 'socket.io-client';
 import { WaveformAudioPlayer } from '../components/WaveformAudioPlayer';
+import { LoadingSpinner } from '../components/ui/loading-spinner';
 
 // Interfaces e tipos
 interface User {
@@ -1323,6 +1324,18 @@ const ChatArea = ({
   );
 };
 
+// Função debounce para evitar múltiplas chamadas rápidas
+const debounce = <T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): ((...args: Parameters<T>) => void) => {
+  let timeout: NodeJS.Timeout | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+};
+
 export default function ConversationsPage() {
   const { branding } = useThemeCustomization();
   const { playNotificationSound, playWaitingSound, stopWaitingSound, soundSettings, updateSoundSettings } = useSound();
@@ -1337,7 +1350,9 @@ export default function ConversationsPage() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [imagePopup, setImagePopup] = useState<{ src: string; alt: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth() as { user: User | null };
+  const selectedConversationRef = useRef<string | null>(null);
 
   // Calcular mensagens não respondidas
   const unreadConversations = useMemo(() => {
@@ -1364,13 +1379,27 @@ export default function ConversationsPage() {
   }, [totalPending]);
 
   // Monitorar conversas em espera para tocar som
+  const prevWaitingCountRef = useRef(0);
+
   useEffect(() => {
-    if (waitingConversations.length > 0 && !soundSettings.muteWaiting) {
+    const currentCount = waitingConversations.length;
+    const prevCount = prevWaitingCountRef.current;
+    
+    console.log(`🔔 Conversas em espera: ${currentCount} (anterior: ${prevCount})`);
+    console.log(`🔔 Settings: muteWaiting=${soundSettings.muteWaiting}, waitingSound=${soundSettings.waitingSound}, type=${soundSettings.waitingSoundType}`);
+    
+    if (currentCount > 0 && soundSettings.waitingSound && !soundSettings.muteWaiting) {
+      // Tocar som continuamente enquanto houver conversas em espera
+      console.log('🔔 Tentando iniciar/manter som de espera...');
       playWaitingSound();
     } else {
+      // Parar som quando não houver mais conversas em espera ou estiver mutado
+      console.log('🔔 Parando som de espera (count=0 ou mutado)');
       stopWaitingSound();
     }
-  }, [waitingConversations.length, soundSettings.muteWaiting, playWaitingSound, stopWaitingSound]);
+    
+    prevWaitingCountRef.current = currentCount;
+  }, [waitingConversations.length, soundSettings.muteWaiting, soundSettings.waitingSound, soundSettings.waitingSoundType, playWaitingSound, stopWaitingSound]);
 
   useEffect(() => {
     console.log('🔍 [DEBUG] useEffect principal executado. companyId:', companyId, 'user:', user?.id, 'selectedConversation:', selectedConversation?.id);
@@ -1401,11 +1430,16 @@ export default function ConversationsPage() {
     });
 
     socket.on('newMessage', (messageData) => {
-      console.log('🔍 [DEBUG] newMessage listener executado:', messageData);
-      console.log('📨 Nova mensagem recebida via WebSocket:', messageData);
+      console.log('📨 Nova mensagem via WebSocket:', {
+        id: messageData.id,
+        conversationId: messageData.conversationId,
+        direction: messageData.direction,
+        currentSelectedId: selectedConversationRef.current,
+        willAddToMessages: selectedConversationRef.current === messageData.conversationId
+      });
       
-      // Verificar se a mensagem pertence à conversa atual
-      if (selectedConversation && messageData.conversationId === selectedConversation.id) {
+      // Verificar se a mensagem pertence à conversa ATUALMENTE selecionada
+      if (selectedConversationRef.current && messageData.conversationId === selectedConversationRef.current) {
         setMessages(prev => {
           // Verificar se a mensagem já existe
           const exists = prev.some(msg => msg.id === messageData.id);
@@ -1419,14 +1453,28 @@ export default function ConversationsPage() {
           return prev;
         });
         
-        // Tocar som de notificação para mensagens recebidas
-        if (messageData.direction === 'incoming') {
+        // Tocar som de notificação para mensagens recebidas na conversa aberta
+        if (messageData.direction === 'incoming' && !soundSettings.muteConversations) {
+          console.log('🔔 Tocando som de notificação para conversa aberta');
           playNotificationSound('conversation');
         }
       }
       
-      // Atualizar lista de conversas
-      loadConversations();
+      // Atualizar apenas a conversa específica na lista
+      setActiveConversations(prev => 
+        prev.map(conv => 
+          conv.id === messageData.conversationId
+            ? { ...conv, lastMessage: messageData.content, lastMessageAt: new Date() }
+            : conv
+        )
+      );
+      setWaitingConversations(prev => 
+        prev.map(conv => 
+          conv.id === messageData.conversationId
+            ? { ...conv, lastMessage: messageData.content, lastMessageAt: new Date() }
+            : conv
+        )
+      );
     });
 
     socket.on('messageStatusUpdate', (data) => {
@@ -1462,7 +1510,7 @@ export default function ConversationsPage() {
     socket.on('newConversation', (conversation) => {
       console.log('🔍 [DEBUG] newConversation listener executado:', conversation);
       console.log('💬 Nova conversa criada:', conversation);
-      loadConversations();
+      loadConversationsDebounced();
       
       // Tocar som para conversas em espera
       if (conversation.status === 'waiting') {
@@ -1473,7 +1521,7 @@ export default function ConversationsPage() {
     socket.on('conversationUpdate', (conversation) => {
       console.log('🔍 [DEBUG] conversationUpdate listener executado:', conversation);
       console.log('🔄 Conversa atualizada:', conversation);
-      loadConversations();
+      loadConversationsDebounced();
     });
 
     socket.on('connectionUpdate', (data) => {
@@ -1484,30 +1532,9 @@ export default function ConversationsPage() {
       console.log('📱 QR Code atualizado:', data);
     });
 
-    // Fallback: Polling para mensagens da conversa selecionada (caso WebSocket falhe)
-    const pollMessages = async () => {
-      try {
-        if (selectedConversation) {
-          const response = await apiClient.get(`/api/whatsapp/conversations/${selectedConversation.id}/messages`);
-          
-          if (response.data && Array.isArray(response.data)) {
-            setMessages(response.data);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Erro no polling de mensagens:', error);
-      }
-    };
+    // Polling de mensagens removido - usando apenas WebSocket para melhor performance
 
-    // Sincronização de mensagens não processadas
-    const syncMessages = async () => {
-      try {
-        await apiClient.post('/api/whatsapp/messages/sync');
-        console.log('🔄 Mensagens sincronizadas');
-      } catch (error) {
-        console.error('❌ Erro na sincronização de mensagens:', error);
-      }
-    };
+    // Sincronização de mensagens removida - usando apenas WebSocket para melhor performance
 
     // Polling para conversas
     const pollConversations = async () => {
@@ -1530,18 +1557,13 @@ export default function ConversationsPage() {
     };
 
     // Polling inicial
-    pollMessages();
     pollConversations();
 
-    // Polling em tempo real para mensagens (3 segundos) e conversas (10 segundos)
-    const messagesInterval = setInterval(pollMessages, 3000);
-    const conversationsInterval = setInterval(pollConversations, 10000);
-    const syncInterval = setInterval(syncMessages, 10000); // Sincronizar a cada 10 segundos
+    // Polling em tempo real para conversas (30 segundos)
+    const conversationsInterval = setInterval(pollConversations, 30000); // 30 segundos
 
     return () => {
-      clearInterval(messagesInterval);
       clearInterval(conversationsInterval);
-      clearInterval(syncInterval);
       socket.disconnect();
       console.log('🔄 WebSocket e polling interrompidos');
     };
@@ -1549,6 +1571,7 @@ export default function ConversationsPage() {
 
   const loadConversations = async () => {
     try {
+      setIsLoading(true);
       // Usar rotas de teste temporariamente
       const [waitingRes, activeRes] = await Promise.all([
         apiClient.get('/api/whatsapp/conversations?status=waiting'),
@@ -1580,15 +1603,25 @@ export default function ConversationsPage() {
       // Garantir que sempre temos arrays
       setWaitingConversations([]);
       setActiveConversations([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // Versão debounced para evitar múltiplas chamadas rápidas
+  const loadConversationsDebounced = useMemo(
+    () => debounce(loadConversations, 300),
+    []
+  );
+
   const loadContacts = async () => {
     try {
-      const response = await apiClient.get(`/api/clients/${companyId}`);
+      console.log('🔍 Carregando contatos para empresa:', companyId);
+      const response = await apiClient.get('/api/clients');
       
       // Garantir que sempre temos um array válido
       const contactsData = Array.isArray(response.data) ? response.data : [];
+      console.log('🔍 Contatos carregados:', contactsData.length);
       setContacts(contactsData);
     } catch (error) {
       console.error('Erro ao carregar contatos:', error);
@@ -1598,7 +1631,10 @@ export default function ConversationsPage() {
   };
 
   const handleSelectConversation = async (conversation: Conversation) => {
+    console.log(`[Conversations] Selecionando conversa: ${conversation.id}, status: ${conversation.status}, isFinished: ${conversation.isFinished}`);
+    
     setSelectedConversation(conversation);
+    selectedConversationRef.current = conversation.id;
     setSelectedContact(null);
     
     // Marcar conversa como lida
@@ -1621,6 +1657,7 @@ export default function ConversationsPage() {
     }
     
     try {
+      console.log(`[Conversations] Carregando mensagens para conversa: ${conversation.id}, status: ${conversation.status}, isFinished: ${conversation.isFinished}`);
       // Usar rota de teste temporariamente
       const res = await apiClient.get(`/api/whatsapp/conversations/${conversation.id}/messages`);
       
@@ -1791,12 +1828,23 @@ export default function ConversationsPage() {
 
   const handleFinishConversation = async (conversationId: string) => {
     try {
+      console.log('[Conversations] Finalizando conversa:', conversationId);
+      
       await apiClient.post(`/api/whatsapp/conversations/${conversationId}/finish`);
-      await loadConversations();
+      
+      console.log('[Conversations] Conversa finalizada com sucesso');
+      
+      // Limpar estado local imediatamente
       setSelectedConversation(null);
+      selectedConversationRef.current = null;
       setMessages([]);
+      
+      // Recarregar conversas para atualizar lista
+      await loadConversations();
+      
     } catch (error) {
-      console.error("Erro ao finalizar conversa:", error);
+      console.error("[Conversations] Erro ao finalizar conversa:", error);
+      alert('Erro ao finalizar conversa. Tente novamente.');
     }
   };
 
@@ -1838,6 +1886,15 @@ export default function ConversationsPage() {
         return '';
     }
   };
+
+  // Mostrar loading durante carregamento inicial
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <LoadingSpinner size="lg" text="Carregando conversas..." />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-100">

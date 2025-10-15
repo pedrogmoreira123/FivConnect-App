@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useT } from '@/hooks/use-translation';
 import { useMobile } from '@/hooks/use-mobile';
 import { useToast } from '@/hooks/use-toast';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { 
   Search, 
   Plus, 
@@ -309,6 +310,15 @@ export default function ClientsPage() {
       });
     }
   };
+
+  // Mostrar loading durante carregamento inicial
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <LoadingSpinner size="lg" text="Carregando clientes..." />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex bg-background">

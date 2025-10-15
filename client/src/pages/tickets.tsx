@@ -24,6 +24,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import apiClient from '@/lib/api-client';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { 
   Search, 
   Filter, 
@@ -429,6 +430,15 @@ export default function TicketsPage() {
       });
     }
   };
+
+  // Mostrar loading durante carregamento inicial
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <LoadingSpinner size="lg" text="Carregando atendimentos..." />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col space-y-4 md:space-y-6">
