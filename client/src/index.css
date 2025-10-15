@@ -111,3 +111,24 @@
     @apply border-primary text-primary;
   }
 }
+
+/* Tokens de Prioridade */
+:root {
+  --priority-low: hsl(142 71% 45%);
+  --priority-medium: hsl(45 93% 47%);
+  --priority-high: hsl(25 95% 53%);
+  --priority-urgent: hsl(0 84% 60%);
+  
+  /* Tokens de Status */
+  --status-open: hsl(217 91% 60%);
+  --status-in-progress: hsl(45 93% 47%);
+  --status-closed: hsl(142 71% 45%);
+  --status-canceled: hsl(215 16% 47%);
+}
+
+.dark {
+  --priority-low: hsl(142 71% 55%);
+  --priority-medium: hsl(45 93% 57%);
+  --priority-high: hsl(25 95% 63%);
+  --priority-urgent: hsl(0 84% 70%);
+}

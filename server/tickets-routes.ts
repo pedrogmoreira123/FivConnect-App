@@ -259,4 +259,36 @@ router.put('/:id/cancel', requireAuth, async (req, res) => {
   }
 });
 
+// PATCH /api/tickets/:id/priority - Atualizar prioridade de ticket
+router.patch('/:id/priority', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { priority } = req.body;
+    const { companyId } = req.user!;
+    
+    // Validar prioridade
+    if (!['low', 'medium', 'high', 'urgent'].includes(priority)) {
+      return res.status(400).json({ error: 'Prioridade inválida' });
+    }
+    
+    // Atualizar ticket
+    const [updated] = await db.update(conversations)
+      .set({ priority, updatedAt: new Date() })
+      .where(and(
+        eq(conversations.id, id),
+        eq(conversations.companyId, companyId)
+      ))
+      .returning();
+    
+    if (!updated) {
+      return res.status(404).json({ error: 'Ticket não encontrado' });
+    }
+    
+    res.json(updated);
+  } catch (error) {
+    console.error('Erro ao atualizar prioridade:', error);
+    res.status(500).json({ error: 'Erro ao atualizar prioridade' });
+  }
+});
+
 export default router;

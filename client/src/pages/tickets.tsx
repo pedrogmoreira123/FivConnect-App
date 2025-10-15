@@ -3,6 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -25,6 +26,11 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import apiClient from '@/lib/api-client';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { PriorityBadge } from '@/components/common/PriorityBadge';
+import { StatusBadge } from '@/components/common/StatusBadge';
+import { PrioritySelect } from '@/components/features/PrioritySelect';
+import { TicketListSkeleton } from '@/components/common/TicketSkeleton';
+import { usePriority } from '@/hooks/helpdesk/use-priority';
 import { 
   Search, 
   Filter, 
@@ -434,8 +440,12 @@ export default function TicketsPage() {
   // Mostrar loading durante carregamento inicial
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <LoadingSpinner size="lg" text="Carregando atendimentos..." />
+      <div className="h-full flex flex-col space-y-4 md:space-y-6">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <TicketListSkeleton />
       </div>
     );
   }
@@ -918,18 +928,8 @@ export default function TicketsPage() {
                       <h3 className="font-semibold text-foreground">
                         {ticket.protocolNumber || `#${ticket.id.slice(0, 6)}`}
                       </h3>
-                      <Badge 
-                        variant="secondary" 
-                        className={statusColors[mapStatusToUI(ticket.status)]}
-                      >
-                        {statusLabels[mapStatusToUI(ticket.status)]}
-                      </Badge>
-                      <Badge 
-                        variant="outline" 
-                        className={priorityColors[ticket.priority]}
-                      >
-                        {priorityLabels[ticket.priority]}
-                      </Badge>
+                      <StatusBadge status={mapStatusToUI(ticket.status)} />
+                      <PriorityBadge priority={ticket.priority || 'medium'} />
                     </div>
                     
                     <p className="text-sm text-muted-foreground mb-1">

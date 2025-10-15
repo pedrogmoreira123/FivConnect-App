@@ -75,6 +75,7 @@ export const conversations = pgTable("conversations", {
   assignedAgentId: varchar("assigned_agent_id").references(() => users.id),
   queueId: varchar("queue_id").references(() => queues.id),
   priority: text("priority", { enum: ["low", "medium", "high", "urgent"] }).default("medium"),
+  category: text("category"), // Category for better organization
   tags: json("tags"), // Store conversation tags as JSON array
   isGroup: boolean("is_group").default(false), // NEW: WhatsApp group conversations
   // NOVO: Sistema de Protocolo de Atendimento
