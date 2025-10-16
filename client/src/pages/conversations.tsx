@@ -6,6 +6,7 @@ import { useSound } from '../hooks/use-sound';
 import io from 'socket.io-client';
 import { WaveformAudioPlayer } from '../components/WaveformAudioPlayer';
 import { LoadingSpinner } from '../components/ui/loading-spinner';
+import { ConversationListSkeleton } from '../components/common/ConversationSkeleton';
 
 // Interfaces e tipos
 interface User {
@@ -1890,8 +1891,22 @@ export default function ConversationsPage() {
   // Mostrar loading durante carregamento inicial
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <LoadingSpinner size="lg" text="Carregando conversas..." />
+      <div className="h-screen flex">
+        {/* Sidebar skeleton */}
+        <div className="w-80 border-r bg-background p-4">
+          <div className="space-y-4">
+            <div className="h-8 bg-muted rounded animate-pulse" />
+            <ConversationListSkeleton count={8} />
+          </div>
+        </div>
+        {/* Main content skeleton */}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="h-12 w-12 bg-muted rounded-full animate-pulse mx-auto" />
+            <div className="h-4 w-48 bg-muted rounded animate-pulse mx-auto" />
+            <div className="h-3 w-32 bg-muted rounded animate-pulse mx-auto" />
+          </div>
+        </div>
       </div>
     );
   }

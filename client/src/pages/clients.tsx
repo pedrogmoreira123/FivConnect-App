@@ -13,6 +13,7 @@ import { useT } from '@/hooks/use-translation';
 import { useMobile } from '@/hooks/use-mobile';
 import { useToast } from '@/hooks/use-toast';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { ClientListSkeleton } from '@/components/common/ClientSkeleton';
 import { 
   Search, 
   Plus, 
@@ -314,8 +315,12 @@ export default function ClientsPage() {
   // Mostrar loading durante carregamento inicial
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <LoadingSpinner size="lg" text="Carregando clientes..." />
+      <div className="h-full flex flex-col space-y-4 md:space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="h-8 w-48 bg-muted rounded animate-pulse" />
+          <div className="h-10 w-32 bg-muted rounded animate-pulse" />
+        </div>
+        <ClientListSkeleton count={6} />
       </div>
     );
   }

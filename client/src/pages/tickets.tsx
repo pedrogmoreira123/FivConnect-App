@@ -141,8 +141,12 @@ export default function TicketsPage() {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showPriorityModal, setShowPriorityModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
+  
+  // Hook para gerenciar prioridades
+  const { updatePriority } = usePriority();
   
   const [filters, setFilters] = useState<FilterOptions>({
     status: 'all',
@@ -434,6 +438,25 @@ export default function TicketsPage() {
         title: "Erro",
         description: "Não foi possível cancelar o atendimento."
       });
+    }
+  };
+
+  const handleUpdatePriority = async (priority: string) => {
+    if (!selectedTicket) return;
+    
+    try {
+      await updatePriority.mutateAsync({ 
+        ticketId: selectedTicket.id, 
+        priority 
+      });
+      
+      setShowPriorityModal(false);
+      setSelectedTicket(null);
+      
+      // Recarregar dados
+      window.location.reload();
+    } catch (error) {
+      console.error('Erro ao atualizar prioridade:', error);
     }
   };
 
@@ -981,6 +1004,16 @@ export default function TicketsPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedTicket(ticket);
+                            setShowPriorityModal(true);
+                          }}
+                        >
+                          <AlertCircle className="h-4 w-4 mr-2" />
+                          Alterar Prioridade
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTicket(ticket);
                             setShowAssignModal(true);
                           }}
                         >
@@ -1135,6 +1168,39 @@ export default function TicketsPage() {
               </Button>
               <Button variant="destructive" onClick={handleCancelTicket}>
                 Cancelar Atendimento
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Alterar Prioridade */}
+      <Dialog open={showPriorityModal} onOpenChange={setShowPriorityModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alterar Prioridade</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Selecione a nova prioridade para o ticket {selectedTicket?.protocolNumber || selectedTicket?.id?.slice(0, 6)}.
+            </p>
+            <div className="space-y-2">
+              <Label>Prioridade Atual</Label>
+              <PriorityBadge priority={selectedTicket?.priority || 'medium'} />
+            </div>
+            <div className="space-y-2">
+              <Label>Nova Prioridade</Label>
+              <PrioritySelect 
+                value={selectedTicket?.priority || 'medium'} 
+                onChange={(priority) => handleUpdatePriority(priority)}
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button variant="outline" onClick={() => {
+                setShowPriorityModal(false);
+                setSelectedTicket(null);
+              }}>
+                Cancelar
               </Button>
             </div>
           </div>
