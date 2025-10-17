@@ -447,158 +447,9 @@ export function setupWhatsAppRoutes(app: Express, io?: any): void {
 
   // ===== ROTAS DE GERENCIAMENTO DE CANAIS E SALDO =====
 
-  /**
-   * GET /api/whatsapp/partner/balance
-   * Obter saldo de dias disponíveis do parceiro
-   */
-  router.get('/partner/balance', requireAuth, requireRole(['superadmin']), async (req, res) => {
-    try {
-      console.log('[WhatsApp Routes] Obtendo saldo do parceiro...');
-      
-      const partnerInfo = await whapiService.getPartnerInfo();
-      
-      // Converter dias para BRL (assumindo R$ 89 por 30 dias conforme mencionado)
-      const daysAvailable = partnerInfo.balance || 0;
-      const pricePerDay = 89 / 30; // R$ 89 por 30 dias
-      const balanceBRL = Math.round(daysAvailable * pricePerDay * 100) / 100;
-      
-      res.json({
-        success: true,
-        data: {
-          daysAvailable,
-          balanceBRL,
-          currency: 'BRL',
-          pricePerDay,
-          partnerInfo
-        }
-      });
-    } catch (error: any) {
-      console.error('[WhatsApp Routes] Erro ao obter saldo do parceiro:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Erro ao obter saldo do parceiro',
-        error: error.message
-      });
-    }
-  });
 
-  /**
-   * GET /api/whatsapp/channels/:channelId/info
-   * Obter informações detalhadas de um canal
-   */
-  router.get('/channels/:channelId/info', requireAuth, requireRole(['superadmin']), async (req, res) => {
-    try {
-      const { channelId } = req.params;
-      console.log(`[WhatsApp Routes] Obtendo informações do canal: ${channelId}`);
-      
-      const channelInfo = await whapiService.getChannelInfo(channelId);
-      
-      res.json({
-        success: true,
-        data: channelInfo
-      });
-    } catch (error: any) {
-      console.error('[WhatsApp Routes] Erro ao obter informações do canal:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Erro ao obter informações do canal',
-        error: error.message
-      });
-    }
-  });
 
-  /**
-   * POST /api/whatsapp/channels/:channelId/extend
-   * Estender dias de um canal
-   */
-  router.post('/channels/:channelId/extend', requireAuth, requireRole(['superadmin']), async (req, res) => {
-    try {
-      const { channelId } = req.params;
-      const { days } = req.body;
-      
-      if (!days || days <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Número de dias deve ser maior que zero'
-        });
-      }
-      
-      console.log(`[WhatsApp Routes] Estendendo canal ${channelId} por ${days} dias`);
-      
-      const result = await whapiService.extendChannel(channelId, days);
-      
-      // Calcular custo em BRL
-      const pricePerDay = 89 / 30; // R$ 89 por 30 dias
-      const costBRL = Math.round(days * pricePerDay * 100) / 100;
-      
-      res.json({
-        success: true,
-        message: `Canal estendido com sucesso por ${days} dias`,
-        data: {
-          channelId,
-          daysExtended: days,
-          costBRL,
-          currency: 'BRL',
-          result
-        }
-      });
-    } catch (error: any) {
-      console.error('[WhatsApp Routes] Erro ao estender canal:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Erro ao estender canal',
-        error: error.message
-      });
-    }
-  });
 
-  /**
-   * POST /api/whatsapp/channels/activate-trial
-   * Ativar canal atual com 5 dias de teste
-   */
-  router.post('/channels/activate-trial', requireAuth, requireRole(['superadmin']), async (req, res) => {
-    try {
-      const { companyId } = req.user!;
-      console.log(`[WhatsApp Routes] Ativando canal de teste para empresa: ${companyId}`);
-      
-      // Buscar conexão ativa da empresa
-      const connections = await storage.getWhatsAppConnectionsByCompany(companyId);
-      if (connections.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'Nenhuma conexão WhatsApp encontrada para esta empresa'
-        });
-      }
-      
-      const connection = connections[0];
-      if (!connection.whapiChannelId) {
-        return res.status(400).json({ 
-          success: false,
-          message: 'Canal ID não encontrado na conexão'
-        });
-      }
-      
-      // Estender canal com 5 dias
-      const result = await whapiService.extendChannel(connection.whapiChannelId, 5);
-      
-      res.json({ 
-        success: true,
-        message: 'Canal ativado com 5 dias de teste',
-        data: {
-          channelId: connection.whapiChannelId,
-          daysExtended: 5,
-        result 
-        }
-      });
-    } catch (error: any) {
-      console.error('[WhatsApp Routes] Erro ao ativar canal de teste:', error);
-      res.status(500).json({ 
-        success: false,
-        message: 'Erro ao ativar canal de teste',
-        error: error.message 
-      });
-    }
-  });
 
   // Endpoint de teste para configurar webhook (sem autenticação)
   router.post('/test/webhook/configure', async (req, res) => {
@@ -3515,6 +3366,79 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
     } catch (error) {
       console.error('[DEBUG] Erro ao atualizar conexão:', error);
       res.status(500).json({ error: 'Erro interno', details: error.message });
+    }
+  });
+
+  // ===== PARTNER API ROUTES =====
+
+  // GET /api/whatsapp/partner/info
+  // Retorna saldo geral do partner
+  router.get('/partner/info', requireAuth, requireRole(['superadmin']), async (req, res) => {
+    try {
+      console.log('[WhatsApp Routes] Buscando informações do partner...');
+      const partnerInfo = await whapiService.getPartnerInfo();
+      res.json({ success: true, data: partnerInfo });
+    } catch (error: any) {
+      console.error('[WhatsApp Routes] Erro ao buscar informações do partner:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // GET /api/whatsapp/partner/channels
+  // Lista todos os canais do partner
+  router.get('/partner/channels', requireAuth, requireRole(['superadmin']), async (req, res) => {
+    try {
+      console.log('[WhatsApp Routes] Listando canais do partner...');
+      const channels = await whapiService.listPartnerChannels();
+      res.json({ success: true, data: channels });
+    } catch (error: any) {
+      console.error('[WhatsApp Routes] Erro ao listar canais do partner:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // POST /api/whatsapp/partner/channels/:channelId/extend
+  // Adiciona dias a um canal específico
+  router.post('/partner/channels/:channelId/extend', requireAuth, requireRole(['superadmin']), async (req, res) => {
+    try {
+      const { channelId } = req.params;
+      const { days } = req.body;
+      
+      if (!days || days <= 0) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Número de dias deve ser maior que zero' 
+        });
+      }
+      
+      console.log(`[WhatsApp Routes] Estendendo canal ${channelId} por ${days} dias...`);
+      await whapiService.extendChannel(channelId, days);
+      res.json({ success: true, message: `${days} dias adicionados com sucesso` });
+    } catch (error: any) {
+      console.error('[WhatsApp Routes] Erro ao estender canal:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // POST /api/whatsapp/partner/credits/add
+  // Adiciona créditos à conta partner
+  router.post('/partner/credits/add', requireAuth, requireRole(['superadmin']), async (req, res) => {
+    try {
+      const { amount, currency = 'BRL' } = req.body;
+      
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Valor deve ser maior que zero' 
+        });
+      }
+      
+      console.log(`[WhatsApp Routes] Adicionando ${amount} ${currency} de créditos...`);
+      await whapiService.addPartnerCredits(amount, currency);
+      res.json({ success: true, message: 'Créditos adicionados com sucesso' });
+    } catch (error: any) {
+      console.error('[WhatsApp Routes] Erro ao adicionar créditos:', error);
+      res.status(500).json({ success: false, message: error.message });
     }
   });
 

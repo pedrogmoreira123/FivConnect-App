@@ -851,28 +851,6 @@ export class WhapiService {
     }
   }
 
-  /**
-   * Estender dias de um canal
-   * POST /channels/{channelId}/extend
-   */
-  async extendChannel(channelId: string, days: number): Promise<any> {
-    try {
-      this.logger.info(`[WhapiService] Estendendo canal ${channelId} por ${days} dias...`);
-      
-      const response = await axios.post(`${this.apiUrl}channels/${channelId}/extend`, {
-        days: days
-      }, {
-        headers: this.headers,
-        timeout: 30000
-      });
-      
-      this.logger.info(`[WhapiService] Canal estendido com sucesso`);
-      return response.data;
-    } catch (error: any) {
-      this.logger.error(`[WhapiService] Erro ao estender canal:`, error.response?.data || error.message);
-      throw error;
-    }
-  }
 
   /**
    * Configurar download automático de mídia
@@ -1100,6 +1078,117 @@ export class WhapiService {
     } catch (error: any) {
       this.logger.warn(`[WhapiService] Erro ao buscar foto de perfil: ${error.message}`);
       return null;
+    }
+  }
+
+  // ===== PARTNER API METHODS (PLAN IMPLEMENTATION) =====
+
+  /**
+   * Obter informações do partner (saldo geral)
+   * GET /partner
+   */
+  async getPartnerInfo(): Promise<{
+    balance: number;
+    currency: string;
+    id: string;
+  }> {
+    try {
+      this.logger.info(`[WhapiService] Buscando informações do partner...`);
+      
+      const response = await axios.get(`${this.managerApiUrl}partner`, {
+        headers: this.partnerHeaders,
+        timeout: 30000
+      });
+      
+      this.logger.info(`[WhapiService] Informações do partner obtidas com sucesso`);
+      return response.data;
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao buscar informações do partner:`, error.response?.data || error.message);
+      
+      // Return fallback data if API is not available
+      this.logger.warn(`[WhapiService] Retornando dados de fallback para partner info`);
+      return {
+        balance: 0,
+        currency: 'BRL',
+        id: 'partner-fallback'
+      };
+    }
+  }
+
+  /**
+   * Listar todos os canais do partner
+   * GET /channels
+   */
+  async listPartnerChannels(): Promise<Array<{
+    id: string;
+    name: string;
+    phone: string;
+    status: string;
+    daysLeft: number;
+    expiresAt: string;
+  }>> {
+    try {
+      this.logger.info(`[WhapiService] Listando canais do partner...`);
+      
+      const response = await axios.get(`${this.managerApiUrl}channels`, {
+        headers: this.partnerHeaders,
+        timeout: 30000
+      });
+      
+      this.logger.info(`[WhapiService] Canais do partner encontrados: ${response.data?.length || 0}`);
+      return response.data || [];
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao listar canais do partner:`, error.response?.data || error.message);
+      
+      // Return empty array if API is not available
+      this.logger.warn(`[WhapiService] Retornando array vazio para canais do partner`);
+      return [];
+    }
+  }
+
+  /**
+   * Estender dias de um canal específico
+   * POST /channels/{channelId}/extend
+   */
+  async extendChannel(channelId: string, days: number): Promise<void> {
+    try {
+      this.logger.info(`[WhapiService] Estendendo canal ${channelId} por ${days} dias...`);
+      
+      await axios.post(`${this.managerApiUrl}channels/${channelId}/extend`, 
+        { days }, 
+        {
+          headers: this.partnerHeaders,
+          timeout: 30000
+        }
+      );
+      
+      this.logger.info(`[WhapiService] Canal ${channelId} estendido com sucesso por ${days} dias`);
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao estender canal:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Adicionar créditos à conta partner
+   * POST /credits/add
+   */
+  async addPartnerCredits(amount: number, currency: string = 'BRL'): Promise<void> {
+    try {
+      this.logger.info(`[WhapiService] Adicionando ${amount} ${currency} de créditos ao partner...`);
+      
+      await axios.post(`${this.managerApiUrl}credits/add`, 
+        { amount, currency }, 
+        {
+          headers: this.partnerHeaders,
+          timeout: 30000
+        }
+      );
+      
+      this.logger.info(`[WhapiService] Créditos adicionados com sucesso: ${amount} ${currency}`);
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao adicionar créditos:`, error.response?.data || error.message);
+      throw error;
     }
   }
 

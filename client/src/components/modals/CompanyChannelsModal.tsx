@@ -38,6 +38,15 @@ interface PartnerBalance {
   pricePerDay: number;
 }
 
+interface PartnerChannel {
+  id: string;
+  name: string;
+  phone: string;
+  status: 'connected' | 'disconnected';
+  daysLeft: number;
+  expiresAt: string;
+}
+
 interface CompanyChannelsData {
   success: boolean;
   company: {
@@ -61,12 +70,16 @@ interface CompanyChannelsModalProps {
 export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }: CompanyChannelsModalProps) {
   const [data, setData] = useState<CompanyChannelsData | null>(null);
   const [partnerBalance, setPartnerBalance] = useState<PartnerBalance | null>(null);
+  const [partnerChannels, setPartnerChannels] = useState<PartnerChannel[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newLimit, setNewLimit] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
+  const [showAddDaysModal, setShowAddDaysModal] = useState(false);
+  const [selectedChannelForDays, setSelectedChannelForDays] = useState<PartnerChannel | null>(null);
+  const [daysToAdd, setDaysToAdd] = useState(30);
 
   // Carregar dados quando o modal abrir
   useEffect(() => {
@@ -80,10 +93,11 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
     setError(null);
     
     try {
-      // Carregar dados dos canais e saldo do parceiro em paralelo
-      const [channelsResponse, balanceResponse] = await Promise.allSettled([
+      // Carregar dados dos canais, saldo do parceiro e canais do partner em paralelo
+      const [channelsResponse, balanceResponse, partnerChannelsResponse] = await Promise.allSettled([
         apiClient.get(`/api/admin/companies/${companyId}/whatsapp-channels`),
-        apiClient.get('/api/whatsapp/partner/balance')
+        apiClient.get('/api/whatsapp/partner/balance'),
+        apiClient.get('/api/whatsapp/partner/channels')
       ]);
       
       // Processar dados dos canais
@@ -105,6 +119,16 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
       } else {
         console.error('Erro ao carregar saldo do parceiro:', balanceResponse.reason);
         // Não definir erro aqui, pois o saldo é opcional
+      }
+
+      // Processar canais do partner
+      if (partnerChannelsResponse.status === 'fulfilled') {
+        const partnerChannelsData = partnerChannelsResponse.value.data;
+        setPartnerChannels(partnerChannelsData.data || []);
+      } else {
+        console.error('Erro ao carregar canais do partner:', partnerChannelsResponse.reason);
+        // Não definir erro aqui, pois os canais do partner são opcionais
+        setPartnerChannels([]); // Garantir que seja um array vazio
       }
     } catch (error: any) {
       console.error('Erro ao carregar dados:', error);
@@ -176,6 +200,33 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
     } catch (error: any) {
       console.error('Erro ao criar canal:', error);
       setError('Erro ao criar canal. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddDaysToChannel = async () => {
+    if (!selectedChannelForDays || daysToAdd <= 0) {
+      setError('Número de dias deve ser maior que zero');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      await apiClient.post(`/api/whatsapp/partner/channels/${selectedChannelForDays.id}/extend`, {
+        days: daysToAdd
+      });
+      
+      // Recarregar dados para atualizar a interface
+      await loadChannelsData();
+      setShowAddDaysModal(false);
+      setSelectedChannelForDays(null);
+      setDaysToAdd(30);
+    } catch (error: any) {
+      console.error('Erro ao adicionar dias ao canal:', error);
+      setError('Erro ao adicionar dias ao canal. Tente novamente.');
     } finally {
       setSaving(false);
     }
@@ -267,12 +318,12 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
                       />
                     </div>
                     <div className="text-sm text-gray-600">
-                      <p>Atual: <span className="font-medium">{data.totalChannels}</span> canais</p>
-                      <p>Limite: <span className="font-medium">{data.channelLimit}</span> canais</p>
+                      <p>Atual: <span className="font-medium">{data?.totalChannels || 0}</span> canais</p>
+                      <p>Limite: <span className="font-medium">{data?.channelLimit || 0}</span> canais</p>
                     </div>
                     <Button
                       onClick={handleSaveLimit}
-                      disabled={saving || newLimit === data.channelLimit}
+                      disabled={saving || newLimit === (data?.channelLimit || 0)}
                       className="flex items-center gap-2"
                     >
                       <Save className="w-4 h-4" />
@@ -333,10 +384,10 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle>Canais WhatsApp ({data.totalChannels})</CardTitle>
+                    <CardTitle>Canais WhatsApp ({data?.totalChannels || 0})</CardTitle>
                     <Button
                       onClick={() => setShowCreateChannel(true)}
-                      disabled={data.totalChannels >= data.channelLimit}
+                      disabled={(data?.totalChannels || 0) >= (data?.channelLimit || 0)}
                       className="flex items-center gap-2"
                     >
                       <Plus className="w-4 h-4" />
@@ -345,7 +396,7 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {data.channels.length === 0 ? (
+                  {!data.channels || data.channels.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                       <WifiOff className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                       <p>Nenhum canal WhatsApp encontrado para esta empresa.</p>
@@ -442,6 +493,84 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
                   )}
                 </CardContent>
               </Card>
+
+              {/* Partner Channels */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Canais do Partner ({partnerChannels.length})</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {partnerChannels.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <WifiOff className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                      <p>Nenhum canal do partner encontrado.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {partnerChannels.map((channel) => (
+                        <div
+                          key={channel.id}
+                          className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <h3 className="font-medium text-gray-900">
+                                  {channel.name}
+                                </h3>
+                                <Badge 
+                                  className={`${
+                                    channel.status === 'connected' 
+                                      ? 'bg-green-100 text-green-800' 
+                                      : 'bg-gray-100 text-gray-800'
+                                  }`}
+                                >
+                                  {channel.status === 'connected' ? 'Conectado' : 'Desconectado'}
+                                </Badge>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                                <div>
+                                  <span className="font-medium">Telefone:</span> {channel.phone}
+                                </div>
+                                <div>
+                                  <span className="font-medium">Dias Restantes:</span> 
+                                  <span className={`ml-1 font-bold ${
+                                    channel.daysLeft > 7 
+                                      ? 'text-green-600' 
+                                      : channel.daysLeft > 3 
+                                      ? 'text-yellow-600' 
+                                      : 'text-red-600'
+                                  }`}>
+                                    {channel.daysLeft} dias
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="font-medium">Expira em:</span> {formatDate(channel.expiresAt)}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="ml-4">
+                              <Button
+                                onClick={() => {
+                                  setSelectedChannelForDays(channel);
+                                  setShowAddDaysModal(true);
+                                }}
+                                size="sm"
+                                variant="outline"
+                                className="flex items-center gap-2"
+                              >
+                                <Plus className="w-4 h-4" />
+                                Adicionar Dias
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           ) : null}
         </div>
@@ -507,6 +636,77 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
                 disabled={saving || !newChannelName.trim()}
               >
                 {saving ? 'Criando...' : 'Criar Canal'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para adicionar dias */}
+      {showAddDaysModal && selectedChannelForDays && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold">Adicionar Dias ao Canal</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowAddDaysModal(false);
+                  setSelectedChannelForDays(null);
+                  setDaysToAdd(30);
+                }}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">
+                    Canal: <span className="font-medium">{selectedChannelForDays.name}</span>
+                  </p>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Dias atuais: <span className="font-medium">{selectedChannelForDays.daysLeft}</span>
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Dias para Adicionar
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={daysToAdd}
+                    onChange={(e) => setDaysToAdd(parseInt(e.target.value) || 0)}
+                    placeholder="30"
+                    className="w-full"
+                  />
+                </div>
+                {error && (
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowAddDaysModal(false);
+                  setSelectedChannelForDays(null);
+                  setDaysToAdd(30);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleAddDaysToChannel}
+                disabled={saving || daysToAdd <= 0}
+              >
+                {saving ? 'Adicionando...' : 'Adicionar Dias'}
               </Button>
             </div>
           </div>

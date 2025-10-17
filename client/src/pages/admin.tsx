@@ -49,10 +49,9 @@ const companySchema = z.object({
 
 const userSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
-  username: z.string().min(3, "Username must be at least 3 characters"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["owner", "admin", "supervisor", "agent"]).default("agent"),
+  role: z.enum(["agent", "supervisor", "admin", "superadmin"]).default("agent"),
 });
 
 type CompanyForm = z.infer<typeof companySchema>;
@@ -86,10 +85,12 @@ export default function AdminPanel() {
   });
 
   // Fetch partner balance
-  const { data: partnerBalance, isLoading: loadingBalance } = useQuery({
-    queryKey: ['/api/whatsapp/partner/balance'],
-    queryFn: () => apiRequest('GET', '/api/whatsapp/partner/balance'),
-    refetchInterval: 30000, // Refetch every 30 seconds
+  const { data: partnerBalance, isLoading: loadingBalance, error: balanceError } = useQuery({
+    queryKey: ['/api/whatsapp/partner/info'],
+    queryFn: () => apiRequest('GET', '/api/whatsapp/partner/info'),
+    refetchInterval: 60000, // Refetch every 1 minute
+    retry: 2, // Retry failed requests 2 times
+    retryDelay: 5000, // Wait 5 seconds between retries
   });
 
   // Fetch users for selected company
@@ -337,42 +338,31 @@ export default function AdminPanel() {
       </div>
 
       {/* Partner Balance */}
-      {partnerBalance?.data && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <DollarSign className="w-5 h-5" />
-              Saldo do Parceiro Whapi.Cloud
-            </CardTitle>
-            <CardDescription>Informações sobre dias disponíveis e saldo em BRL</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-blue-50 rounded-lg">
-                <CalendarIcon className="w-6 h-6 mx-auto mb-2 text-blue-600" />
-                <p className="text-2xl font-bold text-blue-900">{partnerBalance.data.daysAvailable}</p>
-                <p className="text-sm text-blue-700">Dias Disponíveis</p>
-              </div>
-              <div className="text-center p-4 bg-green-50 rounded-lg">
-                <DollarSign className="w-6 h-6 mx-auto mb-2 text-green-600" />
-                <p className="text-2xl font-bold text-green-900">R$ {partnerBalance.data.balanceBRL.toFixed(2)}</p>
-                <p className="text-sm text-green-700">Saldo em BRL</p>
-              </div>
-              <div className="text-center p-4 bg-purple-50 rounded-lg">
-                <Clock className="w-6 h-6 mx-auto mb-2 text-purple-600" />
-                <p className="text-2xl font-bold text-purple-900">R$ {partnerBalance.data.pricePerDay.toFixed(2)}</p>
-                <p className="text-sm text-purple-700">Por Dia</p>
-              </div>
-            </div>
-            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-              <p className="text-sm text-gray-600">
-                <strong>Status:</strong> {partnerBalance.data.partnerInfo?.status || 'Ativo'} | 
-                <strong> ID Parceiro:</strong> {partnerBalance.data.partnerInfo?.partner_id || 'N/A'}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <DollarSign className="w-5 h-5" />
+            Saldo Disponível (Partner)
+          </CardTitle>
+          <CardDescription>Informações sobre saldo da conta Partner Whapi.Cloud</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingBalance ? (
+            <p>Carregando...</p>
+          ) : balanceError ? (
+            <p className="text-red-600">Erro ao carregar saldo do partner</p>
+          ) : (
+            <div>
+              <p className="text-3xl font-bold">
+                {partnerBalance?.data?.balance ?? 0} {partnerBalance?.data?.currency ?? 'BRL'}
+              </p>
+              <p className="text-sm text-gray-500">
+                ID: {partnerBalance?.data?.id || 'N/A'}
               </p>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       {/* Companies List */}
       <Card>
@@ -773,23 +763,6 @@ export default function AdminPanel() {
                 )}
               />
 
-              <FormField
-                control={userForm.control}
-                name="username"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nome de Usuário</FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="joao.silva" 
-                        {...field} 
-                        data-testid="input-user-username"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
 
               <FormField
                 control={userForm.control}
@@ -851,7 +824,7 @@ export default function AdminPanel() {
                         <SelectItem value="agent">Agente</SelectItem>
                         <SelectItem value="supervisor">Supervisor</SelectItem>
                         <SelectItem value="admin">Administrador</SelectItem>
-                        <SelectItem value="owner">Proprietário</SelectItem>
+                        <SelectItem value="superadmin">Super Administrador</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
