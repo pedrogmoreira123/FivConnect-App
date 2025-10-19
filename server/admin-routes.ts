@@ -92,9 +92,10 @@ export function setupAdminRoutes(app: Express) {
                 const expirationDate = new Date(channelDetails.valid_until);
                 const today = new Date();
                 const diffTime = expirationDate.getTime() - today.getTime();
-                daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
                 expiresAt = channelDetails.valid_until;
                 console.log(`🔍 [Admin Routes] Canal ${connection.whapiChannelId} - Dias calculados: ${daysRemaining} (expires: ${expiresAt})`);
+                console.log(`🔍 [Admin Routes] Data de expiração: ${expirationDate.toISOString()}, Hoje: ${today.toISOString()}`);
               } else {
                 // Se não houver valid_until, tentar buscar via listProjectChannels
                 console.log(`⚠️ [Admin Routes] Canal ${connection.whapiChannelId} sem valid_until, tentando buscar via listProjectChannels...`);
@@ -105,9 +106,10 @@ export function setupAdminRoutes(app: Express) {
                     const expirationDate = new Date(foundChannel.valid_until);
                     const today = new Date();
                     const diffTime = expirationDate.getTime() - today.getTime();
-                    daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
                     expiresAt = foundChannel.valid_until;
                     console.log(`✅ [Admin Routes] Canal ${connection.whapiChannelId} encontrado via listProjectChannels: ${daysRemaining} dias`);
+                    console.log(`✅ [Admin Routes] Data de expiração: ${expirationDate.toISOString()}, Hoje: ${today.toISOString()}`);
                   }
                 } catch (listError: any) {
                   console.warn(`⚠️ [Admin Routes] Erro ao buscar via listProjectChannels:`, listError.message);

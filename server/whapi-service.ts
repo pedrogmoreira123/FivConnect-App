@@ -1192,7 +1192,7 @@ export class WhapiService {
 
   /**
    * Obter informações do partner (saldo geral)
-   * GET /partner
+   * GET /partners/{PartnerName}/settings
    */
   async getPartnerInfo(): Promise<{
     balance: number;
@@ -1206,24 +1206,39 @@ export class WhapiService {
     try {
       this.logger.info(`[WhapiService] Buscando informações do partner...`);
       
-      const response = await axios.get(`${this.managerApiUrl}partners`, {
+      // Primeiro, buscar informações básicas do partner
+      const partnerResponse = await axios.get(`${this.managerApiUrl}partners`, {
         headers: this.partnerHeaders,
         timeout: 30000
       });
       
-      this.logger.info(`[WhapiService] Informações do partner obtidas com sucesso`);
-      console.log(`📊 [WhapiService] Resposta completa do Partner API:`, JSON.stringify(response.data, null, 2));
-      console.log(`📊 [WhapiService] Campos disponíveis:`, Object.keys(response.data));
-      console.log(`📊 [WhapiService] liveDays:`, response.data?.liveDays);
-      console.log(`📊 [WhapiService] trialDays:`, response.data?.trialDays);
-      console.log(`📊 [WhapiService] valid_until:`, response.data?.valid_until);
+      console.log(`📊 [WhapiService] Resposta básica do Partner:`, JSON.stringify(partnerResponse.data, null, 2));
       
-      // Calcular totalDays se não vier da API
-      const totalDays = response.data?.liveDays + response.data?.trialDays || 0;
-      console.log(`📊 [WhapiService] Total de dias calculado:`, totalDays);
+      // Depois, buscar configurações do partner (onde estão liveDays e trialDays)
+      const settingsResponse = await axios.get(`${this.managerApiUrl}partners/whapicloud/settings`, {
+        headers: this.partnerHeaders,
+        timeout: 30000
+      });
+      
+      console.log(`📊 [WhapiService] Resposta das configurações:`, JSON.stringify(settingsResponse.data, null, 2));
+      console.log(`📊 [WhapiService] Campos disponíveis nas configurações:`, Object.keys(settingsResponse.data));
+      console.log(`📊 [WhapiService] liveDays:`, settingsResponse.data?.liveDays);
+      console.log(`📊 [WhapiService] trialDays:`, settingsResponse.data?.trialDays);
+      
+      // Calcular totalDays a partir das configurações
+      const liveDays = settingsResponse.data?.liveDays || 0;
+      const trialDays = settingsResponse.data?.trialDays || 0;
+      const totalDays = liveDays + trialDays;
+      console.log(`📊 [WhapiService] Total de dias calculado: ${totalDays} (Live: ${liveDays} + Trial: ${trialDays})`);
+      
+      this.logger.info(`[WhapiService] Informações do partner obtidas com sucesso`);
       
       return {
-        ...response.data,
+        balance: partnerResponse.data?.balance || 0,
+        currency: partnerResponse.data?.currency || 'BRL',
+        id: partnerResponse.data?.id || 'partner-unknown',
+        liveDays: liveDays,
+        trialDays: trialDays,
         totalDays: totalDays
       };
     } catch (error: any) {
