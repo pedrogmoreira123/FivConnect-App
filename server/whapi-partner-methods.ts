@@ -116,7 +116,10 @@ export class WhapiPartnerMethods {
       
       const response = await axios.post(
         `${this.managerApiUrl}channels/${channelId}/extend`,
-        { days },
+        { 
+          days, 
+          comment: "FivConnect - Channel Extension" 
+        },
         {
           headers: this.partnerHeaders,
           timeout: 30000

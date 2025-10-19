@@ -98,9 +98,11 @@ export function setupAdminRoutes(app: Express) {
               
               // Obter modo do canal (sandbox ou live)
               mode = channelDetails?.mode || 'live'; // Fallback para 'live' se não conseguir obter da API
+              console.log(`🔍 [Admin Routes] Canal ${connection.whapiChannelId} - Modo retornado:`, mode);
+              console.log(`🔍 [Admin Routes] Canal ${connection.whapiChannelId} - Detalhes completos:`, JSON.stringify(channelDetails, null, 2));
               
               console.log(`[Admin Routes] Canal ${connection.whapiChannelId}: ${daysRemaining} dias restantes, modo ${mode}`);
-            } catch (error) {
+            } catch (error: any) {
               console.warn(`[Admin Routes] Erro ao buscar detalhes do canal ${connection.whapiChannelId}:`, error.message);
               // Se a API falhar, usar modo 'live' como padrão (já que o canal está funcionando)
               mode = 'live';

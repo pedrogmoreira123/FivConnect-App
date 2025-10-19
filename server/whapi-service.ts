@@ -1060,16 +1060,19 @@ export class WhapiService {
   async extendChannelDays(channelId: string, days: number): Promise<any> {
     try {
       this.logger.info(`[WhapiService] Estendendo canal ${channelId} por ${days} dias`);
-      console.log(`🔍 [WhapiService] URL completa: ${this.gateApiUrl}partners/channels/${channelId}/extend`);
-      console.log(`🔍 [WhapiService] Payload:`, { days });
+      console.log(`🔍 [WhapiService] URL completa: ${this.managerApiUrl}channels/${channelId}/extend`);
+      console.log(`🔍 [WhapiService] Payload:`, { days, comment: "FivConnect - Channel Extension" });
       console.log(`🔍 [WhapiService] Headers:`, {
         ...this.partnerHeaders,
         Authorization: this.partnerHeaders.Authorization ? 'Bearer [TOKEN]' : 'undefined'
       });
       
       const response = await axios.post(
-        `${this.gateApiUrl}partners/channels/${channelId}/extend`,
-        { days },
+        `${this.managerApiUrl}channels/${channelId}/extend`,
+        { 
+          days, 
+          comment: "FivConnect - Channel Extension" 
+        },
         {
           headers: this.partnerHeaders,
           timeout: 30000
