@@ -94,6 +94,30 @@ export function setupAdminRoutes(app: Express) {
                 const diffTime = expirationDate.getTime() - today.getTime();
                 daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                 expiresAt = channelDetails.valid_until;
+                console.log(`🔍 [Admin Routes] Canal ${connection.whapiChannelId} - Dias calculados: ${daysRemaining} (expires: ${expiresAt})`);
+              } else {
+                // Se não houver valid_until, tentar buscar via listProjectChannels
+                console.log(`⚠️ [Admin Routes] Canal ${connection.whapiChannelId} sem valid_until, tentando buscar via listProjectChannels...`);
+                try {
+                  const projectChannels = await whapiService.listProjectChannels();
+                  const foundChannel = projectChannels.find((ch: any) => ch.id === connection.whapiChannelId);
+                  if (foundChannel?.valid_until) {
+                    const expirationDate = new Date(foundChannel.valid_until);
+                    const today = new Date();
+                    const diffTime = expirationDate.getTime() - today.getTime();
+                    daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    expiresAt = foundChannel.valid_until;
+                    console.log(`✅ [Admin Routes] Canal ${connection.whapiChannelId} encontrado via listProjectChannels: ${daysRemaining} dias`);
+                  }
+                } catch (listError: any) {
+                  console.warn(`⚠️ [Admin Routes] Erro ao buscar via listProjectChannels:`, listError.message);
+                }
+                
+                // Fallback: se ainda não tiver dias, usar 0
+                if (daysRemaining === undefined) {
+                  daysRemaining = 0;
+                  console.log(`⚠️ [Admin Routes] Canal ${connection.whapiChannelId} - Usando fallback: 0 dias`);
+                }
               }
               
               // Obter modo do canal (sandbox ou live)

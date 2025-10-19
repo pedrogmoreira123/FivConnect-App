@@ -365,17 +365,23 @@ export default function AdminPanel() {
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Dias Disponíveis</p>
-                {partnerBalance?.data?.valid_until ? (
-                  <p className={`text-3xl font-bold ${
-                    Math.floor((new Date(partnerBalance?.data?.valid_until).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) > 30 
-                      ? 'text-green-600' 
-                      : Math.floor((new Date(partnerBalance?.data?.valid_until).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) > 7
-                      ? 'text-yellow-600'
-                      : 'text-red-600'
-                  }`}>
-                    {Math.floor((new Date(partnerBalance?.data?.valid_until).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} Dias
-                  </p>
+                <p className="text-sm text-gray-500">Pool de Dias</p>
+                {partnerBalance?.data?.totalDays !== undefined ? (
+                  <div>
+                    <p className={`text-3xl font-bold ${
+                      partnerBalance.data.totalDays > 30 
+                        ? 'text-green-600' 
+                        : partnerBalance.data.totalDays > 7
+                        ? 'text-yellow-600'
+                        : 'text-red-600'
+                    }`}>
+                      {partnerBalance.data.totalDays} Dias
+                    </p>
+                    <div className="text-xs text-gray-500 mt-1">
+                      <div>Live: {partnerBalance.data.liveDays || 0} dias</div>
+                      <div>Trial: {partnerBalance.data.trialDays || 0} dias</div>
+                    </div>
+                  </div>
                 ) : (
                   <p className="text-3xl font-bold">N/A</p>
                 )}

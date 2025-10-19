@@ -893,6 +893,7 @@ export class WhapiService {
       console.log(`📊 [WhapiService] Campo 'mode' do canal:`, response.data?.mode);
       console.log(`📊 [WhapiService] Campo 'status' do canal:`, response.data?.status);
       console.log(`📊 [WhapiService] Campo 'valid_until' do canal:`, response.data?.valid_until);
+      console.log(`📊 [WhapiService] Campos disponíveis no canal:`, Object.keys(response.data));
       
       this.logger.info(`[WhapiService] Detalhes do canal ${channelId} obtidos com sucesso`);
       return response.data;
@@ -906,9 +907,21 @@ export class WhapiService {
         headers: error.config?.headers
       });
       
-      // Se o canal não for encontrado (404), retornar dados padrão
+      // Se o canal não for encontrado (404), tentar buscar via listProjectChannels
       if (error.response?.status === 404) {
-        console.log(`⚠️ [WhapiService] Canal ${channelId} não encontrado na API, usando dados padrão`);
+        console.log(`⚠️ [WhapiService] Canal ${channelId} não encontrado diretamente, tentando buscar via listProjectChannels...`);
+        try {
+          const projectChannels = await this.listProjectChannels();
+          const foundChannel = projectChannels.find((ch: any) => ch.id === channelId);
+          if (foundChannel) {
+            console.log(`✅ [WhapiService] Canal ${channelId} encontrado via listProjectChannels:`, JSON.stringify(foundChannel, null, 2));
+            return foundChannel;
+          }
+        } catch (listError: any) {
+          console.warn(`⚠️ [WhapiService] Erro ao buscar via listProjectChannels:`, listError.message);
+        }
+        
+        console.log(`⚠️ [WhapiService] Canal ${channelId} não encontrado em nenhum método, usando dados padrão`);
         return {
           id: channelId,
           mode: 'live', // Assumir modo live como padrão
@@ -1193,13 +1206,26 @@ export class WhapiService {
     try {
       this.logger.info(`[WhapiService] Buscando informações do partner...`);
       
-      const response = await axios.get(`${this.managerApiUrl}partner`, {
+      const response = await axios.get(`${this.managerApiUrl}partners`, {
         headers: this.partnerHeaders,
         timeout: 30000
       });
       
       this.logger.info(`[WhapiService] Informações do partner obtidas com sucesso`);
-      return response.data;
+      console.log(`📊 [WhapiService] Resposta completa do Partner API:`, JSON.stringify(response.data, null, 2));
+      console.log(`📊 [WhapiService] Campos disponíveis:`, Object.keys(response.data));
+      console.log(`📊 [WhapiService] liveDays:`, response.data?.liveDays);
+      console.log(`📊 [WhapiService] trialDays:`, response.data?.trialDays);
+      console.log(`📊 [WhapiService] valid_until:`, response.data?.valid_until);
+      
+      // Calcular totalDays se não vier da API
+      const totalDays = response.data?.liveDays + response.data?.trialDays || 0;
+      console.log(`📊 [WhapiService] Total de dias calculado:`, totalDays);
+      
+      return {
+        ...response.data,
+        totalDays: totalDays
+      };
     } catch (error: any) {
       this.logger.error(`[WhapiService] Erro ao buscar informações do partner:`, error.response?.data || error.message);
       
