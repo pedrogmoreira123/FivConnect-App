@@ -97,12 +97,18 @@ export function setupAdminRoutes(app: Express) {
               }
               
               // Obter modo do canal (sandbox ou live)
-              mode = channelDetails?.mode || 'sandbox';
+              mode = channelDetails?.mode || 'live'; // Fallback para 'live' se não conseguir obter da API
               
               console.log(`[Admin Routes] Canal ${connection.whapiChannelId}: ${daysRemaining} dias restantes, modo ${mode}`);
             } catch (error) {
               console.warn(`[Admin Routes] Erro ao buscar detalhes do canal ${connection.whapiChannelId}:`, error.message);
+              // Se a API falhar, usar modo 'live' como padrão (já que o canal está funcionando)
+              mode = 'live';
+              console.log(`[Admin Routes] Usando modo padrão 'live' para canal ${connection.whapiChannelId}`);
             }
+          } else {
+            // Se não houver whapiChannelId, usar modo 'live' como padrão
+            mode = 'live';
           }
           
           return {
@@ -360,7 +366,7 @@ export function setupAdminRoutes(app: Express) {
       if (!channelId) {
         return res.status(400).json({ success: false, message: 'channelId é obrigatório' });
       }
-      const result = await whapiService.extendChannel(channelId, days || 30);
+      const result = await whapiService.extendChannelDays(channelId, days || 30);
       res.json({ success: true, result });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });

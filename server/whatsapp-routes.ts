@@ -3412,7 +3412,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       }
       
       console.log(`[WhatsApp Routes] Estendendo canal ${channelId} por ${days} dias...`);
-      await whapiService.extendChannel(channelId, days);
+      await whapiService.extendChannelDays(channelId, days);
       res.json({ success: true, message: `${days} dias adicionados com sucesso` });
     } catch (error: any) {
       console.error('[WhatsApp Routes] Erro ao estender canal:', error);
@@ -3435,7 +3435,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       }
       
       console.log(`[WhatsApp Routes] Estendendo canal ${channelId} por ${days} dias...`);
-      await whapiService.extendChannel(channelId, days);
+      await whapiService.extendChannelDays(channelId, days);
       res.json({ success: true, message: `${days} dias adicionados com sucesso` });
     } catch (error: any) {
       console.error('[WhatsApp Routes] Erro ao estender canal:', error);

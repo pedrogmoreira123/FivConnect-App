@@ -879,10 +879,10 @@ export class WhapiService {
       }
 
       this.logger.info(`[WhapiService] Buscando detalhes do canal ${channelId}...`);
-      console.log(`🔍 [WhapiService] URL completa: ${this.managerApiUrl}api/v1/channels/${channelId}`);
+      console.log(`🔍 [WhapiService] URL completa: ${this.managerApiUrl}channels/${channelId}`);
       
       const response = await axios.get(
-        `${this.managerApiUrl}api/v1/channels/${channelId}`,
+        `${this.managerApiUrl}channels/${channelId}`,
         {
           headers: this.partnerHeaders,
           timeout: 10000
@@ -905,6 +905,20 @@ export class WhapiService {
         url: error.config?.url,
         headers: error.config?.headers
       });
+      
+      // Se o canal não for encontrado (404), retornar dados padrão
+      if (error.response?.status === 404) {
+        console.log(`⚠️ [WhapiService] Canal ${channelId} não encontrado na API, usando dados padrão`);
+        return {
+          id: channelId,
+          mode: 'live', // Assumir modo live como padrão
+          status: 'unknown',
+          valid_until: null,
+          created_at: null,
+          updated_at: null
+        };
+      }
+      
       this.logger.error(`[WhapiService] Erro ao buscar detalhes do canal ${channelId}:`, error.response?.data || error.message);
       throw error;
     }

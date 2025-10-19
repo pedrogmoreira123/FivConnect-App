@@ -70,7 +70,7 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
   const [newChannelName, setNewChannelName] = useState('');
   const [showExtendModal, setShowExtendModal] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<WhatsAppChannel | null>(null);
-  const [daysToAdd, setDaysToAdd] = useState(30);
+  const [daysToAdd, setDaysToAdd] = useState(1);
   // ADICIONAR:
   const [showChangeModeModal, setShowChangeModeModal] = useState(false);
   const [newMode, setNewMode] = useState<'sandbox' | 'live'>('live');
@@ -212,7 +212,7 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
       await loadChannelsData();
       setShowExtendModal(false);
       setSelectedChannel(null);
-      setDaysToAdd(30);
+      setDaysToAdd(1);
     } catch (error: any) {
       console.error('Erro ao adicionar dias ao canal:', error);
       setError('Erro ao adicionar dias ao canal. Tente novamente.');
@@ -600,7 +600,7 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
                 onClick={() => {
                   setShowExtendModal(false);
                   setSelectedChannel(null);
-                  setDaysToAdd(30);
+                  setDaysToAdd(1);
                 }}
               >
                 <X className="w-4 h-4" />
@@ -653,16 +653,16 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setDaysToAdd(365)}
+                      onClick={() => setDaysToAdd(60)}
                     >
-                      365 dias
+                      60 dias
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setDaysToAdd(60)}
+                      onClick={() => setDaysToAdd(365)}
                     >
-                      60 dias
+                      365 dias
                     </Button>
                   </div>
                 </div>
@@ -680,7 +680,7 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
                 onClick={() => {
                   setShowExtendModal(false);
                   setSelectedChannel(null);
-                  setDaysToAdd(30);
+                  setDaysToAdd(1);
                 }}
               >
                 Cancelar
