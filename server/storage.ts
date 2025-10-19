@@ -1543,17 +1543,28 @@ export class DatabaseStorage implements IStorage {
    */
   async getWhatsAppConnectionsByCompany(companyId: string): Promise<WhatsappConnection[]> {
     try {
+      const currentEnv = this.getCurrentEnvironment();
+      console.log(`🔍 [Storage] getWhatsAppConnectionsByCompany - Buscando canais para empresa: ${companyId}, ambiente: ${currentEnv}`);
+      
       const connections = await db.select()
         .from(whatsappConnections)
         .where(and(
           eq(whatsappConnections.companyId, companyId),
-          eq(whatsappConnections.environment, this.getCurrentEnvironment())
+          eq(whatsappConnections.environment, currentEnv)
         ))
         .orderBy(desc(whatsappConnections.createdAt));
       
+      console.log(`📱 [Storage] getWhatsAppConnectionsByCompany - Encontrados ${connections.length} canais`);
+      if (connections.length > 0) {
+        connections.forEach((conn, index) => {
+          console.log(`  ${index + 1}. ID: ${conn.id}, Nome: ${conn.connectionName}, Phone: ${conn.phone}, WhapiChannelId: ${conn.whapiChannelId}, Environment: ${conn.environment}`);
+        });
+      }
+      
       return connections;
     } catch (error) {
-      console.error('❌ Error getting WhatsApp connections by company:', error);
+      console.error('❌ [Storage] Error getting WhatsApp connections by company:', error);
+      console.error('❌ [Storage] Stack trace:', error.stack);
       return [];
     }
   }

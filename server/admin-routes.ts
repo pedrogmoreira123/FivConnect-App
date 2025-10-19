@@ -2,10 +2,17 @@ import { Express } from 'express';
 import { requireAuth } from './auth';
 import { storage } from './storage';
 import { WhapiService } from './whapi-service';
-import { Logger } from 'pino';
+// import { Logger } from 'pino'; // Removido - usando console.log para debug
 
-const logger = Logger();
-const whapiService = new WhapiService(logger);
+// const logger = Logger(); // Removido
+// Criar um logger mock para o WhapiService
+const mockLogger = {
+  info: (msg: string, ...args: any[]) => console.log(`[WhapiService] ${msg}`, ...args),
+  warn: (msg: string, ...args: any[]) => console.warn(`[WhapiService] ${msg}`, ...args),
+  error: (msg: string, ...args: any[]) => console.error(`[WhapiService] ${msg}`, ...args),
+  debug: (msg: string, ...args: any[]) => console.debug(`[WhapiService] ${msg}`, ...args)
+};
+const whapiService = new WhapiService(mockLogger);
 
 /**
  * Rotas de administração para gerenciamento de canais WhatsApp
@@ -29,17 +36,32 @@ export function setupAdminRoutes(app: Express) {
     try {
       const { companyId } = req.params;
 
-      console.log(`[Admin Routes] Buscando canais WhatsApp para empresa: ${companyId}`);
+      console.log(`🔍 [Admin Routes] INÍCIO - Buscando canais WhatsApp para empresa: ${companyId}`);
+      console.log(`🔍 [Admin Routes] User info:`, req.user);
 
       // 1. Buscar empresa
+      console.log(`🔍 [Admin Routes] Buscando empresa com ID: ${companyId}`);
       const company = await storage.getCompany(companyId);
+      console.log(`🔍 [Admin Routes] Empresa encontrada:`, company ? { id: company.id, name: company.name } : 'NÃO ENCONTRADA');
+      
       if (!company) {
+        console.log(`❌ [Admin Routes] Empresa não encontrada para ID: ${companyId}`);
         return res.status(404).json({ message: 'Empresa não encontrada' });
       }
 
       // 2. Buscar canais no banco de dados
+      console.log(`🔍 [Admin Routes] Buscando canais no banco de dados para empresa: ${companyId}`);
       const connections = await storage.getWhatsAppConnectionsByCompany(companyId);
-      console.log(`[Admin Routes] Encontrados ${connections.length} canais no banco de dados`);
+      console.log(`📱 [Admin Routes] Encontrados ${connections.length} canais no banco de dados`);
+      
+      if (connections.length > 0) {
+        console.log(`📱 [Admin Routes] Detalhes dos canais encontrados:`);
+        connections.forEach((conn, index) => {
+          console.log(`  ${index + 1}. ID: ${conn.id}, Nome: ${conn.connectionName}, Phone: ${conn.phone}, WhapiChannelId: ${conn.whapiChannelId}, Status: ${conn.status}`);
+        });
+      } else {
+        console.log(`⚠️ [Admin Routes] NENHUM CANAL ENCONTRADO no banco de dados para empresa ${companyId}`);
+      }
 
       // 3. Buscar canais na API de Parceiro da Whapi.Cloud
       let whapiChannels: any[] = [];
@@ -110,6 +132,20 @@ export function setupAdminRoutes(app: Express) {
       );
 
       // 5. Retornar resposta
+      console.log(`✅ [Admin Routes] FINALIZANDO - Retornando ${enrichedChannels.length} canais para empresa ${companyId}`);
+      console.log(`✅ [Admin Routes] Resposta final:`, {
+        success: true,
+        company: {
+          id: company.id,
+          name: company.name,
+          email: company.email,
+          whatsappChannelLimit: company.whatsappChannelLimit
+        },
+        channels: enrichedChannels.length,
+        totalChannels: enrichedChannels.length,
+        channelLimit: company.whatsappChannelLimit
+      });
+      
       res.json({
         success: true,
         company: {
@@ -124,7 +160,8 @@ export function setupAdminRoutes(app: Express) {
       });
 
     } catch (error) {
-      console.error('[Admin Routes] Erro ao buscar canais da empresa:', error);
+      console.error(`❌ [Admin Routes] ERRO ao buscar canais da empresa ${companyId}:`, error);
+      console.error(`❌ [Admin Routes] Stack trace:`, error.stack);
       res.status(500).json({ 
         message: 'Erro interno ao buscar canais da empresa',
         error: error.message 

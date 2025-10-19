@@ -39,6 +39,14 @@ export class WhapiService {
     this.managerApiUrl = process.env.WHAPI_MANAGER_API_URL || 'https://manager.whapi.cloud/';
     this.gateApiUrl = process.env.WHAPI_GATE_API_URL || 'https://gate.whapi.cloud/';
     
+    console.log(`🔍 [WhapiService] Configuração Partner API:`, {
+      hasPartnerToken: !!this.partnerToken,
+      partnerTokenLength: this.partnerToken.length,
+      projectId: this.projectId,
+      managerApiUrl: this.managerApiUrl,
+      gateApiUrl: this.gateApiUrl
+    });
+    
     this.partnerHeaders = {
       'Authorization': `Bearer ${this.partnerToken}`,
       'Content-Type': 'application/json',
@@ -871,6 +879,7 @@ export class WhapiService {
       }
 
       this.logger.info(`[WhapiService] Buscando detalhes do canal ${channelId}...`);
+      console.log(`🔍 [WhapiService] URL completa: ${this.managerApiUrl}api/v1/channels/${channelId}`);
       
       const response = await axios.get(
         `${this.managerApiUrl}api/v1/channels/${channelId}`,
@@ -880,9 +889,22 @@ export class WhapiService {
         }
       );
       
+      console.log(`📊 [WhapiService] Resposta completa do canal ${channelId}:`, JSON.stringify(response.data, null, 2));
+      console.log(`📊 [WhapiService] Campo 'mode' do canal:`, response.data?.mode);
+      console.log(`📊 [WhapiService] Campo 'status' do canal:`, response.data?.status);
+      console.log(`📊 [WhapiService] Campo 'valid_until' do canal:`, response.data?.valid_until);
+      
       this.logger.info(`[WhapiService] Detalhes do canal ${channelId} obtidos com sucesso`);
       return response.data;
     } catch (error: any) {
+      console.error(`❌ [WhapiService] Erro detalhado ao buscar canal ${channelId}:`, {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+        headers: error.config?.headers
+      });
       this.logger.error(`[WhapiService] Erro ao buscar detalhes do canal ${channelId}:`, error.response?.data || error.message);
       throw error;
     }
@@ -1024,6 +1046,12 @@ export class WhapiService {
   async extendChannelDays(channelId: string, days: number): Promise<any> {
     try {
       this.logger.info(`[WhapiService] Estendendo canal ${channelId} por ${days} dias`);
+      console.log(`🔍 [WhapiService] URL completa: ${this.gateApiUrl}partners/channels/${channelId}/extend`);
+      console.log(`🔍 [WhapiService] Payload:`, { days });
+      console.log(`🔍 [WhapiService] Headers:`, {
+        ...this.partnerHeaders,
+        Authorization: this.partnerHeaders.Authorization ? 'Bearer [TOKEN]' : 'undefined'
+      });
       
       const response = await axios.post(
         `${this.gateApiUrl}partners/channels/${channelId}/extend`,
@@ -1034,9 +1062,18 @@ export class WhapiService {
         }
       );
       
+      console.log(`✅ [WhapiService] Resposta da API:`, JSON.stringify(response.data, null, 2));
       this.logger.info(`[WhapiService] Canal estendido até: ${response.data.activeTill}`);
       return response.data;
     } catch (error: any) {
+      console.error(`❌ [WhapiService] Erro detalhado ao estender canal ${channelId}:`, {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+        headers: error.config?.headers
+      });
       this.logger.error(`[WhapiService] Erro ao estender canal:`, error.response?.data || error.message);
       throw error;
     }
@@ -1198,24 +1235,6 @@ export class WhapiService {
    * Estender dias de um canal específico
    * POST /channels/{channelId}/extend
    */
-  async extendChannel(channelId: string, days: number): Promise<void> {
-    try {
-      this.logger.info(`[WhapiService] Estendendo canal ${channelId} por ${days} dias...`);
-      
-      await axios.post(`${this.gateApiUrl}partners/channels/${channelId}/extend`, 
-        { days }, 
-        {
-          headers: this.partnerHeaders,
-          timeout: 30000
-        }
-      );
-      
-      this.logger.info(`[WhapiService] Canal ${channelId} estendido com sucesso por ${days} dias`);
-    } catch (error: any) {
-      this.logger.error(`[WhapiService] Erro ao estender canal:`, error.response?.data || error.message);
-      throw error;
-    }
-  }
 
   /**
    * Adicionar créditos à conta partner
