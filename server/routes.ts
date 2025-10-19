@@ -5,6 +5,7 @@ import "./types"; // Import type extensions
 import { storage } from "./storage";
 // import { setupEvolutionRoutes } from "./evolution-routes"; // Removido - migrado para Whapi.Cloud
 import { setupWhatsAppRoutes } from "./whatsapp-routes";
+import { setupDashboardRoutes } from "./dashboard-routes";
 import ticketsRoutes from "./tickets-routes";
 import { 
   insertUserSchema,
@@ -1689,6 +1690,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Setup WhatsApp routes (Whapi.Cloud)
   const io = app.get('io');
   setupWhatsAppRoutes(app, io);
+
+  // Setup Dashboard routes
+  setupDashboardRoutes(app);
 
   // Setup Tickets routes
   app.use('/api/tickets', ticketsRoutes);

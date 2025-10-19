@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Wifi, WifiOff, QrCode, Trash2, Save, AlertCircle, Calendar, DollarSign, Clock, Plus } from 'lucide-react';
+import { X, Settings, Wifi, WifiOff, QrCode, Trash2, Save, AlertCircle, Calendar, DollarSign, Clock, Plus, CalendarPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -28,7 +28,7 @@ interface WhatsAppChannel {
   // Novos campos para informações de dias
   daysRemaining?: number;
   expiresAt?: string;
-  mode?: 'sandbox' | 'live';
+  mode?: 'sandbox' | 'live'; // ADICIONAR ESTE CAMPO
 }
 
 interface PartnerBalance {
@@ -38,14 +38,6 @@ interface PartnerBalance {
   pricePerDay: number;
 }
 
-interface PartnerChannel {
-  id: string;
-  name: string;
-  phone: string;
-  status: 'connected' | 'disconnected';
-  daysLeft: number;
-  expiresAt: string;
-}
 
 interface CompanyChannelsData {
   success: boolean;
@@ -70,16 +62,18 @@ interface CompanyChannelsModalProps {
 export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }: CompanyChannelsModalProps) {
   const [data, setData] = useState<CompanyChannelsData | null>(null);
   const [partnerBalance, setPartnerBalance] = useState<PartnerBalance | null>(null);
-  const [partnerChannels, setPartnerChannels] = useState<PartnerChannel[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newLimit, setNewLimit] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
-  const [showAddDaysModal, setShowAddDaysModal] = useState(false);
-  const [selectedChannelForDays, setSelectedChannelForDays] = useState<PartnerChannel | null>(null);
+  const [showExtendModal, setShowExtendModal] = useState(false);
+  const [selectedChannel, setSelectedChannel] = useState<WhatsAppChannel | null>(null);
   const [daysToAdd, setDaysToAdd] = useState(30);
+  // ADICIONAR:
+  const [showChangeModeModal, setShowChangeModeModal] = useState(false);
+  const [newMode, setNewMode] = useState<'sandbox' | 'live'>('live');
 
   // Carregar dados quando o modal abrir
   useEffect(() => {
@@ -93,11 +87,10 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
     setError(null);
     
     try {
-      // Carregar dados dos canais, saldo do parceiro e canais do partner em paralelo
-      const [channelsResponse, balanceResponse, partnerChannelsResponse] = await Promise.allSettled([
+      // Carregar dados dos canais e saldo do parceiro em paralelo
+      const [channelsResponse, balanceResponse] = await Promise.allSettled([
         apiClient.get(`/api/admin/companies/${companyId}/whatsapp-channels`),
-        apiClient.get('/api/whatsapp/partner/balance'),
-        apiClient.get('/api/whatsapp/partner/channels')
+        apiClient.get('/api/whatsapp/partner/balance')
       ]);
       
       // Processar dados dos canais
@@ -121,15 +114,6 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
         // Não definir erro aqui, pois o saldo é opcional
       }
 
-      // Processar canais do partner
-      if (partnerChannelsResponse.status === 'fulfilled') {
-        const partnerChannelsData = partnerChannelsResponse.value.data;
-        setPartnerChannels(partnerChannelsData.data || []);
-      } else {
-        console.error('Erro ao carregar canais do partner:', partnerChannelsResponse.reason);
-        // Não definir erro aqui, pois os canais do partner são opcionais
-        setPartnerChannels([]); // Garantir que seja um array vazio
-      }
     } catch (error: any) {
       console.error('Erro ao carregar dados:', error);
       setError('Erro ao carregar dados. Tente novamente.');
@@ -205,8 +189,13 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
     }
   };
 
-  const handleAddDaysToChannel = async () => {
-    if (!selectedChannelForDays || daysToAdd <= 0) {
+  const handleOpenExtend = (channel: WhatsAppChannel) => {
+    setSelectedChannel(channel);
+    setShowExtendModal(true);
+  };
+
+  const handleExtendChannel = async () => {
+    if (!selectedChannel || !selectedChannel.whapiChannelId || daysToAdd <= 0) {
       setError('Número de dias deve ser maior que zero');
       return;
     }
@@ -215,18 +204,51 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
     setError(null);
 
     try {
-      await apiClient.post(`/api/whatsapp/partner/channels/${selectedChannelForDays.id}/extend`, {
+      await apiClient.post(`/api/whatsapp/channels/${selectedChannel.whapiChannelId}/extend`, {
         days: daysToAdd
       });
       
       // Recarregar dados para atualizar a interface
       await loadChannelsData();
-      setShowAddDaysModal(false);
-      setSelectedChannelForDays(null);
+      setShowExtendModal(false);
+      setSelectedChannel(null);
       setDaysToAdd(30);
     } catch (error: any) {
       console.error('Erro ao adicionar dias ao canal:', error);
       setError('Erro ao adicionar dias ao canal. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleOpenChangeMode = (channel: WhatsAppChannel) => {
+    setSelectedChannel(channel);
+    setNewMode(channel.mode === 'sandbox' ? 'live' : 'sandbox');
+    setShowChangeModeModal(true);
+  };
+
+  const handleChangeMode = async () => {
+    if (!selectedChannel || !selectedChannel.whapiChannelId) {
+      setError('Canal não possui ID do Whapi.Cloud');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      await apiClient.post(
+        `/api/admin/companies/${companyId}/channels/${selectedChannel.id}/change-mode`,
+        { mode: newMode }
+      );
+      
+      // Recarregar dados para atualizar a interface
+      await loadChannelsData();
+      setShowChangeModeModal(false);
+      setSelectedChannel(null);
+    } catch (error: any) {
+      console.error('Erro ao alterar modo do canal:', error);
+      setError('Erro ao alterar modo do canal. Tente novamente.');
     } finally {
       setSaving(false);
     }
@@ -410,79 +432,80 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <h3 className="font-medium text-gray-900">
-                                  {channel.connectionName}
-                                </h3>
+                              <h3 className="font-medium text-gray-900 mb-1">
+                                {channel.connectionName}
+                              </h3>
+                              <p className="text-sm text-gray-500 mb-3">
+                                {channel.phone || 'N/A'} • {channel.providerType.toUpperCase()}
+                              </p>
+                            </div>
+                            
+                            <div className="flex items-center gap-4">
+                              {/* Status */}
+                              <div className="text-center">
+                                <p className="text-xs text-gray-500">Status</p>
                                 {getStatusBadge(channel.status)}
-                                {channel.isDefault && (
-                                  <Badge variant="outline" className="text-xs">
-                                    Padrão
+                              </div>
+                              
+                              {/* ADICIONAR: Modo */}
+                              <div className="text-center">
+                                <p className="text-xs text-gray-500">Modo</p>
+                                <Badge className={`${
+                                  channel.mode === 'live' 
+                                    ? 'bg-purple-100 text-purple-800' 
+                                    : 'bg-orange-100 text-orange-800'
+                                }`}>
+                                  {channel.mode === 'live' ? 'Live' : 'Sandbox'}
+                                </Badge>
+                              </div>
+                              
+                              {/* Dias Restantes */}
+                              <div className="text-center">
+                                <p className="text-xs text-gray-500">Dias Restantes</p>
+                                {channel.daysRemaining !== undefined ? (
+                                  <Badge 
+                                    className={`${
+                                      channel.daysRemaining > 7 
+                                        ? 'bg-green-100 text-green-800' 
+                                        : channel.daysRemaining > 3 
+                                        ? 'bg-yellow-100 text-yellow-800' 
+                                        : 'bg-red-100 text-red-800'
+                                    }`}
+                                  >
+                                    {channel.daysRemaining} dias
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-gray-100 text-gray-800">
+                                    N/A
                                   </Badge>
                                 )}
                               </div>
                               
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
-                                <div>
-                                  <span className="font-medium">Nome:</span> {channel.name}
-                                </div>
-                                {channel.phone && (
-                                  <div>
-                                    <span className="font-medium">Telefone:</span> {channel.phone}
-                                  </div>
-                                )}
-                                <div>
-                                  <span className="font-medium">Provider:</span> {channel.providerType.toUpperCase()}
-                                </div>
-                                <div>
-                                  <span className="font-medium">Criado em:</span> {formatDate(channel.createdAt)}
-                                </div>
-                                {channel.lastSeen && (
-                                  <div>
-                                    <span className="font-medium">Última atividade:</span> {formatDate(channel.lastSeen)}
-                                  </div>
-                                )}
+                              {/* Botões */}
+                              <div className="flex gap-2">
+                                {/* ADICIONAR: Botão Alterar Modo */}
                                 {channel.whapiChannelId && (
-                                  <div>
-                                    <span className="font-medium">ID Canal:</span> 
-                                    <code className="ml-1 text-xs bg-gray-100 px-1 rounded">
-                                      {channel.whapiChannelId}
-                                    </code>
-                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleOpenChangeMode(channel)}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <Settings className="w-4 h-4" />
+                                    Alterar Modo
+                                  </Button>
                                 )}
-                                {/* Informações de dias e modo */}
-                                {channel.mode && (
-                                  <div>
-                                    <span className="font-medium">Modo:</span> 
-                                    <Badge 
-                                      className={`ml-1 ${
-                                        channel.mode === 'live' 
-                                          ? 'bg-green-100 text-green-800' 
-                                          : 'bg-yellow-100 text-yellow-800'
-                                      }`}
-                                    >
-                                      {channel.mode === 'live' ? 'Live' : 'Sandbox'}
-                                    </Badge>
-                                  </div>
-                                )}
-                                {channel.daysRemaining !== undefined && (
-                                  <div>
-                                    <span className="font-medium">Dias Restantes:</span> 
-                                    <span className={`ml-1 font-bold ${
-                                      channel.daysRemaining > 7 
-                                        ? 'text-green-600' 
-                                        : channel.daysRemaining > 3 
-                                        ? 'text-yellow-600' 
-                                        : 'text-red-600'
-                                    }`}>
-                                      {channel.daysRemaining} dias
-                                    </span>
-                                  </div>
-                                )}
-                                {channel.expiresAt && (
-                                  <div>
-                                    <span className="font-medium">Expira em:</span> {formatDate(channel.expiresAt)}
-                                  </div>
+                                
+                                {/* Botão Adicionar Dias (existente) */}
+                                {channel.whapiChannelId && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleOpenExtend(channel)}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <Calendar className="w-4 h-4" />
+                                    Adicionar Dias
+                                  </Button>
                                 )}
                               </div>
                             </div>
@@ -494,83 +517,6 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
                 </CardContent>
               </Card>
 
-              {/* Partner Channels */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Canais do Partner ({partnerChannels.length})</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {partnerChannels.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <WifiOff className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                      <p>Nenhum canal do partner encontrado.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {partnerChannels.map((channel) => (
-                        <div
-                          key={channel.id}
-                          className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <h3 className="font-medium text-gray-900">
-                                  {channel.name}
-                                </h3>
-                                <Badge 
-                                  className={`${
-                                    channel.status === 'connected' 
-                                      ? 'bg-green-100 text-green-800' 
-                                      : 'bg-gray-100 text-gray-800'
-                                  }`}
-                                >
-                                  {channel.status === 'connected' ? 'Conectado' : 'Desconectado'}
-                                </Badge>
-                              </div>
-                              
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
-                                <div>
-                                  <span className="font-medium">Telefone:</span> {channel.phone}
-                                </div>
-                                <div>
-                                  <span className="font-medium">Dias Restantes:</span> 
-                                  <span className={`ml-1 font-bold ${
-                                    channel.daysLeft > 7 
-                                      ? 'text-green-600' 
-                                      : channel.daysLeft > 3 
-                                      ? 'text-yellow-600' 
-                                      : 'text-red-600'
-                                  }`}>
-                                    {channel.daysLeft} dias
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="font-medium">Expira em:</span> {formatDate(channel.expiresAt)}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="ml-4">
-                              <Button
-                                onClick={() => {
-                                  setSelectedChannelForDays(channel);
-                                  setShowAddDaysModal(true);
-                                }}
-                                size="sm"
-                                variant="outline"
-                                className="flex items-center gap-2"
-                              >
-                                <Plus className="w-4 h-4" />
-                                Adicionar Dias
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
             </div>
           ) : null}
         </div>
@@ -643,7 +589,7 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
       )}
 
       {/* Modal para adicionar dias */}
-      {showAddDaysModal && selectedChannelForDays && (
+      {showExtendModal && selectedChannel && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between p-6 border-b">
@@ -652,8 +598,8 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  setShowAddDaysModal(false);
-                  setSelectedChannelForDays(null);
+                  setShowExtendModal(false);
+                  setSelectedChannel(null);
                   setDaysToAdd(30);
                 }}
               >
@@ -664,10 +610,10 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
               <div className="space-y-4">
                 <div>
                   <p className="text-sm text-gray-600 mb-2">
-                    Canal: <span className="font-medium">{selectedChannelForDays.name}</span>
+                    Canal: <span className="font-medium">{selectedChannel.connectionName}</span>
                   </p>
                   <p className="text-sm text-gray-600 mb-4">
-                    Dias atuais: <span className="font-medium">{selectedChannelForDays.daysLeft}</span>
+                    Dias atuais: <span className="font-medium">{selectedChannel.daysRemaining || 0}</span>
                   </p>
                 </div>
                 <div>
@@ -682,6 +628,43 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
                     placeholder="30"
                     className="w-full"
                   />
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDaysToAdd(1)}
+                    >
+                      1 dia
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDaysToAdd(7)}
+                    >
+                      7 dias
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDaysToAdd(30)}
+                    >
+                      30 dias
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDaysToAdd(365)}
+                    >
+                      365 dias
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDaysToAdd(60)}
+                    >
+                      60 dias
+                    </Button>
+                  </div>
                 </div>
                 {error && (
                   <Alert>
@@ -695,18 +678,93 @@ export function CompanyChannelsModal({ isOpen, onClose, companyId, companyName }
               <Button
                 variant="outline"
                 onClick={() => {
-                  setShowAddDaysModal(false);
-                  setSelectedChannelForDays(null);
+                  setShowExtendModal(false);
+                  setSelectedChannel(null);
                   setDaysToAdd(30);
                 }}
               >
                 Cancelar
               </Button>
               <Button
-                onClick={handleAddDaysToChannel}
+                onClick={handleExtendChannel}
                 disabled={saving || daysToAdd <= 0}
               >
                 {saving ? 'Adicionando...' : 'Adicionar Dias'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para alterar modo do canal */}
+      {showChangeModeModal && selectedChannel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-60 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold">Alterar Modo do Canal</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowChangeModeModal(false);
+                  setSelectedChannel(null);
+                }}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">
+                    Canal: <span className="font-medium">{selectedChannel.connectionName}</span>
+                  </p>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Modo atual: <span className="font-medium">{selectedChannel.mode === 'sandbox' ? 'Sandbox (Teste)' : 'Live (Produção)'}</span>
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Novo Modo
+                  </label>
+                  <select
+                    value={newMode}
+                    onChange={(e) => setNewMode(e.target.value as 'sandbox' | 'live')}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="sandbox">Sandbox (Teste - Grátis)</option>
+                    <option value="live">Live (Produção - Pago)</option>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {newMode === 'live' 
+                      ? 'Modo Live: canal em produção, consome dias do pool do parceiro.' 
+                      : 'Modo Sandbox: canal de teste, 5 dias grátis após ativação.'
+                    }
+                  </p>
+                </div>
+                {error && (
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowChangeModeModal(false);
+                  setSelectedChannel(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleChangeMode}
+                disabled={saving}
+              >
+                {saving ? 'Alterando...' : 'Alterar Modo'}
               </Button>
             </div>
           </div>

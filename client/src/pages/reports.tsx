@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,11 +8,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Progress } from '@/components/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { UsersOnlineReport } from '@/components/reports/UsersOnlineReport';
 import { 
   CalendarIcon,
+  CalendarDays,
   TrendingUp,
   Users,
   MessageCircle,
@@ -89,7 +92,36 @@ const mockActiveSessions = [
 export default function ReportsPage() {
   const [dateFrom, setDateFrom] = useState<Date>(new Date()); // Hoje por padrão
   const [dateTo, setDateTo] = useState<Date>(new Date()); // Hoje por padrão
+  const [periodPreset, setPeriodPreset] = useState<'today' | '7days' | '30days' | 'custom'>('30days');
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Aplicar preset de período automaticamente
+  useEffect(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    
+    switch (periodPreset) {
+      case 'today':
+        setDateFrom(today);
+        setDateTo(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999));
+        break;
+      case '7days':
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        setDateFrom(sevenDaysAgo);
+        setDateTo(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999));
+        break;
+      case '30days':
+        const thirtyDaysAgo = new Date(today);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        setDateFrom(thirtyDaysAgo);
+        setDateTo(new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999));
+        break;
+      case 'custom':
+        // Não altera automaticamente
+        break;
+    }
+  }, [periodPreset]);
 
   const totalTickets = mockTicketsByQueue.reduce((acc, queue) => acc + queue.totalTickets, 0);
   const totalResolved = mockTicketsByQueue.reduce((acc, queue) => acc + queue.resolvedTickets, 0);
@@ -146,56 +178,66 @@ export default function ReportsPage() {
               <Label className="font-medium">Período:</Label>
             </div>
             
-            <div className="flex items-center space-x-2">
-              <Label className="text-sm">De:</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-[140px] justify-start text-left font-normal",
-                      !dateFrom && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateFrom ? format(dateFrom, "dd/MM/yyyy", { locale: ptBR }) : "Selecionar"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={dateFrom}
-                    onSelect={(date) => date && setDateFrom(date)}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Label className="text-sm">Até:</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-[140px] justify-start text-left font-normal",
-                      !dateTo && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateTo ? format(dateTo, "dd/MM/yyyy", { locale: ptBR }) : "Selecionar"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar
-                    mode="single"
-                    selected={dateTo}
-                    onSelect={(date) => date && setDateTo(date)}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+            {/* Período */}
+            <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5">
+              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Período:</span>
+              
+              <Select value={periodPreset} onValueChange={(value: any) => setPeriodPreset(value)}>
+                <SelectTrigger className="h-8 w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Hoje</SelectItem>
+                  <SelectItem value="7days">Últimos 7 dias</SelectItem>
+                  <SelectItem value="30days">Últimos 30 dias</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              {periodPreset === 'custom' && (
+                <>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8">
+                        {dateFrom 
+                          ? format(dateFrom, "dd/MM/yyyy") 
+                          : "Início"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={dateFrom}
+                        onSelect={(date) => date && setDateFrom(date)}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  <span className="text-muted-foreground">a</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8">
+                        {dateTo 
+                          ? format(dateTo, "dd/MM/yyyy") 
+                          : "Fim"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={dateTo}
+                        onSelect={(date) => date && setDateTo(date)}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </>
+              )}
+              
+              {periodPreset !== 'custom' && (
+                <span className="text-xs text-muted-foreground">
+                  {dateFrom && format(dateFrom, "dd/MM")} - {dateTo && format(dateTo, "dd/MM")}
+                </span>
+              )}
             </div>
 
             <Button size="sm" className="ml-auto">
@@ -207,7 +249,7 @@ export default function ReportsPage() {
 
       {/* Tabs for different views */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="overview" className="flex items-center space-x-2">
             <TrendingUp className="h-4 w-4" />
             <span>Visão Geral</span>
@@ -215,6 +257,10 @@ export default function ReportsPage() {
           <TabsTrigger value="sessions" className="flex items-center space-x-2">
             <Users className="h-4 w-4" />
             <span>Sessões Ativas</span>
+          </TabsTrigger>
+          <TabsTrigger value="users-online" className="flex items-center space-x-2">
+            <Activity className="h-4 w-4" />
+            <span>Usuários Online</span>
           </TabsTrigger>
         </TabsList>
 
@@ -435,6 +481,11 @@ export default function ReportsPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Users Online Tab */}
+        <TabsContent value="users-online" className="space-y-6">
+          <UsersOnlineReport />
         </TabsContent>
       </Tabs>
     </div>

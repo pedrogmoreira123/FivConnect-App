@@ -3420,6 +3420,29 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
     }
   });
 
+  // POST /api/whatsapp/channels/:channelId/extend
+  // Adiciona dias a um canal específico (endpoint unificado)
+  router.post('/channels/:channelId/extend', requireAuth, requireRole(['superadmin']), async (req, res) => {
+    try {
+      const { channelId } = req.params;
+      const { days } = req.body;
+      
+      if (!days || days <= 0) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Número de dias deve ser maior que zero' 
+        });
+      }
+      
+      console.log(`[WhatsApp Routes] Estendendo canal ${channelId} por ${days} dias...`);
+      await whapiService.extendChannel(channelId, days);
+      res.json({ success: true, message: `${days} dias adicionados com sucesso` });
+    } catch (error: any) {
+      console.error('[WhatsApp Routes] Erro ao estender canal:', error);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
   // POST /api/whatsapp/partner/credits/add
   // Adiciona créditos à conta partner
   router.post('/partner/credits/add', requireAuth, requireRole(['superadmin']), async (req, res) => {

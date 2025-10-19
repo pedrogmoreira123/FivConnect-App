@@ -52,32 +52,62 @@ export function setupAdminRoutes(app: Express) {
         // Continuar mesmo se a API de Parceiro falhar
       }
 
-      // 4. Enriquecer dados dos canais
-      const enrichedChannels = connections.map(connection => {
-        // Encontrar canal correspondente na API de Parceiro
-        const whapiChannel = whapiChannels.find(ch => ch.id === connection.whapiChannelId);
-        
-        return {
-          id: connection.id,
-          connectionName: connection.connectionName,
-          name: connection.name,
-          phone: connection.phone,
-          status: connection.status,
-          qrcode: connection.qrcode,
-          profilePictureUrl: connection.profilePictureUrl,
-          whapiChannelId: connection.whapiChannelId,
-          providerType: connection.providerType,
-          webhookUrl: connection.webhookUrl,
-          isDefault: connection.isDefault,
-          lastSeen: connection.lastSeen,
-          createdAt: connection.createdAt,
-          updatedAt: connection.updatedAt,
-          // Dados da API de Parceiro (se disponível)
-          whapiStatus: whapiChannel?.status || 'unknown',
-          whapiCreatedAt: whapiChannel?.created_at,
-          whapiUpdatedAt: whapiChannel?.updated_at
-        };
-      });
+      // 4. Enriquecer dados dos canais com informações da Whapi.Cloud
+      const enrichedChannels = await Promise.all(
+        connections.map(async (connection) => {
+          let channelDetails = null;
+          let daysRemaining = undefined;
+          let expiresAt = undefined;
+          let mode = undefined;
+          
+          // Buscar detalhes individuais do canal na Whapi.Cloud
+          if (connection.whapiChannelId) {
+            try {
+              channelDetails = await whapiService.getChannelDetails(connection.whapiChannelId);
+              
+              // Calcular dias restantes se houver valid_until
+              if (channelDetails?.valid_until) {
+                const expirationDate = new Date(channelDetails.valid_until);
+                const today = new Date();
+                const diffTime = expirationDate.getTime() - today.getTime();
+                daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                expiresAt = channelDetails.valid_until;
+              }
+              
+              // Obter modo do canal (sandbox ou live)
+              mode = channelDetails?.mode || 'sandbox';
+              
+              console.log(`[Admin Routes] Canal ${connection.whapiChannelId}: ${daysRemaining} dias restantes, modo ${mode}`);
+            } catch (error) {
+              console.warn(`[Admin Routes] Erro ao buscar detalhes do canal ${connection.whapiChannelId}:`, error.message);
+            }
+          }
+          
+          return {
+            id: connection.id,
+            connectionName: connection.connectionName,
+            name: connection.name,
+            phone: connection.phone,
+            status: connection.status,
+            qrcode: connection.qrcode,
+            profilePictureUrl: connection.profilePictureUrl,
+            whapiChannelId: connection.whapiChannelId,
+            providerType: connection.providerType,
+            webhookUrl: connection.webhookUrl,
+            isDefault: connection.isDefault,
+            lastSeen: connection.lastSeen,
+            createdAt: connection.createdAt,
+            updatedAt: connection.updatedAt,
+            // Dados enriquecidos da Whapi.Cloud
+            daysRemaining,
+            expiresAt,
+            mode,
+            whapiStatus: channelDetails?.status || 'unknown',
+            whapiCreatedAt: channelDetails?.created_at,
+            whapiUpdatedAt: channelDetails?.updated_at
+          };
+        })
+      );
 
       // 5. Retornar resposta
       res.json({
@@ -448,6 +478,49 @@ export function setupAdminRoutes(app: Express) {
     } catch (error: any) {
       console.error('[Admin] Erro ao estender canal:', error);
       res.status(500).json({ message: 'Erro ao estender canal', error: error.message });
+    }
+  });
+
+  /**
+   * POST /api/admin/companies/:companyId/channels/:channelId/change-mode
+   * Alterar modo do canal (sandbox <-> live)
+   */
+  app.post('/api/admin/companies/:companyId/channels/:channelId/change-mode', requireAuth, requireSuperAdmin, async (req, res) => {
+    try {
+      const { companyId, channelId } = req.params;
+      const { mode } = req.body;
+      
+      if (!mode || !['sandbox', 'live'].includes(mode)) {
+        return res.status(400).json({ message: 'Modo inválido. Use "sandbox" ou "live".' });
+      }
+      
+      console.log(`[Admin] Alterando modo do canal ${channelId} para ${mode}`);
+      
+      // Buscar conexão para validar
+      const connection = await storage.getWhatsAppConnection(channelId);
+      if (!connection || connection.companyId !== companyId) {
+        return res.status(404).json({ message: 'Canal não encontrado' });
+      }
+      
+      if (!connection.whapiChannelId) {
+        return res.status(400).json({ message: 'Canal não possui ID do Whapi.Cloud' });
+      }
+      
+      // Alterar modo no Whapi.Cloud
+      const result = await whapiService.changeChannelMode(connection.whapiChannelId, mode);
+      
+      res.json({ 
+        success: true, 
+        message: `Modo alterado para ${mode} com sucesso`,
+        data: result
+      });
+      
+    } catch (error) {
+      console.error('[Admin] Erro ao alterar modo do canal:', error);
+      res.status(500).json({ 
+        message: 'Erro interno ao alterar modo do canal',
+        error: error.message 
+      });
     }
   });
 }

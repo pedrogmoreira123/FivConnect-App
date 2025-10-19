@@ -51,7 +51,7 @@ const userSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["agent", "supervisor", "admin", "superadmin"]).default("agent"),
+  role: z.enum(["agent", "supervisor", "admin"]).default("agent"),
 });
 
 type CompanyForm = z.infer<typeof companySchema>;
@@ -87,7 +87,10 @@ export default function AdminPanel() {
   // Fetch partner balance
   const { data: partnerBalance, isLoading: loadingBalance, error: balanceError } = useQuery({
     queryKey: ['/api/whatsapp/partner/info'],
-    queryFn: () => apiRequest('GET', '/api/whatsapp/partner/info'),
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/whatsapp/partner/info');
+      return response.json();
+    },
     refetchInterval: 60000, // Refetch every 1 minute
     retry: 2, // Retry failed requests 2 times
     retryDelay: 5000, // Wait 5 seconds between retries
@@ -268,7 +271,6 @@ export default function AdminPanel() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Painel do Administrador</h1>
           <p className="text-muted-foreground">Gerencie as empresas e seus usuários</p>
         </div>
         <Button 
@@ -342,23 +344,42 @@ export default function AdminPanel() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <DollarSign className="w-5 h-5" />
-            Saldo Disponível (Partner)
+            Saldo e Assinatura (Partner)
           </CardTitle>
-          <CardDescription>Informações sobre saldo da conta Partner Whapi.Cloud</CardDescription>
+          <CardDescription>Informações sobre saldo e validade da conta Partner Whapi.Cloud</CardDescription>
         </CardHeader>
         <CardContent>
           {loadingBalance ? (
             <p>Carregando...</p>
           ) : balanceError ? (
-            <p className="text-red-600">Erro ao carregar saldo do partner</p>
+            <p className="text-red-600">Erro ao carregar informações do partner</p>
           ) : (
-            <div>
-              <p className="text-3xl font-bold">
-                {partnerBalance?.data?.balance ?? 0} {partnerBalance?.data?.currency ?? 'BRL'}
-              </p>
-              <p className="text-sm text-gray-500">
-                ID: {partnerBalance?.data?.id || 'N/A'}
-              </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Saldo Disponível</p>
+                <p className="text-3xl font-bold">
+                  {partnerBalance?.data?.balance ?? 0} {partnerBalance?.data?.currency ?? 'BRL'}
+                </p>
+                <p className="text-sm text-gray-500">
+                  ID: {partnerBalance?.data?.id || 'N/A'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Dias Disponíveis</p>
+                {partnerBalance?.data?.valid_until ? (
+                  <p className={`text-3xl font-bold ${
+                    Math.floor((new Date(partnerBalance?.data?.valid_until).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) > 30 
+                      ? 'text-green-600' 
+                      : Math.floor((new Date(partnerBalance?.data?.valid_until).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) > 7
+                      ? 'text-yellow-600'
+                      : 'text-red-600'
+                  }`}>
+                    {Math.floor((new Date(partnerBalance?.data?.valid_until).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} Dias
+                  </p>
+                ) : (
+                  <p className="text-3xl font-bold">N/A</p>
+                )}
+              </div>
             </div>
           )}
         </CardContent>

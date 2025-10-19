@@ -836,12 +836,21 @@ export class WhapiService {
    */
   async getPartnerChannels(): Promise<{ channels: any[] }> {
     try {
-      this.logger.info(`[WhapiService] Buscando canais do parceiro...`);
+      if (!this.projectId) {
+        this.logger.warn('[WhapiService] Project ID não configurado');
+        return { channels: [] };
+      }
+
+      this.logger.info(`[WhapiService] Buscando canais do parceiro (Project: ${this.projectId})...`);
       
-      const response = await axios.get(`${this.apiUrl}channels`, {
-        headers: this.headers,
-        timeout: 30000
-      });
+      const response = await axios.get(
+        `${this.managerApiUrl}api/v1/channels`,
+        {
+          headers: this.partnerHeaders,
+          params: { project_id: this.projectId },
+          timeout: 30000
+        }
+      );
       
       this.logger.info(`[WhapiService] Canais encontrados: ${response.data?.channels?.length || 0}`);
       return response.data || { channels: [] };
@@ -851,6 +860,62 @@ export class WhapiService {
     }
   }
 
+  /**
+   * Obter detalhes de um canal específico
+   * GET https://manager.whapi.cloud/api/v1/channels/{channelId}
+   */
+  async getChannelDetails(channelId: string): Promise<any> {
+    try {
+      if (!channelId) {
+        throw new Error('Channel ID é obrigatório');
+      }
+
+      this.logger.info(`[WhapiService] Buscando detalhes do canal ${channelId}...`);
+      
+      const response = await axios.get(
+        `${this.managerApiUrl}api/v1/channels/${channelId}`,
+        {
+          headers: this.partnerHeaders,
+          timeout: 10000
+        }
+      );
+      
+      this.logger.info(`[WhapiService] Detalhes do canal ${channelId} obtidos com sucesso`);
+      return response.data;
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao buscar detalhes do canal ${channelId}:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Alterar modo do canal (sandbox -> live ou live -> sandbox)
+   * POST https://gate.whapi.cloud/partners/channels/{channelId}/mode
+   */
+  async changeChannelMode(channelId: string, mode: 'sandbox' | 'live'): Promise<any> {
+    try {
+      if (!channelId || !mode) {
+        throw new Error('Channel ID e modo são obrigatórios');
+      }
+
+      this.logger.info(`[WhapiService] Alterando modo do canal ${channelId} para ${mode}...`);
+      
+      const response = await axios.post(
+        `${this.gateApiUrl}partners/channels/${channelId}/mode`,
+        { mode },
+        {
+          headers: this.partnerHeaders,
+          timeout: 30000
+        }
+      );
+      
+      this.logger.info(`[WhapiService] Modo do canal ${channelId} alterado para ${mode} com sucesso`);
+      return response.data;
+    } catch (error: any) {
+      this.logger.error(`[WhapiService] Erro ao alterar modo do canal:`, error.response?.data || error.message);
+      throw error;
+    }
+  }
 
   /**
    * Configurar download automático de mídia
@@ -950,31 +1015,6 @@ export class WhapiService {
     }
   }
 
-  /**
-   * Mudar modo do canal (trial -> live)
-   * Documentação: https://support.whapi.cloud/help-desk/partner-documentation/partner-documentation/changing-channel-mode
-   * Usa Partner API: PATCH /channels/{channelId}/mode
-   */
-  async changeChannelMode(channelId: string, mode: 'trial' | 'sandbox' | 'live'): Promise<any> {
-    try {
-      this.logger.info(`[WhapiService] Mudando canal ${channelId} para modo ${mode}`);
-      
-      const response = await axios.patch(
-        `${this.managerApiUrl}channels/${channelId}/mode`,
-        { mode },
-        {
-          headers: this.partnerHeaders,
-          timeout: 30000
-        }
-      );
-      
-      this.logger.info(`[WhapiService] Modo do canal alterado com sucesso`);
-      return response.data;
-    } catch (error: any) {
-      this.logger.error(`[WhapiService] Erro ao mudar modo:`, error.response?.data || error.message);
-      throw error;
-    }
-  }
 
   /**
    * Estender dias de um canal
@@ -986,7 +1026,7 @@ export class WhapiService {
       this.logger.info(`[WhapiService] Estendendo canal ${channelId} por ${days} dias`);
       
       const response = await axios.post(
-        `${this.managerApiUrl}channels/${channelId}/extend`,
+        `${this.gateApiUrl}partners/channels/${channelId}/extend`,
         { days },
         {
           headers: this.partnerHeaders,
@@ -1091,6 +1131,10 @@ export class WhapiService {
     balance: number;
     currency: string;
     id: string;
+    valid_until?: string;
+    liveDays?: number;
+    trialDays?: number;
+    totalDays?: number;
   }> {
     try {
       this.logger.info(`[WhapiService] Buscando informações do partner...`);
@@ -1110,7 +1154,11 @@ export class WhapiService {
       return {
         balance: 0,
         currency: 'BRL',
-        id: 'partner-fallback'
+        id: 'partner-fallback',
+        valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+        liveDays: 0,
+        trialDays: 0,
+        totalDays: 0
       };
     }
   }
@@ -1154,7 +1202,7 @@ export class WhapiService {
     try {
       this.logger.info(`[WhapiService] Estendendo canal ${channelId} por ${days} dias...`);
       
-      await axios.post(`${this.managerApiUrl}channels/${channelId}/extend`, 
+      await axios.post(`${this.gateApiUrl}partners/channels/${channelId}/extend`, 
         { days }, 
         {
           headers: this.partnerHeaders,
