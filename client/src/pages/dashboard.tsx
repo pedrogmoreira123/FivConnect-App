@@ -66,28 +66,28 @@ export default function DashboardPage() {
   const kpiCards = [
     {
       title: t('dashboard.openConversations'),
-      value: metricsData?.data?.conversasAbertas || 0,
+      value: metricsData?.data?.conversasAbertas ?? 0,
       icon: MessageCircle,
       iconColor: 'text-primary',
       bgColor: 'bg-primary/10'
     },
     {
       title: t('dashboard.onlineUsers'),
-      value: metricsData?.data?.usuariosOnline || 0,
+      value: metricsData?.data?.usuariosOnline ?? 0,
       icon: UserCheck,
       iconColor: 'text-green-600',
       bgColor: 'bg-green-100'
     },
     {
       title: t('dashboard.avgWaitingTime'),
-      value: `${metricsData?.data?.tempoMedioEspera || 0}min`,
+      value: `${metricsData?.data?.tempoMedioEspera ?? 0}min`,
       icon: Clock,
       iconColor: 'text-yellow-600',
       bgColor: 'bg-yellow-100'
     },
     {
       title: t('dashboard.completedToday'),
-      value: metricsData?.data?.finalizadasHoje || 0,
+      value: metricsData?.data?.finalizadasHoje ?? 0,
       icon: CheckCircle,
       iconColor: 'text-green-600',
       bgColor: 'bg-green-100'

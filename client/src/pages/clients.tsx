@@ -123,10 +123,22 @@ export default function ClientsPage() {
         params.append('search', searchQuery);
       }
       const response = await apiRequest('GET', `/api/clients?${params.toString()}`);
-      return response.json();
+      const data = await response.json();
+
+      // Ordenar alfabeticamente por nome
+      return (Array.isArray(data) ? data : []).sort((a, b) =>
+        a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })
+      );
     },
     staleTime: 30000,
   });
+
+  // Auto-selecionar o primeiro cliente quando a lista carregar
+  useEffect(() => {
+    if (!selectedClient && clients.length > 0) {
+      setSelectedClient(clients[0]);
+    }
+  }, [clients, selectedClient]);
 
   const createClient = useMutation({
     mutationFn: async (payload: ClientFormData) => {

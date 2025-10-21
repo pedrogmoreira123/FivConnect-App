@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useQuickReplies } from '@/contexts/quick-replies';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -699,8 +700,8 @@ export default function SettingsPage() {
 // Quick Replies Manager Component
 function QuickRepliesManager() {
   const { toast } = useToast();
-  const { quickReplies, setQuickReplies } = useQuickReplies();
-  const [loading, setLoading] = useState(false);
+  const { setQuickReplies } = useQuickReplies();
+  const queryClient = useQueryClient();
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingReply, setEditingReply] = useState(null);
   const [formData, setFormData] = useState({
@@ -709,26 +710,82 @@ function QuickRepliesManager() {
     isGlobal: false
   });
 
-  const fetchQuickReplies = async () => {
-    try {
-      setLoading(true);
-      const response = await authenticatedGet('/api/quick-replies');
-      // authenticatedGet (axios/fetch wrapper) já retorna objeto; usar .data quando existir
-      const data = (response as any)?.data ?? response;
-      setQuickReplies(Array.isArray(data) ? data : []);
-    } catch (error) {
+  // Buscar respostas rápidas com React Query
+  const { data: quickRepliesData = [], isLoading: loading } = useQuery({
+    queryKey: ['quick-replies'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/quick-replies');
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    },
+    onSuccess: (data) => {
+      setQuickReplies(data);
+    },
+    onError: (error: any) => {
       console.error('Error fetching quick replies:', error);
       toast({
         title: "Erro",
         description: "Erro ao carregar respostas rápidas",
         variant: "destructive"
       });
-    } finally {
-      setLoading(false);
     }
-  };
+  });
 
-  const handleSave = async () => {
+  // Mutation para criar/atualizar
+  const saveMutation = useMutation({
+    mutationFn: async (data: typeof formData & { id?: number }) => {
+      if (data.id) {
+        const response = await apiRequest('PUT', `/api/quick-replies/${data.id}`, data);
+        return response.json();
+      } else {
+        const response = await apiRequest('POST', '/api/quick-replies', data);
+        return response.json();
+      }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['quick-replies'] });
+      toast({
+        title: "Sucesso",
+        description: variables.id ? "Resposta rápida atualizada!" : "Resposta rápida criada!"
+      });
+      setFormData({ shortcut: '', message: '', isGlobal: false });
+      setShowAddForm(false);
+      setEditingReply(null);
+    },
+    onError: (error: any) => {
+      console.error('Error saving quick reply:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao salvar resposta rápida",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Mutation para deletar
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest('DELETE', `/api/quick-replies/${id}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quick-replies'] });
+      toast({
+        title: "Sucesso",
+        description: "Resposta rápida excluída!"
+      });
+    },
+    onError: (error: any) => {
+      console.error('Error deleting quick reply:', error);
+      toast({
+        title: "Erro",
+        description: error.message || "Erro ao excluir resposta rápida",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const handleSave = () => {
     if (!formData.shortcut || !formData.message) {
       toast({
         title: "Erro",
@@ -738,32 +795,11 @@ function QuickRepliesManager() {
       return;
     }
 
-    try {
-      let response: any;
-      
-      if (editingReply) {
-        response = await authenticatedPut(`/api/quick-replies/${editingReply.id}`, formData);
-      } else {
-        response = await authenticatedPost('/api/quick-replies', formData);
-      }
+    const dataToSave = editingReply
+      ? { ...formData, id: editingReply.id }
+      : formData;
 
-      toast({
-        title: "Sucesso",
-        description: editingReply ? "Resposta rápida atualizada!" : "Resposta rápida criada!"
-      });
-      
-      setFormData({ shortcut: '', message: '', isGlobal: false });
-      setShowAddForm(false);
-      setEditingReply(null);
-      fetchQuickReplies();
-    } catch (error) {
-      console.error('Error saving quick reply:', error);
-      toast({
-        title: "Erro",
-        description: error.message || "Erro ao salvar resposta rápida",
-        variant: "destructive"
-      });
-    }
+    saveMutation.mutate(dataToSave);
   };
 
   const handleEdit = (reply) => {
@@ -776,22 +812,8 @@ function QuickRepliesManager() {
     setShowAddForm(true);
   };
 
-  const handleDelete = async (id) => {
-    try {
-      await authenticatedDelete(`/api/quick-replies/${id}`);
-      toast({
-        title: "Sucesso",
-        description: "Resposta rápida excluída!"
-      });
-      fetchQuickReplies();
-    } catch (error) {
-      console.error('Error deleting quick reply:', error);
-      toast({
-        title: "Erro",
-        description: error.message || "Erro ao excluir resposta rápida",
-        variant: "destructive"
-      });
-    }
+  const handleDelete = (id) => {
+    deleteMutation.mutate(id);
   };
 
   const resetForm = () => {
@@ -799,11 +821,6 @@ function QuickRepliesManager() {
     setShowAddForm(false);
     setEditingReply(null);
   };
-
-  // Load quick replies on component mount
-  useEffect(() => {
-    fetchQuickReplies();
-  }, []);
 
   return (
     <div className="space-y-6">
@@ -891,14 +908,14 @@ function QuickRepliesManager() {
               <div className="flex items-center justify-center py-8">
                 <RefreshCw className="h-6 w-6 animate-spin" />
               </div>
-            ) : quickReplies.length === 0 ? (
+            ) : quickRepliesData.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>Nenhuma resposta rápida configurada</p>
                 <p className="text-sm">Clique em "Nova Resposta" para começar</p>
               </div>
             ) : (
-              quickReplies.map((reply) => (
+              quickRepliesData.map((reply) => (
                 <Card key={reply.id} className="border">
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between">
