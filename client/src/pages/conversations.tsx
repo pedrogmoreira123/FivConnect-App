@@ -565,20 +565,40 @@ const ChatArea = ({
   const [audioLevel, setAudioLevel] = useState(0);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const previousMessagesLength = useRef<number>(-1);
+  const previousConversationId = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
+  // Smart auto-scroll: só rola se usuário estiver perto do fim ou se mudou de conversa
   useEffect(() => {
-    // Scroll sempre que a quantidade mudar (inclusive primeira carga)
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "auto" });
+    const container = messagesContainerRef.current;
+    const endElement = messagesEndRef.current;
+
+    if (!container || !endElement) return;
+
+    const isNearBottom = () => {
+      const scrollTop = container.scrollTop;
+      const scrollHeight = container.scrollHeight;
+      const clientHeight = container.clientHeight;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      return distanceFromBottom < 100; // Dentro de 100px do fim
+    };
+
+    const conversationChanged = previousConversationId.current !== conversation?.id;
+    const shouldScroll = conversationChanged || isNearBottom() || previousMessagesLength.current === -1;
+
+    if (shouldScroll) {
+      endElement.scrollIntoView({ behavior: conversationChanged ? "auto" : "smooth" });
     }
+
     previousMessagesLength.current = messages.length;
-  }, [messages.length]);
+    previousConversationId.current = conversation?.id ?? null;
+  }, [messages.length, conversation?.id]);
 
   const handleSend = () => {
     if (text.trim()) {
@@ -1007,7 +1027,7 @@ const ChatArea = ({
           </div>
 
       {/* Área de Mensagens - Layout WhatsApp */}
-      <div className="flex-1 overflow-y-auto bg-gray-100">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto bg-gray-100">
         <div className="min-h-full flex flex-col justify-end p-4 space-y-2">
           {/* Debug logs removidos para evitar erros de tipo */}
           {messages.length === 0 ? (
@@ -1421,8 +1441,12 @@ export default function ConversationsPage() {
   // Implementar debounce para invalidações
   const debouncedInvalidate = useCallback(
     debounce(() => {
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
-    }, 500),
+      queryClient.invalidateQueries({
+        queryKey: ['conversations'],
+        refetchType: 'active',
+        exact: false
+      });
+    }, 1000),
     [queryClient]
   );
   const { data: waitingConversations = [] } = useQuery({
@@ -1444,23 +1468,31 @@ export default function ConversationsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
-  const { data: messages = [] } = ((): any => {
-    const conversationId = selectedConversation?.id;
-    // Simple adapter to keep current component shape while transitioning
-    const query = useQuery({
-      queryKey: ['messages', conversationId],
-      queryFn: async () => {
-        if (!conversationId) return [] as Message[];
-        const res = await apiClient.get(`/api/whatsapp/conversations/${conversationId}/messages`);
+  const { data: messages = [], isLoading: isLoadingMessages } = useQuery({
+    queryKey: ['messages', selectedConversation?.id],
+    queryFn: async () => {
+      if (!selectedConversation?.id) return [] as Message[];
+
+      try {
+        const res = await apiClient.get(`/api/whatsapp/conversations/${selectedConversation.id}/messages`);
         const arr = Array.isArray(res.data) ? res.data : [];
-        return arr.sort((a: any, b: any) => new Date(a.sentAt || a.createdAt).getTime() - new Date(b.sentAt || b.createdAt).getTime());
-      },
-      enabled: !!conversationId,
-      refetchInterval: false,
-      staleTime: Infinity,
-    });
-    return { data: query.data || [] };
-  })();
+
+        return arr.sort((a: any, b: any) =>
+          new Date(a.sentAt || a.createdAt).getTime() -
+          new Date(b.sentAt || b.createdAt).getTime()
+        );
+      } catch (error) {
+        console.error('❌ Erro ao carregar mensagens:', error);
+        return [];
+      }
+    },
+    enabled: !!selectedConversation?.id,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
+    staleTime: Infinity,
+    cacheTime: Infinity,
+  });
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
   const [filteredReplies, setFilteredReplies] = useState<any[]>([]);
@@ -1712,14 +1744,6 @@ export default function ConversationsPage() {
     }
     lastJoinedConversationRef.current = newId;
   }, [selectedConversation?.id]);
-
-  // Auto-scroll para a última mensagem sempre que a lista mudar
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    try {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
-    } catch {}
-  }, [messages.length, selectedConversation?.id]);
 
   const loadConversations = async () => {
     try {
