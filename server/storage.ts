@@ -11,6 +11,16 @@ import {
   type InsertConversation,
   type ChatSession,
   type InsertChatSession,
+  type Tag,
+  type InsertTag,
+  type ConversationTag,
+  type InsertConversationTag,
+  type MessageTemplate,
+  type InsertMessageTemplate,
+  type AutoAssignRule,
+  type InsertAutoAssignRule,
+  type AuditLog,
+  type InsertAuditLog,
   type Message,
   type InsertMessage,
   type Queue,
@@ -45,6 +55,11 @@ import {
   announcements,
   conversations,
   chatSessions,
+  tags,
+  conversationTags,
+  messageTemplates,
+  autoAssignRules,
+  auditLogs,
   messages,
   queues,
   settings,
@@ -122,6 +137,7 @@ export interface IStorage {
   getConversationsByStatus(status: string): Promise<Conversation[]>;
   getConversationsByAgent(agentId: string): Promise<Conversation[]>;
   getAllConversations(): Promise<Conversation[]>;
+  getConversationsByCompany(companyId: string): Promise<Conversation[]>;
   getConversationByClient(clientId: string, companyId: string): Promise<Conversation | undefined>;
 
   // Chat Session operations
@@ -133,6 +149,39 @@ export interface IStorage {
   finishChatSession(id: string): Promise<ChatSession>;
   getChatSessionsByStatus(status: string, companyId: string): Promise<ChatSession[]>;
   getChatSessionsByAgent(agentId: string, companyId: string): Promise<ChatSession[]>;
+
+  // Tag operations
+  getTag(id: string): Promise<Tag | undefined>;
+  getTagsByCompany(companyId: string): Promise<Tag[]>;
+  createTag(tag: InsertTag): Promise<Tag>;
+  updateTag(id: string, tag: Partial<InsertTag>): Promise<Tag>;
+  deleteTag(id: string): Promise<boolean>;
+  
+  // Conversation Tag operations
+  getConversationTags(conversationId: string): Promise<Tag[]>;
+  addTagToConversation(conversationId: string, tagId: string): Promise<ConversationTag>;
+  removeTagFromConversation(conversationId: string, tagId: string): Promise<boolean>;
+  getConversationsByTag(tagId: string, companyId: string): Promise<Conversation[]>;
+
+  // Message Template operations
+  getMessageTemplate(id: string): Promise<MessageTemplate | undefined>;
+  getMessageTemplatesByCompany(companyId: string): Promise<MessageTemplate[]>;
+  createMessageTemplate(template: InsertMessageTemplate): Promise<MessageTemplate>;
+  updateMessageTemplate(id: string, template: Partial<InsertMessageTemplate>): Promise<MessageTemplate>;
+  deleteMessageTemplate(id: string): Promise<boolean>;
+
+  // Auto-assign Rules operations
+  getAutoAssignRule(id: string): Promise<AutoAssignRule | undefined>;
+  getAutoAssignRulesByCompany(companyId: string): Promise<AutoAssignRule[]>;
+  createAutoAssignRule(rule: InsertAutoAssignRule): Promise<AutoAssignRule>;
+  updateAutoAssignRule(id: string, rule: Partial<InsertAutoAssignRule>): Promise<AutoAssignRule>;
+  deleteAutoAssignRule(id: string): Promise<boolean>;
+  getActiveAutoAssignRules(companyId: string): Promise<AutoAssignRule[]>;
+
+  // Audit Log operations
+  createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
+  getAuditLogsByEntity(entityType: string, entityId: string, companyId: string): Promise<AuditLog[]>;
+  getAuditLogsByCompany(companyId: string, limit?: number): Promise<AuditLog[]>;
 
   // Message operations
   getMessage(id: string): Promise<Message | undefined>;
@@ -707,6 +756,15 @@ export class DatabaseStorage implements IStorage {
       .where(eq(conversations.environment, this.getEnvironmentFilter()));
   }
 
+  async getConversationsByCompany(companyId: string): Promise<Conversation[]> {
+    return await db.select().from(conversations)
+      .where(and(
+        eq(conversations.companyId, companyId),
+        eq(conversations.environment, this.getEnvironmentFilter())
+      ))
+      .orderBy(desc(conversations.updatedAt));
+  }
+
   // Message operations
   async getMessage(id: string): Promise<Message | undefined> {
     const [message] = await db.select().from(messages).where(eq(messages.id, id));
@@ -838,6 +896,207 @@ export class DatabaseStorage implements IStorage {
         eq(chatSessions.companyId, companyId)
       ))
       .orderBy(desc(chatSessions.lastMessageAt));
+  }
+
+  // Tag operations
+  async getTag(id: string): Promise<Tag | undefined> {
+    const [tag] = await db.select().from(tags)
+      .where(eq(tags.id, id))
+      .limit(1);
+    return tag;
+  }
+
+  async getTagsByCompany(companyId: string): Promise<Tag[]> {
+    return await db.select().from(tags)
+      .where(and(
+        eq(tags.companyId, companyId),
+        eq(tags.environment, 'production')
+      ))
+      .orderBy(tags.name);
+  }
+
+  async createTag(tag: InsertTag): Promise<Tag> {
+    const [newTag] = await db.insert(tags).values(tag).returning();
+    return newTag;
+  }
+
+  async updateTag(id: string, tag: Partial<InsertTag>): Promise<Tag> {
+    const [updatedTag] = await db.update(tags)
+      .set({ ...tag, updatedAt: new Date() })
+      .where(eq(tags.id, id))
+      .returning();
+    return updatedTag;
+  }
+
+  async deleteTag(id: string): Promise<boolean> {
+    const result = await db.delete(tags).where(eq(tags.id, id));
+    return result.rowCount > 0;
+  }
+
+  // Conversation Tag operations
+  async getConversationTags(conversationId: string): Promise<Tag[]> {
+    return await db.select({
+      id: tags.id,
+      name: tags.name,
+      color: tags.color,
+      companyId: tags.companyId,
+      description: tags.description,
+      environment: tags.environment,
+      createdAt: tags.createdAt,
+      updatedAt: tags.updatedAt
+    })
+    .from(conversationTags)
+    .innerJoin(tags, eq(conversationTags.tagId, tags.id))
+    .where(eq(conversationTags.conversationId, conversationId));
+  }
+
+  async addTagToConversation(conversationId: string, tagId: string): Promise<ConversationTag> {
+    const [newConversationTag] = await db.insert(conversationTags).values({
+      conversationId,
+      tagId,
+      environment: 'production'
+    }).returning();
+    return newConversationTag;
+  }
+
+  async removeTagFromConversation(conversationId: string, tagId: string): Promise<boolean> {
+    const result = await db.delete(conversationTags)
+      .where(and(
+        eq(conversationTags.conversationId, conversationId),
+        eq(conversationTags.tagId, tagId)
+      ));
+    return result.rowCount > 0;
+  }
+
+  async getConversationsByTag(tagId: string, companyId: string): Promise<Conversation[]> {
+    return await db.select({
+      id: conversations.id,
+      companyId: conversations.companyId,
+      contactName: conversations.contactName,
+      contactPhone: conversations.contactPhone,
+      status: conversations.status,
+      lastMessage: conversations.lastMessage,
+      lastMessageAt: conversations.lastMessageAt,
+      unreadCount: conversations.unreadCount,
+      environment: conversations.environment,
+      createdAt: conversations.createdAt,
+      updatedAt: conversations.updatedAt
+    })
+    .from(conversationTags)
+    .innerJoin(conversations, eq(conversationTags.conversationId, conversations.id))
+    .where(and(
+      eq(conversationTags.tagId, tagId),
+      eq(conversations.companyId, companyId)
+    ))
+    .orderBy(desc(conversations.updatedAt));
+  }
+
+  // Message Template operations
+  async getMessageTemplate(id: string): Promise<MessageTemplate | undefined> {
+    const [template] = await db.select().from(messageTemplates)
+      .where(eq(messageTemplates.id, id))
+      .limit(1);
+    return template;
+  }
+
+  async getMessageTemplatesByCompany(companyId: string): Promise<MessageTemplate[]> {
+    return await db.select().from(messageTemplates)
+      .where(and(
+        eq(messageTemplates.companyId, companyId),
+        eq(messageTemplates.environment, 'production'),
+        eq(messageTemplates.isActive, true)
+      ))
+      .orderBy(messageTemplates.name);
+  }
+
+  async createMessageTemplate(template: InsertMessageTemplate): Promise<MessageTemplate> {
+    const [newTemplate] = await db.insert(messageTemplates).values(template).returning();
+    return newTemplate;
+  }
+
+  async updateMessageTemplate(id: string, template: Partial<InsertMessageTemplate>): Promise<MessageTemplate> {
+    const [updatedTemplate] = await db.update(messageTemplates)
+      .set({ ...template, updatedAt: new Date() })
+      .where(eq(messageTemplates.id, id))
+      .returning();
+    return updatedTemplate;
+  }
+
+  async deleteMessageTemplate(id: string): Promise<boolean> {
+    const result = await db.delete(messageTemplates).where(eq(messageTemplates.id, id));
+    return result.rowCount > 0;
+  }
+
+  // Auto-assign Rules operations
+  async getAutoAssignRule(id: string): Promise<AutoAssignRule | undefined> {
+    const [rule] = await db.select().from(autoAssignRules)
+      .where(eq(autoAssignRules.id, id))
+      .limit(1);
+    return rule;
+  }
+
+  async getAutoAssignRulesByCompany(companyId: string): Promise<AutoAssignRule[]> {
+    return await db.select().from(autoAssignRules)
+      .where(and(
+        eq(autoAssignRules.companyId, companyId),
+        eq(autoAssignRules.environment, this.getEnvironmentFilter())
+      ))
+      .orderBy(autoAssignRules.priority);
+  }
+
+  async createAutoAssignRule(rule: InsertAutoAssignRule): Promise<AutoAssignRule> {
+    const [newRule] = await db.insert(autoAssignRules).values(rule).returning();
+    return newRule;
+  }
+
+  async updateAutoAssignRule(id: string, rule: Partial<InsertAutoAssignRule>): Promise<AutoAssignRule> {
+    const [updatedRule] = await db.update(autoAssignRules)
+      .set({ ...rule, updatedAt: new Date() })
+      .where(eq(autoAssignRules.id, id))
+      .returning();
+    return updatedRule;
+  }
+
+  async deleteAutoAssignRule(id: string): Promise<boolean> {
+    const result = await db.delete(autoAssignRules).where(eq(autoAssignRules.id, id));
+    return result.rowCount > 0;
+  }
+
+  async getActiveAutoAssignRules(companyId: string): Promise<AutoAssignRule[]> {
+    return await db.select().from(autoAssignRules)
+      .where(and(
+        eq(autoAssignRules.companyId, companyId),
+        eq(autoAssignRules.isActive, true),
+        eq(autoAssignRules.environment, this.getEnvironmentFilter())
+      ))
+      .orderBy(autoAssignRules.priority);
+  }
+
+  // Audit Log operations
+  async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
+    const [newLog] = await db.insert(auditLogs).values(log).returning();
+    return newLog;
+  }
+
+  async getAuditLogsByEntity(entityType: string, entityId: string, companyId: string): Promise<AuditLog[]> {
+    return await db.select().from(auditLogs)
+      .where(and(
+        eq(auditLogs.entityType, entityType),
+        eq(auditLogs.entityId, entityId),
+        eq(auditLogs.companyId, companyId),
+        eq(auditLogs.environment, this.getEnvironmentFilter())
+      ))
+      .orderBy(desc(auditLogs.createdAt));
+  }
+
+  async getAuditLogsByCompany(companyId: string, limit: number = 100): Promise<AuditLog[]> {
+    return await db.select().from(auditLogs)
+      .where(and(
+        eq(auditLogs.companyId, companyId),
+        eq(auditLogs.environment, this.getEnvironmentFilter())
+      ))
+      .orderBy(desc(auditLogs.createdAt))
+      .limit(limit);
   }
 
   /**

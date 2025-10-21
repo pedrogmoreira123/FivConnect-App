@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQuickReplies } from '@/contexts/quick-replies';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
@@ -698,7 +699,7 @@ export default function SettingsPage() {
 // Quick Replies Manager Component
 function QuickRepliesManager() {
   const { toast } = useToast();
-  const [quickReplies, setQuickReplies] = useState([]);
+  const { quickReplies, setQuickReplies } = useQuickReplies();
   const [loading, setLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingReply, setEditingReply] = useState(null);
@@ -712,8 +713,9 @@ function QuickRepliesManager() {
     try {
       setLoading(true);
       const response = await authenticatedGet('/api/quick-replies');
-      const data = await response.json();
-      setQuickReplies(data);
+      // authenticatedGet (axios/fetch wrapper) já retorna objeto; usar .data quando existir
+      const data = (response as any)?.data ?? response;
+      setQuickReplies(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching quick replies:', error);
       toast({
@@ -737,7 +739,7 @@ function QuickRepliesManager() {
     }
 
     try {
-      let response;
+      let response: any;
       
       if (editingReply) {
         response = await authenticatedPut(`/api/quick-replies/${editingReply.id}`, formData);

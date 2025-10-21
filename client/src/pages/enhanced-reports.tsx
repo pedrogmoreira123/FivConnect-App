@@ -17,7 +17,12 @@ import {
   Star,
   Target,
   Award,
-  BarChart3 
+  BarChart3,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 
 export default function EnhancedReportsPage() {
@@ -35,15 +40,53 @@ export default function EnhancedReportsPage() {
     period: 'daily' 
   });
 
-  // Fetch reports data from API
-  const { data: reportsData, isLoading } = useQuery({
-    queryKey: ['/api/reports', dateRange.from, dateRange.to],
+  // Fetch SLA metrics from API
+  const { data: slaData, isLoading: slaLoading } = useQuery({
+    queryKey: ['/api/whatsapp/analytics/sla', dateRange.from, dateRange.to],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (dateRange.from) params.append('startDate', dateRange.from);
-      if (dateRange.to) params.append('endDate', dateRange.to);
+      if (dateRange.from) params.append('dateFrom', dateRange.from);
+      if (dateRange.to) params.append('dateTo', dateRange.to);
       
-      const response = await apiRequest('GET', `/api/reports?${params.toString()}`);
+      const response = await apiRequest('GET', `/api/whatsapp/analytics/sla?${params.toString()}`);
+      return response.json();
+    },
+    staleTime: 30000,
+  });
+
+  // Fetch heatmap data
+  const { data: heatmapData, isLoading: heatmapLoading } = useQuery({
+    queryKey: ['/api/whatsapp/analytics/heatmap', dateRange.from, dateRange.to],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (dateRange.from) params.append('dateFrom', dateRange.from);
+      if (dateRange.to) params.append('dateTo', dateRange.to);
+      
+      const response = await apiRequest('GET', `/api/whatsapp/analytics/heatmap?${params.toString()}`);
+      return response.json();
+    },
+    staleTime: 30000,
+  });
+
+  // Fetch agent performance
+  const { data: agentData, isLoading: agentLoading } = useQuery({
+    queryKey: ['/api/whatsapp/analytics/agent-performance', dateRange.from, dateRange.to],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (dateRange.from) params.append('dateFrom', dateRange.from);
+      if (dateRange.to) params.append('dateTo', dateRange.to);
+      
+      const response = await apiRequest('GET', `/api/whatsapp/analytics/agent-performance?${params.toString()}`);
+      return response.json();
+    },
+    staleTime: 30000,
+  });
+
+  // Fetch channel status
+  const { data: channelData, isLoading: channelLoading } = useQuery({
+    queryKey: ['/api/whatsapp/analytics/channel-status'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/whatsapp/analytics/channel-status');
       return response.json();
     },
     staleTime: 30000,
@@ -53,10 +96,18 @@ export default function EnhancedReportsPage() {
     setDateRange(newDateRange);
   };
 
-  // Use real data or fallback to empty values
-  const totalConversations = reportsData?.totalConversations || 0;
-  const completedConversations = reportsData?.completedConversations || 0;
-  const completionRate = totalConversations > 0 ? Math.round((completedConversations / totalConversations) * 100) : 0;
+  // Use real data from analytics endpoints
+  const metrics = slaData?.metrics || {};
+  const totalConversations = metrics.totalConversations || 0;
+  const completedConversations = metrics.completedConversations || 0;
+  const completionRate = metrics.completionRate || 0;
+  const avgFirstResponse = metrics.avgFirstResponse || '0m 0s';
+  const avgResolution = metrics.avgResolution || '0m 0s';
+  const conversationsByStatus = metrics.conversationsByStatus || { waiting: 0, in_progress: 0, finished: 0 };
+  
+  const agentPerformance = agentData?.agentPerformance || [];
+  const channels = channelData?.channels || [];
+  const heatmap = heatmapData?.heatmapData || [];
 
   return (
     <div className="p-6 space-y-6">
@@ -69,87 +120,253 @@ export default function EnhancedReportsPage() {
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-fit grid-cols-3 gap-1">
-          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-          <TabsTrigger value="detailed">Relatórios Detalhados</TabsTrigger>
-          <TabsTrigger value="sessions">Sessões Ativas</TabsTrigger>
+        <TabsList className="grid w-fit grid-cols-5 gap-1">
+          <TabsTrigger value="overview">SLA Dashboard</TabsTrigger>
+          <TabsTrigger value="heatmap">Heatmap</TabsTrigger>
+          <TabsTrigger value="agents">Performance</TabsTrigger>
+          <TabsTrigger value="channels">Status Canais</TabsTrigger>
+          <TabsTrigger value="detailed">Relatórios</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          {/* KPI Summary Cards */}
+          {/* SLA Metrics Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-muted-foreground text-sm font-medium">
-                  {t('reports.totalConversations')}
-                </p>
-                <p className="text-2xl font-bold text-foreground" data-testid="text-total-conversations">
-                  {totalConversations}
-                </p>
-              </div>
-              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                <MessageCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-muted-foreground text-sm font-medium">
+                      Total de Conversas
+                    </p>
+                    <p className="text-2xl font-bold text-foreground">
+                      {totalConversations}
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                    <MessageCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-muted-foreground text-sm font-medium">
-                  Taxa de Finalização
-                </p>
-                <p className="text-2xl font-bold text-foreground" data-testid="text-completion-rate">
-                  {completionRate}%
-                </p>
-              </div>
-              <div className="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
-                <Target className="h-5 w-5 text-green-600 dark:text-green-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-muted-foreground text-sm font-medium">
+                      Taxa de Finalização
+                    </p>
+                    <p className="text-2xl font-bold text-foreground">
+                      {completionRate}%
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
+                    <Target className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-muted-foreground text-sm font-medium">
-                  Agentes Ativos
-                </p>
-                <p className="text-2xl font-bold text-foreground" data-testid="text-active-agents">
-                  {reportsData?.agentPerformance?.length || 0}
-                </p>
-              </div>
-              <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center">
-                <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-muted-foreground text-sm font-medium">
+                      Primeira Resposta
+                    </p>
+                    <p className="text-2xl font-bold text-foreground">
+                      {avgFirstResponse}
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center">
+                    <Clock className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-muted-foreground text-sm font-medium">
-                  Tempo Médio
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-muted-foreground text-sm font-medium">
+                      Tempo de Resolução
+                    </p>
+                    <p className="text-2xl font-bold text-foreground">
+                      {avgResolution}
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900 rounded-full flex items-center justify-center">
+                    <Award className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Status Distribution */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                  Em Espera
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold text-yellow-600">
+                  {conversationsByStatus.waiting}
                 </p>
-                <p className="text-2xl font-bold text-foreground" data-testid="text-avg-time">
-                  3m 25s
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                  Em Andamento
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold text-blue-600">
+                  {conversationsByStatus.in_progress}
                 </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                  Finalizadas
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold text-green-600">
+                  {conversationsByStatus.finished}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Heatmap Tab */}
+        <TabsContent value="heatmap" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Heatmap de Atendimento</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-8 gap-1">
+                {/* Header com horas */}
+                <div></div>
+                {Array.from({ length: 24 }, (_, i) => (
+                  <div key={i} className="text-xs text-center font-medium">
+                    {i}h
+                  </div>
+                ))}
+                
+                {/* Dias da semana */}
+                {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day, dayIndex) => (
+                  <div key={day} className="contents">
+                    <div className="text-sm font-medium flex items-center justify-center">
+                      {day}
+                    </div>
+                    {Array.from({ length: 24 }, (_, hourIndex) => {
+                      const data = heatmap.find(h => h.dayIndex === dayIndex && h.hourIndex === hourIndex);
+                      const intensity = data ? Math.min(data.value / 50, 1) : 0;
+                      const bgColor = intensity > 0.7 ? 'bg-red-500' : 
+                                   intensity > 0.4 ? 'bg-yellow-500' : 
+                                   intensity > 0.1 ? 'bg-green-500' : 'bg-gray-200';
+                      
+                      return (
+                        <div
+                          key={`${dayIndex}-${hourIndex}`}
+                          className={`w-6 h-6 ${bgColor} rounded-sm hover:opacity-80 cursor-pointer`}
+                          title={`${day} ${hourIndex}h: ${data?.value || 0} conversas`}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
-              <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900 rounded-full flex items-center justify-center">
-                <Clock className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Agent Performance Tab */}
+        <TabsContent value="agents" className="space-y-6">
+          <div className="grid grid-cols-1 gap-6">
+            {agentPerformance.map((agent: any) => (
+              <Card key={agent.agentId}>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                        <Users className="h-6 w-6 text-blue-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-lg">{agent.agentName}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {agent.totalConversations} conversas • {agent.completedConversations} finalizadas
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-6">
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-green-600">{agent.completionRate}%</p>
+                        <p className="text-xs text-muted-foreground">Taxa de Finalização</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-blue-600">{agent.avgResponseTime}</p>
+                        <p className="text-xs text-muted-foreground">Tempo Médio</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-yellow-600">{agent.satisfaction}</p>
+                        <p className="text-xs text-muted-foreground">Satisfação</p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {/* Channel Status Tab */}
+        <TabsContent value="channels" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {channels.map((channel: any) => (
+              <Card key={channel.id}>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                        channel.isOnline ? 'bg-green-100' : 'bg-red-100'
+                      }`}>
+                        {channel.isOnline ? (
+                          <Wifi className="h-6 w-6 text-green-600" />
+                        ) : (
+                          <WifiOff className="h-6 w-6 text-red-600" />
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-lg">{channel.name}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Última atividade: {new Date(channel.lastSeen).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={channel.isOnline ? "default" : "destructive"}>
+                        {channel.isOnline ? 'Online' : 'Offline'}
+                      </Badge>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -168,19 +385,19 @@ export default function EnhancedReportsPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>{t('reports.conversationsByPeriod')}</CardTitle>
               <ReportExport 
-                data={reportsData?.conversationsByPeriod || []} 
+                data={[]} 
                 title="Conversas por Período" 
                 reportType="conversations"
                 dateRange={dateRange}
               />
             </CardHeader>
             <CardContent>
-              <WeeklyPerformanceChart data={reportsData?.weeklyTrend || []} />
+              <WeeklyPerformanceChart data={[]} />
               
               <div className="mt-6 space-y-4">
                 <h4 className="font-semibold">Detalhamento por Dia</h4>
                 <div className="grid gap-4">
-                  {(reportsData?.conversationsByPeriod || []).map((item, index) => (
+                  {[].map((item, index) => (
                     <div 
                       key={index}
                       className="flex items-center justify-between p-4 bg-muted rounded-lg"
@@ -209,14 +426,14 @@ export default function EnhancedReportsPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>{t('reports.clientRanking')}</CardTitle>
               <ReportExport 
-                data={reportsData?.clientRanking || []} 
+                data={[]} 
                 title="Ranking de Clientes" 
                 reportType="clients" 
               />
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {(reportsData?.clientRanking || []).map((client, index) => (
+                {[].map((client, index) => (
                   <div 
                     key={index}
                     className="flex items-center justify-between p-4 border rounded-lg"
@@ -253,14 +470,14 @@ export default function EnhancedReportsPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>{t('reports.agentRanking')}</CardTitle>
               <ReportExport 
-                data={reportsData?.agentPerformance || []} 
+                data={agentPerformance} 
                 title="Performance dos Agentes" 
                 reportType="agents" 
               />
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {(reportsData?.agentPerformance || []).map((agent, index) => (
+                {agentPerformance.map((agent, index) => (
                   <div 
                     key={agent.id}
                     className="p-4 border rounded-lg"
@@ -313,18 +530,18 @@ export default function EnhancedReportsPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>{t('reports.queueVolume')}</CardTitle>
               <ReportExport 
-                data={reportsData?.queueComparison || []} 
+                data={[]} 
                 title="Comparação por Fila" 
                 reportType="queues" 
               />
             </CardHeader>
             <CardContent>
               <div className="mb-6">
-                <QueueVolumeChart data={reportsData?.queueComparison || []} />
+                <QueueVolumeChart data={[]} />
               </div>
               
               <div className="space-y-4">
-                {(reportsData?.queueComparison || []).map((queue, index) => (
+                {[].map((queue, index) => (
                   <div 
                     key={index}
                     className="p-4 border rounded-lg"

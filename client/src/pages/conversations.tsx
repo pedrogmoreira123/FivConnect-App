@@ -1,11 +1,16 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import apiClient from '../lib/api-client';
 import { useAuth } from '../hooks/use-auth';
 import { useThemeCustomization } from '../contexts/theme-customization-context';
 import { useSound } from '../hooks/use-sound';
 import io from 'socket.io-client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuickReplies } from '@/contexts/quick-replies';
 import { WaveformAudioPlayer } from '../components/WaveformAudioPlayer';
 import { LoadingSpinner } from '../components/ui/loading-spinner';
+import { AutoAssignModal } from '@/components/modals/AutoAssignModal';
+import { AuditModal } from '@/components/modals/AuditModal';
+import { ExportModal } from '@/components/modals/ExportModal';
 
 // Interfaces e tipos
 interface User {
@@ -17,11 +22,11 @@ interface User {
 
 interface Conversation {
   id: string;
-  contact_name?: string;
-  contact_phone?: string;
+  contactName?: string;
+  contactPhone?: string;
   status: 'waiting' | 'in_progress' | 'finished';
-  last_message?: string;
-  updated_at?: string;
+  lastMessage?: string;
+  updatedAt?: string;
   unreadCount?: number;
   companyId?: string;
   assignedAgentId?: string;
@@ -110,7 +115,7 @@ const playNotificationSound = () => {
   } catch (error) {
     console.log('Não foi possível reproduzir som de notificação:', error);
   }
-};
+                };
 
 import { 
   Search, 
@@ -429,23 +434,23 @@ const TabButton = ({ active, onClick, children, icon: Icon, count, onMuteClick, 
   
   return (
     <div className="flex items-center gap-1 flex-1 min-w-0">
-      <button
-        onClick={onClick}
+  <button
+    onClick={onClick}
         className={`flex items-center justify-center gap-1 px-1.5 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap flex-1 min-w-0 ${
-          active 
+      active 
             ? 'text-white' 
-            : 'text-gray-600 hover:bg-gray-100'
-        }`}
+        : 'text-gray-600 hover:bg-gray-100'
+    }`}
         style={active ? { backgroundColor: `hsl(${branding.colors.primary})` } : undefined}
-      >
+  >
         <Icon className="h-3.5 w-3.5 flex-shrink-0" />
         <span className="text-[10px] truncate">{children}</span>
-        {count && count > 0 && (
+    {count && count > 0 && (
           <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 min-w-[18px] h-4 flex items-center justify-center flex-shrink-0">
-            {count}
-          </span>
-        )}
-      </button>
+        {count}
+                        </span>
+    )}
+  </button>
       {onMuteClick && (
         <button
           onClick={(e) => {
@@ -489,7 +494,7 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
               {(item as any).profilePictureUrl ? (
                 <img 
                   src={(item as any).profilePictureUrl} 
-                  alt={isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contact_name || 'Cliente')} 
+                  alt={isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contactName || 'Cliente')} 
                   className="w-10 h-10 rounded-full object-cover"
                 />
               ) : (
@@ -497,21 +502,21 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
                   className="w-10 h-10 rounded-full flex items-center justify-center"
                   style={{ backgroundColor: `hsl(${branding.colors.primary})` }}
                 >
-                  <span className="text-sm font-medium text-white">
-                    {isContacts ? ((item as Contact).name?.charAt(0) || 'C') : ((item as Conversation).contact_name?.charAt(0) || 'C')}
-                  </span>
-                </div>
+                <span className="text-sm font-medium text-white">
+                  {isContacts ? ((item as Contact).name?.charAt(0) || 'C') : ((item as Conversation).contactName?.charAt(0) || 'C')}
+                        </span>
+                      </div>
               )}
                       <div className="flex items-center justify-between w-full">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 truncate text-sm">
-                            {isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contact_name || (item as any).contactName || 'Cliente')}
-                          </p>
-                          <p className="text-sm text-gray-500 truncate">
-                            {isContacts ? (item as Contact).phone : formatLastMessagePreview((item as Conversation).last_message || (item as any).lastMessage || '')}
+                      <div className="flex-1 min-w-0">
+                <p className="font-medium text-gray-900 truncate text-sm">
+                  {isContacts ? ((item as Contact).name || 'Cliente') : ((item as Conversation).contactName || 'Cliente')}
+                </p>
+                <p className="text-sm text-gray-500 truncate">
+                            {isContacts ? (item as Contact).phone : formatLastMessagePreview((item as Conversation).lastMessage || '')}
                           </p>
                         </div>
-                        {!isContacts && (
+              {!isContacts && (
                           <div className="flex items-center gap-2 ml-2 flex-shrink-0">
                             {/* Badge de mensagens não lidas */}
                             {(item as Conversation).unreadCount && (item as Conversation).unreadCount! > 0 && (
@@ -519,11 +524,11 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
                                 {(item as Conversation).unreadCount}
                               </span>
                             )}
-                            <div className="text-xs text-gray-400">
-                              {(item as Conversation).updated_at && formatMessageTime((item as Conversation).updated_at!)}
+                <div className="text-xs text-gray-400">
+                              {(item as Conversation).updatedAt && formatMessageTime((item as Conversation).updatedAt!)}
                             </div>
-                          </div>
-                        )}
+                        </div>
+              )}
                       </div>
                     </div>
                   </div>
@@ -531,7 +536,7 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
               )}
     </div>
   </div>
-  );
+);
 };
 
 
@@ -548,15 +553,18 @@ const ChatArea = ({
   currentUser
 }: ChatAreaProps) => {
   const { branding } = useThemeCustomization();
+  const { quickReplies } = useQuickReplies();
   const [text, setText] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [filteredReplies, setFilteredReplies] = useState<any[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState('0:00');
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
   const [audioLevel, setAudioLevel] = useState(0);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-  const previousMessagesLength = useRef(messages.length);
+  const previousMessagesLength = useRef<number>(-1);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -565,12 +573,12 @@ const ChatArea = ({
   const animationFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // Só fazer scroll se novas mensagens foram adicionadas (não em atualizações)
-    if (messages.length > previousMessagesLength.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Scroll sempre que a quantidade mudar (inclusive primeira carga)
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "auto" });
     }
     previousMessagesLength.current = messages.length;
-  }, [messages]);
+  }, [messages.length]);
 
   const handleSend = () => {
     if (text.trim()) {
@@ -618,11 +626,11 @@ const ChatArea = ({
       
       recorder.onstop = () => {
         console.log('Gravação parada, chunks:', chunks.length);
-        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+          const audioBlob = new Blob(chunks, { type: 'audio/webm' });
         console.log('Blob criado:', audioBlob.size, 'bytes');
         
         // Atualizar audioChunks com os chunks originais, não o blob final
-        setAudioChunks(chunks);
+          setAudioChunks(chunks);
         console.log('AudioChunks atualizado com', chunks.length, 'chunks');
         
         stream.getTracks().forEach(track => track.stop());
@@ -895,6 +903,15 @@ const ChatArea = ({
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newText = e.target.value;
     setText(newText);
+    // Quick replies trigger '/'
+    if (newText.startsWith('/')) {
+      const search = newText.slice(1).toLowerCase();
+      const filtered = (quickReplies || []).filter((r: any) => r.shortcut?.toLowerCase().includes(search));
+      setFilteredReplies(filtered);
+      setShowQuickReplies(true);
+    } else {
+      setShowQuickReplies(false);
+    }
     // Auto-assumir conversa ao começar a digitar
     if (onMessageInput) {
       onMessageInput(newText);
@@ -935,7 +952,7 @@ const ChatArea = ({
           {(conversation as any).profilePictureUrl ? (
             <img 
               src={(conversation as any).profilePictureUrl} 
-              alt={conversation.contact_name || (conversation as any).contactName || 'Cliente'} 
+              alt={conversation.contactName || 'Cliente'} 
               className="w-10 h-10 rounded-full object-cover"
             />
           ) : (
@@ -943,23 +960,23 @@ const ChatArea = ({
               className="w-10 h-10 rounded-full flex items-center justify-center"
               style={{ backgroundColor: `hsl(${branding.colors.primary})` }}
             >
-              <span className="text-sm font-medium text-white">
-                {(conversation.contact_name || (conversation as any).contactName)?.charAt(0) || 'C'}
-              </span>
-            </div>
+            <span className="text-sm font-medium text-white">
+              {conversation.contactName?.charAt(0) || 'C'}
+                        </span>
+                      </div>
           )}
           <div>
             <h3 className="font-semibold text-gray-900">
-              {conversation.contact_name || (conversation as any).contactName || 'Cliente'}
+              {conversation.contactName || 'Cliente'}
                         </h3>
             <p className="text-sm text-gray-500">
-              {(conversation.contact_phone || (conversation as any).contactPhone)?.replace('@s.whatsapp.net', '') || 'Número não disponível'}
+              {conversation.contactPhone?.replace('@s.whatsapp.net', '') || 'Número não disponível'}
                         </p>
                       </div>
                     </div>
         <div className="flex items-center gap-2">
           {conversation.status === 'waiting' && (
-            <button
+            <button 
               onClick={() => onTakeConversation(conversation.id)}
               className="px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors"
               style={{ 
@@ -976,12 +993,12 @@ const ChatArea = ({
             </button>
           )}
           {conversation.status === 'in_progress' && (
-            <button 
-              onClick={() => onFinishConversation(conversation.id)}
-              className="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm"
-            >
-              Finalizar Conversa
-            </button>
+              <button 
+                onClick={() => onFinishConversation(conversation.id)}
+                className="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm"
+              >
+                Finalizar Conversa
+              </button>
           )}
           <button className="p-2 hover:bg-gray-100 rounded-lg">
                   <MoreVertical className="h-4 w-4" />
@@ -991,7 +1008,7 @@ const ChatArea = ({
 
       {/* Área de Mensagens - Layout WhatsApp */}
       <div className="flex-1 overflow-y-auto bg-gray-100">
-        <div className="p-4 space-y-2">
+        <div className="min-h-full flex flex-col justify-end p-4 space-y-2">
           {/* Debug logs removidos para evitar erros de tipo */}
           {messages.length === 0 ? (
             <div className="text-center py-8">
@@ -1096,9 +1113,9 @@ const ChatArea = ({
                   <div className="flex items-center justify-end mt-1">
                     <span className="text-xs opacity-70">
                       {new Date(message.sentAt || message.createdAt).toLocaleTimeString('pt-BR', { 
-                        hour: '2-digit', 
-                        minute: '2-digit',
-                        timeZone: 'America/Sao_Paulo'
+                          hour: '2-digit', 
+                          minute: '2-digit',
+                          timeZone: 'America/Sao_Paulo'
                       })}
                         </span>
                       {message.direction === 'outgoing' && (
@@ -1136,7 +1153,7 @@ const ChatArea = ({
                       <Reply className="h-4 w-4 text-gray-600" />
                     </button>
                   )}
-                </div>
+                  </div>
                 ))
               )}
           <div ref={messagesEndRef} />
@@ -1189,11 +1206,11 @@ const ChatArea = ({
             </button>
             
             {/* Indicador de Gravação */}
-            <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1">
               <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
               <span className="text-gray-700 text-xs font-medium">{recordingTime}</span>
-          </div>
-
+            </div>
+            
             {/* Waveform Real - Ocupa todo espaço disponível */}
             <div className="flex items-center gap-0.5 flex-1 min-w-0">
               {Array.from({ length: 20 }, (_, i) => {
@@ -1209,8 +1226,8 @@ const ChatArea = ({
                   ></div>
                 );
               })}
-                      </div>
-                  
+            </div>
+            
             {/* Botão de Pausar */}
             <button
               onClick={handlePauseRecording}
@@ -1221,7 +1238,7 @@ const ChatArea = ({
             </button>
             
             {/* Botão de Enviar */}
-                          <button
+            <button
               onClick={handleSendRecording}
               className="p-1.5 text-white rounded-full transition-colors"
               style={{ backgroundColor: `hsl(${branding.colors.primary})` }}
@@ -1234,8 +1251,8 @@ const ChatArea = ({
               title="Enviar áudio"
             >
               <Send className="h-3 w-3" />
-                          </button>
-                      </div>
+            </button>
+          </div>
         ) : (
           <div className="flex items-center gap-2 bg-gray-100 rounded-full px-4 py-2">
             {/* Botão de Imagem */}
@@ -1284,6 +1301,26 @@ const ChatArea = ({
               onKeyPress={handleKeyPress}
             />
             
+        {/* Quick Replies Preview */}
+        {showQuickReplies && filteredReplies?.length > 0 && (
+          <div className="absolute bottom-full left-0 w-full bg-white border rounded-lg shadow-lg mb-2 z-20">
+            {filteredReplies.map((reply: any) => (
+              <button
+                key={reply.id}
+                onClick={() => {
+                  setText(reply.message);
+                  setShowQuickReplies(false);
+                }}
+                className="w-full p-2 hover:bg-gray-100 text-left"
+              >
+                <div className="font-mono text-sm text-blue-600">/{reply.shortcut}</div>
+                <div className="text-xs text-gray-600 truncate">{reply.message}</div>
+              </button>
+            ))}
+          </div>
+        )}
+            
+            
             {/* Botão de Envio/Áudio */}
             {text.trim() ? (
               <button
@@ -1329,30 +1366,112 @@ const debounce = <T extends (...args: any[]) => any>(
   func: T,
   wait: number
 ): ((...args: Parameters<T>) => void) => {
-  let timeout: NodeJS.Timeout | null = null;
+  let timeout: number | undefined;
   return (...args: Parameters<T>) => {
     if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
+    timeout = window.setTimeout(() => func(...args), wait);
   };
 };
 
 export default function ConversationsPage() {
   const { branding } = useThemeCustomization();
   const { playNotificationSound, playWaitingSound, stopWaitingSound, soundSettings, updateSoundSettings } = useSound();
+
+  // Notificações Desktop
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  
+  useEffect(() => {
+    // Solicitar permissão para notificações
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission);
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+          setNotificationPermission(permission);
+        });
+      }
+    }
+  }, []);
+
+  const showDesktopNotification = (title: string, body: string, icon?: string) => {
+    if (notificationPermission === 'granted') {
+      const notification = new Notification(title, {
+        body,
+        icon: icon || '/favicon.ico',
+        badge: '/favicon.ico',
+        tag: 'fivconnect-message',
+        requireInteraction: false,
+        silent: false
+      });
+
+      // Fechar notificação após 5 segundos
+      setTimeout(() => {
+        notification.close();
+      }, 5000);
+
+      // Focar na janela quando clicar na notificação
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+    }
+  };
   const [activeTab, setActiveTab] = useState('active');
-  const [waitingConversations, setWaitingConversations] = useState<Conversation[]>([]);
-  const [activeConversations, setActiveConversations] = useState<Conversation[]>([]);
+  const queryClient = useQueryClient();
+
+  // Implementar debounce para invalidações
+  const debouncedInvalidate = useCallback(
+    debounce(() => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    }, 500),
+    [queryClient]
+  );
+  const { data: waitingConversations = [] } = useQuery({
+    queryKey: ['conversations', 'waiting'],
+    queryFn: async () => {
+      const res = await apiClient.get('/api/whatsapp/conversations?status=waiting');
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: 0, // Sempre buscar dados frescos
+  });
+  const { data: activeConversations = [] } = useQuery({
+    queryKey: ['conversations', 'in_progress'],
+    queryFn: async () => {
+      const res = await apiClient.get('/api/whatsapp/conversations?status=in_progress');
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: 0, // Sempre buscar dados frescos
+  });
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isTyping, setIsTyping] = useState(false);
+  const { data: messages = [] } = ((): any => {
+    const conversationId = selectedConversation?.id;
+    // Simple adapter to keep current component shape while transitioning
+    const query = useQuery({
+      queryKey: ['messages', conversationId],
+      queryFn: async () => {
+        if (!conversationId) return [] as Message[];
+        const res = await apiClient.get(`/api/whatsapp/conversations/${conversationId}/messages`);
+        const arr = Array.isArray(res.data) ? res.data : [];
+        return arr.sort((a: any, b: any) => new Date(a.sentAt || a.createdAt).getTime() - new Date(b.sentAt || b.createdAt).getTime());
+      },
+      enabled: !!conversationId,
+      refetchInterval: false,
+      staleTime: Infinity,
+    });
+    return { data: query.data || [] };
+  })();
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [filteredReplies, setFilteredReplies] = useState<any[]>([]);
+  const { quickReplies } = useQuickReplies();
   const [unreadCount, setUnreadCount] = useState(0);
   const [imagePopup, setImagePopup] = useState<{ src: string; alt: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth() as { user: User | null };
   const selectedConversationRef = useRef<string | null>(null);
+  const socketRef = useRef<any>(null);
+  const lastJoinedConversationRef = useRef<string | null>(null);
 
   // Calcular mensagens não respondidas
   const unreadConversations = useMemo(() => {
@@ -1401,12 +1520,13 @@ export default function ConversationsPage() {
     prevWaitingCountRef.current = currentCount;
   }, [waitingConversations.length, soundSettings.muteWaiting, soundSettings.waitingSound, soundSettings.waitingSoundType, playWaitingSound, stopWaitingSound]);
 
+  // Quick replies agora vêm do contexto useQuickReplies
+
   useEffect(() => {
     console.log('🔍 [DEBUG] useEffect principal executado. companyId:', companyId, 'user:', user?.id, 'selectedConversation:', selectedConversation?.id);
     if (!companyId) return;
 
     // Carregar dados iniciais
-    loadConversations();
     loadContacts();
 
     // Configurar WebSocket
@@ -1419,6 +1539,7 @@ export default function ConversationsPage() {
       forceNew: true,
       autoConnect: true
     });
+    socketRef.current = socket;
 
     // Eventos WebSocket
     socket.on('connect', () => {
@@ -1430,27 +1551,20 @@ export default function ConversationsPage() {
     });
 
     socket.on('newMessage', (messageData) => {
-      console.log('📨 Nova mensagem via WebSocket:', {
-        id: messageData.id,
+      console.log('[WS] newMessage recebida:', { 
+        timestamp: new Date().toISOString(),
         conversationId: messageData.conversationId,
-        direction: messageData.direction,
-        currentSelectedId: selectedConversationRef.current,
-        willAddToMessages: selectedConversationRef.current === messageData.conversationId
+        hasContent: !!messageData.content,
+        direction: messageData.direction
       });
       
       // Verificar se a mensagem pertence à conversa ATUALMENTE selecionada
       if (selectedConversationRef.current && messageData.conversationId === selectedConversationRef.current) {
-        setMessages(prev => {
-          // Verificar se a mensagem já existe
-          const exists = prev.some(msg => msg.id === messageData.id);
-          if (!exists) {
-            // Adicionar nova mensagem e ordenar por timestamp
-            const newMessages = [...prev, messageData];
-            return newMessages.sort((a, b) => 
-              new Date(a.sentAt || a.createdAt).getTime() - new Date(b.sentAt || b.createdAt).getTime()
-            );
-          }
-          return prev;
+        queryClient.setQueryData(['messages', selectedConversationRef.current], (prev: any = []) => {
+          const exists = prev.some((m: any) => m.id === messageData.id);
+          if (exists) return prev;
+          const next = [...prev, messageData];
+          return next.sort((a: any, b: any) => new Date(a.sentAt || a.createdAt).getTime() - new Date(b.sentAt || b.createdAt).getTime());
         });
         
         // Tocar som de notificação para mensagens recebidas na conversa aberta
@@ -1458,52 +1572,70 @@ export default function ConversationsPage() {
           console.log('🔔 Tocando som de notificação para conversa aberta');
           playNotificationSound('conversation');
         }
+      } else if (messageData.direction === 'incoming') {
+        // Notificação desktop para mensagens de conversas não selecionadas
+        const isPageVisible = !document.hidden;
+        if (!isPageVisible || !selectedConversationRef.current) {
+          showDesktopNotification(
+            'Nova mensagem recebida',
+            messageData.content || 'Mensagem de mídia',
+            '/favicon.ico'
+          );
+        }
+        
+        // Tocar som de notificação para mensagens recebidas
+        if (!soundSettings.muteConversations) {
+          playNotificationSound('conversation');
+        }
       }
       
-      // Atualizar apenas a conversa específica na lista
-      setActiveConversations(prev => 
-        prev.map(conv => 
-          conv.id === messageData.conversationId
-            ? { ...conv, lastMessage: messageData.content, lastMessageAt: new Date() }
-            : conv
-        )
-      );
-      setWaitingConversations(prev => 
-        prev.map(conv => 
-          conv.id === messageData.conversationId
-            ? { ...conv, lastMessage: messageData.content, lastMessageAt: new Date() }
-            : conv
-        )
-      );
+      // Usar debouncedInvalidate para evitar múltiplas invalidações
+      debouncedInvalidate();
+    });
+
+    // Adicionar listener para conversationUpdate
+    socket.on('conversationUpdate', (conversationData) => {
+      console.log('[WS] conversationUpdate recebida:', {
+        timestamp: new Date().toISOString(),
+        conversationId: conversationData.id,
+        status: conversationData.status,
+        lastMessage: conversationData.lastMessage
+      });
+      
+      // Usar debouncedInvalidate para evitar múltiplas invalidações
+      debouncedInvalidate();
+      
+      // Atualizar conversa específica no cache
+      ['waiting', 'in_progress'].forEach(status => {
+        queryClient.setQueryData(['conversations', status], (prev: any = []) => {
+          const exists = prev.find((c: any) => c.id === conversationData.id);
+          if (exists) {
+            return prev.map((c: any) => 
+              c.id === conversationData.id 
+                ? { ...c, ...conversationData }
+                : c
+            );
+          }
+          return status === conversationData.status ? [conversationData, ...prev] : prev;
+        });
+      });
     });
 
     socket.on('messageStatusUpdate', (data) => {
       console.log('📊 Atualização de status da mensagem:', data);
       
-      setMessages(prev => 
-        prev.map(msg => 
+      // Atualizar status da mensagem via queryClient
+      queryClient.setQueryData(['messages', data.conversationId], (prev: any = []) => 
+        prev.map((msg: any) => 
           msg.id === data.messageId 
             ? { ...msg, status: data.status, isRead: data.status === 'read' }
             : msg
         )
       );
       
-      // Atualizar também a lista de conversas se necessário
+      // Invalidar queries de conversas para atualizar
       if (data.conversationId) {
-        setActiveConversations(prev =>
-          prev.map(conv =>
-            conv.id === data.conversationId
-              ? { ...conv, lastMessageStatus: data.status }
-              : conv
-          )
-        );
-        setWaitingConversations(prev =>
-          prev.map(conv =>
-            conv.id === data.conversationId
-              ? { ...conv, lastMessageStatus: data.status }
-              : conv
-          )
-        );
+        queryClient.invalidateQueries({ queryKey: ['conversations'] });
       }
     });
 
@@ -1556,53 +1688,49 @@ export default function ConversationsPage() {
       }
     };
 
-    // Polling inicial
-    pollConversations();
-
-    // Polling em tempo real para conversas (30 segundos)
-    const conversationsInterval = setInterval(pollConversations, 30000); // 30 segundos
+    // Polling desativado - apenas WebSocket
+    // pollConversations();
+    // const conversationsInterval = setInterval(pollConversations, 30000);
 
     return () => {
-      clearInterval(conversationsInterval);
+      // clearInterval(conversationsInterval);
       socket.disconnect();
       console.log('🔄 WebSocket e polling interrompidos');
     };
   }, [companyId, user, selectedConversation]);
 
+  // Entrar/sair das rooms de conversa conforme seleção
+  useEffect(() => {
+    const socket = socketRef.current;
+    const newId = selectedConversation?.id || null;
+    if (!socket) return;
+    if (lastJoinedConversationRef.current && lastJoinedConversationRef.current !== newId) {
+      socket.emit('leaveConversation', lastJoinedConversationRef.current);
+    }
+    if (newId) {
+      socket.emit('joinConversation', newId);
+    }
+    lastJoinedConversationRef.current = newId;
+  }, [selectedConversation?.id]);
+
+  // Auto-scroll para a última mensagem sempre que a lista mudar
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    try {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    } catch {}
+  }, [messages.length, selectedConversation?.id]);
+
   const loadConversations = async () => {
     try {
       setIsLoading(true);
-      // Usar rotas de teste temporariamente
-      const [waitingRes, activeRes] = await Promise.all([
-        apiClient.get('/api/whatsapp/conversations?status=waiting'),
-        apiClient.get('/api/whatsapp/conversations?status=in_progress')
+      // Agora as listas estão sob React Query; apenas invalida para refetch manual quando necessário
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['conversations', 'waiting'] }),
+        queryClient.invalidateQueries({ queryKey: ['conversations', 'in_progress'] }),
       ]);
-      
-      // Garantir que sempre temos arrays válidos
-      const waitingData = Array.isArray(waitingRes.data) ? waitingRes.data : [];
-      const activeData = Array.isArray(activeRes.data) ? activeRes.data : [];
-      
-      console.log(`[FRONTEND] Carregadas ${waitingData.length} conversas em espera e ${activeData.length} conversas ativas`);
-      
-      // Validar antes de definir os estados
-      if (Array.isArray(waitingData)) {
-        setWaitingConversations(waitingData);
-      } else {
-        console.warn('⚠️ Dados de conversas em espera inválidos:', waitingData);
-        setWaitingConversations([]);
-      }
-      
-      if (Array.isArray(activeData)) {
-        setActiveConversations(activeData);
-      } else {
-        console.warn('⚠️ Dados de conversas ativas inválidos:', activeData);
-        setActiveConversations([]);
-      }
     } catch (error) {
       console.error('Erro ao carregar conversas:', error);
-      // Garantir que sempre temos arrays
-      setWaitingConversations([]);
-      setActiveConversations([]);
     } finally {
       setIsLoading(false);
     }
@@ -1631,7 +1759,7 @@ export default function ConversationsPage() {
   };
 
   const handleSelectConversation = async (conversation: Conversation) => {
-    console.log(`[Conversations] Selecionando conversa: ${conversation.id}, status: ${conversation.status}, isFinished: ${conversation.isFinished}`);
+    console.log(`[Conversations] Selecionando conversa: ${conversation.id}, status: ${conversation.status}`);
     
     setSelectedConversation(conversation);
     selectedConversationRef.current = conversation.id;
@@ -1640,31 +1768,15 @@ export default function ConversationsPage() {
     // Marcar conversa como lida
     if (conversation.unreadCount && conversation.unreadCount > 0) {
       setUnreadCount(prev => Math.max(0, prev - (conversation.unreadCount || 0)));
-      setWaitingConversations(prev => 
-        prev.map(conv => 
-          conv.id === conversation.id 
-            ? { ...conv, unreadCount: 0 }
-            : conv
-        )
-      );
-      setActiveConversations(prev => 
-        prev.map(conv => 
-          conv.id === conversation.id 
-            ? { ...conv, unreadCount: 0 }
-            : conv
-        )
-      );
+      // Invalidar queries para atualizar contadores
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
     }
     
     try {
-      console.log(`[Conversations] Carregando mensagens para conversa: ${conversation.id}, status: ${conversation.status}, isFinished: ${conversation.isFinished}`);
+      console.log(`[Conversations] Carregando mensagens para conversa: ${conversation.id}, status: ${conversation.status}`);
       // Usar rota de teste temporariamente
-      const res = await apiClient.get(`/api/whatsapp/conversations/${conversation.id}/messages`);
-      
-      // Garantir que sempre temos um array válido
-      const messagesData = Array.isArray(res.data) ? res.data : [];
-      console.log(`[FRONTEND] Carregadas ${messagesData.length} mensagens para conversa ${conversation.id}`);
-      setMessages(messagesData);
+      // Com React Query, invalidar e deixar a query recarregar
+      await queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
       
       // Marcar mensagens incoming como lidas
       try {
@@ -1676,23 +1788,31 @@ export default function ConversationsPage() {
       }
     } catch (error) {
       console.error("Erro ao buscar mensagens:", error);
-      setMessages([]);
     }
   };
 
   const handleSelectContact = (contact: Contact) => {
     setSelectedContact(contact);
     setSelectedConversation(null);
-    setMessages([]);
   };
+
+  const startConversationMutation = useMutation({
+    mutationFn: async (conversationId: string) => {
+      return apiClient.post(`/api/whatsapp/conversations/${conversationId}/start`);
+    },
+    onSuccess: (_res, conversationId: string) => {
+      queryClient.invalidateQueries({ queryKey: ['conversations', 'waiting'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations', 'in_progress'] });
+      // também pode atualizar item específico se houver cache normalizado
+      console.log(`[FRONTEND] Conversa ${conversationId} iniciada com sucesso`);
+    }
+  });
 
   const handleTakeConversation = async (conversationId: string) => {
     try {
-      await apiClient.post(`/api/whatsapp/conversations/${conversationId}/take`);
-      await loadConversations();
-      console.log(`[FRONTEND] Conversa ${conversationId} assumida com sucesso`);
+      await startConversationMutation.mutateAsync(conversationId);
     } catch (error) {
-      console.error("Erro ao assumir conversa:", error);
+      console.error("Erro ao iniciar conversa:", error);
     }
   };
 
@@ -1723,8 +1843,8 @@ export default function ConversationsPage() {
       updatedAt: new Date().toISOString()
     };
 
-    // Adicionar mensagem temporária ao chat
-    setMessages(prev => [...prev, tempMessage]);
+    // Adicionar mensagem temporária ao cache da conversa atual
+    queryClient.setQueryData(['messages', selectedConversation.id], (prev: any = []) => [...prev, tempMessage]);
 
     try {
       // Auto-assumir conversa se estiver em espera
@@ -1738,18 +1858,24 @@ export default function ConversationsPage() {
       }
 
       const response = await apiClient.post(`/api/whatsapp/conversations/${selectedConversation.id}/send`, payload);
-
-      // Remover mensagem temporária e adicionar a real
-      setMessages(prev => {
-        const withoutTemp = prev.filter(msg => msg.id !== tempMessage.id);
-        return [...withoutTemp, { ...response.data, status: 'sent' }];
+      const real = (response as any)?.data?.message ?? (response as any)?.data ?? response;
+      const normalized = {
+        status: 'sent',
+        sentAt: real?.sentAt ?? new Date().toISOString(),
+        createdAt: real?.createdAt ?? new Date().toISOString(),
+        ...real,
+      };
+      // Remover temporária e adicionar a real no cache
+      queryClient.setQueryData(['messages', selectedConversation.id], (prev: any = []) => {
+        const withoutTemp = prev.filter((m: any) => m.id !== tempMessage.id);
+        return [...withoutTemp, normalized];
       });
 
     } catch (error) {
       console.error("Erro ao enviar mensagem:", error);
       
       // Remover mensagem temporária em caso de erro
-      setMessages(prev => prev.filter(msg => msg.id !== tempMessage.id));
+      queryClient.setQueryData(['messages', selectedConversation.id], (prev: any = []) => prev.filter((m: any) => m.id !== tempMessage.id));
       
       alert('Erro ao enviar mensagem. Tente novamente.');
     }
@@ -1783,8 +1909,8 @@ export default function ConversationsPage() {
       updatedAt: new Date().toISOString()
     };
 
-    // Adicionar mensagem temporária
-    setMessages(prev => [...prev, tempMessage]);
+    // Adicionar mensagem temporária ao cache
+    queryClient.setQueryData(['messages', selectedConversation.id], (prev: any = []) => [...prev, tempMessage]);
 
     try {
       // Auto-assumir conversa se estiver em espera
@@ -1808,10 +1934,17 @@ export default function ConversationsPage() {
         }
       );
 
-      // Remover mensagem temporária e adicionar a real
-      setMessages(prev => {
-        const withoutTemp = prev.filter(msg => msg.id !== tempMessage.id);
-        return [...withoutTemp, { ...response.data, status: 'sent' }];
+      const real = (response as any)?.data?.message ?? (response as any)?.data ?? response;
+      const normalized = {
+        status: 'sent',
+        sentAt: real?.sentAt ?? new Date().toISOString(),
+        createdAt: real?.createdAt ?? new Date().toISOString(),
+        ...real,
+      };
+      // Remover mensagem temporária e adicionar a real no cache
+      queryClient.setQueryData(['messages', selectedConversation.id], (prev: any = []) => {
+        const withoutTemp = prev.filter((m: any) => m.id !== tempMessage.id);
+        return [...withoutTemp, normalized];
       });
 
     } catch (error: any) {
@@ -1819,7 +1952,7 @@ export default function ConversationsPage() {
       console.error("Detalhes:", error.response?.data);
       
       // Remover mensagem temporária em caso de erro
-      setMessages(prev => prev.filter(msg => msg.id !== tempMessage.id));
+      queryClient.setQueryData(['messages', selectedConversation.id], (prev: any = []) => prev.filter((m: any) => m.id !== tempMessage.id));
       
       const errorMessage = error.response?.data?.message || 'Falha ao enviar mídia';
       alert(`Erro: ${errorMessage}`);
@@ -1837,7 +1970,6 @@ export default function ConversationsPage() {
       // Limpar estado local imediatamente
       setSelectedConversation(null);
       selectedConversationRef.current = null;
-      setMessages([]);
       
       // Recarregar conversas para atualizar lista
       await loadConversations();
@@ -1905,6 +2037,33 @@ export default function ConversationsPage() {
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-bold text-gray-800">Chat</h1>
             <div className="flex gap-2">
+              {/* Sprint 3 - Auto-assign */}
+              <AutoAssignModal>
+                <button className="p-2 hover:bg-gray-100 rounded-lg" title="Auto-assign Inteligente">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </button>
+              </AutoAssignModal>
+
+              {/* Sprint 3 - Auditoria */}
+              <AuditModal>
+                <button className="p-2 hover:bg-gray-100 rounded-lg" title="Histórico de Auditoria">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
+              </AuditModal>
+
+              {/* Sprint 3 - Export */}
+              <ExportModal>
+                <button className="p-2 hover:bg-gray-100 rounded-lg" title="Exportar Dados">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </button>
+              </ExportModal>
+
               <button className="p-2 hover:bg-gray-100 rounded-lg">
                 <MessageCircle className="h-4 w-4" />
               </button>
@@ -1956,8 +2115,8 @@ export default function ConversationsPage() {
             >
               CONTATOS
             </TabButton>
+            </div>
           </div>
-        </div>
                 
         {/* Lista de Conversas/Contatos */}
         <UnifiedList
@@ -1973,7 +2132,7 @@ export default function ConversationsPage() {
           title={getCurrentTitle()}
           emptyMessage={getEmptyMessage()}
           isContacts={activeTab === 'contacts'}
-        />
+                  />
         </div>
                 
       {/* Área Principal do Chat */}
@@ -1995,11 +2154,11 @@ export default function ConversationsPage() {
           <div className="relative max-w-4xl max-h-[90vh] flex flex-col">
             {/* Imagem */}
             <div className="relative bg-black rounded-t-lg overflow-hidden">
-              <img 
-                src={imagePopup.src} 
-                alt={imagePopup.alt}
+            <img
+              src={imagePopup.src}
+              alt={imagePopup.alt}
                 className="max-w-full max-h-[70vh] object-contain"
-              />
+            />
             </div>
             
             {/* Botões abaixo da imagem */}

@@ -129,11 +129,11 @@ export const chatSessions = pgTable("chat_sessions", {
   clientId: varchar("client_id").notNull(), // Referência ao cliente
   agentId: varchar("agent_id"), // ID do agente que assumiu a conversa (pode ser null se não assumida)
   companyId: varchar("company_id").notNull(), // Empresa da conversa
-  status: text("status", { 
-    enum: ["waiting", "in_progress", "finished", "transferred"] 
+  status: text("status", {
+    enum: ["waiting", "in_progress", "finished", "transferred"]
   }).notNull().default("waiting"),
-  priority: text("priority", { 
-    enum: ["low", "medium", "high", "urgent"] 
+  priority: text("priority", {
+    enum: ["low", "medium", "high", "urgent"]
   }).notNull().default("medium"),
   protocolNumber: integer("protocol_number"), // Número do protocolo da conversa
   startedAt: timestamp("started_at").defaultNow(), // Quando a sessão começou
@@ -143,6 +143,77 @@ export const chatSessions = pgTable("chat_sessions", {
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Tags table
+export const tags = pgTable("tags", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  color: text("color").notNull().default("#3b82f6"), // Cor da tag em hex
+  companyId: varchar("company_id").notNull(), // Empresa que criou a tag
+  description: text("description"), // Descrição opcional da tag
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Conversation Tags table (relacionamento N:N)
+export const conversationTags = pgTable("conversation_tags", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull(),
+  tagId: varchar("tag_id").notNull(),
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Message Templates table
+export const messageTemplates = pgTable("message_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  content: text("content").notNull(),
+  category: text("category").notNull().default("geral"),
+  companyId: varchar("company_id").notNull(),
+  isActive: boolean("is_active").default(true),
+  variables: json("variables"), // Array de variáveis disponíveis
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Auto-assign Rules table
+export const autoAssignRules = pgTable("auto_assign_rules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  companyId: varchar("company_id").notNull(),
+  isActive: boolean("is_active").default(true),
+  priority: integer("priority").default(1), // 1 = mais alta, 10 = mais baixa
+  conditions: json("conditions").notNull(), // Regras de condição
+  actions: json("actions").notNull(), // Ações a executar
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Audit Log table
+export const auditLogs = pgTable("audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  entityType: text("entity_type").notNull(), // 'conversation', 'message', 'user', etc.
+  entityId: varchar("entity_id").notNull(),
+  action: text("action").notNull(), // 'created', 'updated', 'deleted', 'assigned', etc.
+  userId: varchar("user_id"), // Usuário que executou a ação
+  companyId: varchar("company_id").notNull(),
+  oldValues: json("old_values"), // Valores anteriores
+  newValues: json("new_values"), // Novos valores
+  metadata: json("metadata"), // Dados adicionais
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const queues = pgTable("queues", {
@@ -406,6 +477,21 @@ export type Conversation = typeof conversations.$inferSelect;
 export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type ChatSession = typeof chatSessions.$inferSelect;
 export type InsertChatSession = typeof chatSessions.$inferInsert;
+
+export type Tag = typeof tags.$inferSelect;
+export type InsertTag = typeof tags.$inferInsert;
+
+export type ConversationTag = typeof conversationTags.$inferSelect;
+export type InsertConversationTag = typeof conversationTags.$inferInsert;
+
+export type MessageTemplate = typeof messageTemplates.$inferSelect;
+export type InsertMessageTemplate = typeof messageTemplates.$inferInsert;
+
+export type AutoAssignRule = typeof autoAssignRules.$inferSelect;
+export type InsertAutoAssignRule = typeof autoAssignRules.$inferInsert;
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = typeof auditLogs.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 export type Queue = typeof queues.$inferSelect;

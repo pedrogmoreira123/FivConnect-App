@@ -50,6 +50,27 @@
       "when": 1760119142004,
       "tag": "0006_furry_vanisher",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1760984209877,
+      "tag": "0007_adorable_omega_red",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1760985740320,
+      "tag": "0008_free_ulik",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1760989349583,
+      "tag": "0009_old_mac_gargan",
+      "breakpoints": true
     }
   ]
 }

@@ -563,7 +563,7 @@ export function setupWhatsAppRoutes(app: Express, io?: any): void {
       
       console.log('[WhatsApp Routes] Configuração atual:', response.data);
       
-      res.json({
+      res.json({ 
         success: true,
         message: 'Configuração atual obtida',
         currentConfig: response.data,
@@ -1015,7 +1015,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           console.error(`[DEBUG] Erro ao processar mensagem ${message.id}:`, error.message);
         }
       }
-
+      
       res.json({
         success: true,
         message: 'Processamento de mensagens concluído',
@@ -1484,7 +1484,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         console.log('[WEBHOOK] ✅ Nova sessão criada para nova conversa:', newSession[0]?.id, 'com startedAt:', newSession[0]?.startedAt);
         
         // Notificar via WebSocket que uma nova conversa foi criada
-        if (io) {
+      if (io) {
           io.to(`company_${activeConnection.companyId}`).emit('newConversation', {
             id: conversation.id,
             contactName: conversation.contactName,
@@ -1605,8 +1605,21 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           direction: 'incoming'
         });
         
-        // Emitir para sala específica da empresa
+        // Emitir para sala específica da empresa e da conversa
+        const conversationRoom = `conversation:${conversation.id}`;
         ioToUse.to(`company_${activeConnection.companyId}`).emit('newMessage', {
+          id: message.id,
+          conversationId: message.conversationId,
+          content: message.content,
+          messageType: message.messageType,
+          direction: message.direction,
+          status: message.status,
+          mediaUrl: message.mediaUrl,
+          sentAt: message.sentAt,
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt
+        });
+        ioToUse.to(conversationRoom).emit('newMessage', {
           id: message.id,
           conversationId: message.conversationId,
           content: message.content,
@@ -1700,7 +1713,9 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           companyId: activeConnection.companyId
         };
         
+        // Emitir para sala da empresa e sala específica da conversa
         ioToUse.to(roomName).emit('newMessage', newMessageEvent);
+        ioToUse.to(`conversation:${conversation.id}`).emit('newMessage', newMessageEvent);
         console.log('📨 Evento newMessage emitido:', newMessageEvent.id);
         
         ioToUse.to(roomName).emit('conversationUpdate', conversationUpdateEvent);
@@ -1758,7 +1773,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         await storage.updateMessage(message.id, { status: statusData.status });
         
         // Emitir evento WebSocket
-          if (io) {
+        if (io) {
           io.to(`company_${message.conversationId}`).emit('messageStatusUpdate', {
             messageId: message.id,
             status: statusData.status,
@@ -2178,7 +2193,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       
       // Salvar mensagem no banco
       const message = await storage.createMessage({
-        conversationId: conversation.id,
+            conversationId: conversation.id,
         content: `[${mediaType}]`,
         messageType: mediaType as any,
         direction: 'outgoing',
@@ -2198,8 +2213,21 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       
       // Emitir evento Socket.IO
       const io = app.get('io');
-      if (io) {
+          if (io) {
+        const conversationRoom = `conversation:${message.conversationId}`;
         io.to(`company_${companyId}`).emit('newMessage', {
+          id: message.id,
+          conversationId: message.conversationId,
+          content: message.content,
+          messageType: message.messageType,
+          direction: message.direction,
+          status: message.status,
+          mediaUrl: message.mediaUrl,
+          sentAt: message.sentAt,
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt
+        });
+        io.to(conversationRoom).emit('newMessage', {
           id: message.id,
           conversationId: message.conversationId,
           content: message.content,
@@ -2250,7 +2278,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         // Retornar apenas mensagens da sessão ativa (após startedAt)
         conversationMessages = await storage.getMessagesByConversation(conversationId, activeSession[0].startedAt || undefined);
         console.log(`[WhatsApp Routes] Carregando mensagens da sessão ativa desde: ${activeSession[0].startedAt}`);
-      } else {
+          } else {
         // Se não há sessão ativa, retornar todas as mensagens (comportamento padrão)
         conversationMessages = await storage.getMessagesByConversation(conversationId);
         console.log(`[WhatsApp Routes] Nenhuma sessão ativa encontrada, carregando todas as mensagens`);
@@ -2284,7 +2312,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
             await storage.updateClient(conversation.clientId, { profilePictureUrl: profilePicUrl });
           }
           console.log(`[WhatsApp Routes] Foto de perfil atualizada para conversa ${conversationId}`);
-        }
+          }
       } catch (error) {
         console.warn(`[WhatsApp Routes] Erro ao atualizar foto de perfil:`, error);
       }
@@ -2894,7 +2922,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
   router.get('/connections/debug', async (req, res) => {
     try {
       const connections = await storage.getAllWhatsAppConnections();
-      res.json({ 
+      res.json({
         connections: connections.map(c => ({
           id: c.id,
           phone: c.phone,
@@ -2940,7 +2968,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         updatedAt: new Date()
       });
       
-      res.json({ 
+      res.json({
         success: true, 
         message: 'Webhook configurado automaticamente',
         webhookUrl 
@@ -3013,7 +3041,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         });
       }
 
-      res.json({
+        res.json({
         success: true,
         message: 'Conversa finalizada com sucesso',
         conversation: updatedConversation,
@@ -3023,6 +3051,52 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
     } catch (error: any) {
       console.error('[WhatsApp Routes] Erro ao finalizar conversa:', error);
       res.status(500).json({ message: 'Erro interno ao finalizar conversa' });
+    }
+  });
+
+  // Rota para iniciar conversa (waiting -> in_progress)
+  router.post('/conversations/:conversationId/start', requireAuth, async (req, res) => {
+    try {
+      const { conversationId } = req.params;
+      const { companyId, id: userId } = req.user!;
+      const io = app.get('io');
+
+      const conversation = await storage.getConversation(conversationId);
+      if (!conversation || conversation.companyId !== companyId) {
+        return res.status(404).json({ message: 'Conversa não encontrada' });
+      }
+
+      if (conversation.status !== 'waiting') {
+        return res.status(400).json({ message: 'Conversa já foi iniciada' });
+      }
+
+      const updatedConversation = await storage.updateConversation(conversationId, {
+        status: 'in_progress',
+        assignedAgentId: userId,
+        startedAt: new Date()
+      });
+
+      if (io) {
+        io.to(`company_${companyId}`).emit('conversationUpdate', {
+          conversationId,
+          status: 'in_progress',
+          assignedAgentId: userId,
+          startedAt: new Date().toISOString(),
+          companyId
+        });
+        io.to(`conversation:${conversationId}`).emit('conversationUpdate', {
+          conversationId,
+          status: 'in_progress',
+          assignedAgentId: userId,
+          startedAt: new Date().toISOString(),
+          companyId
+        });
+      }
+
+      res.json({ success: true, conversation: updatedConversation });
+    } catch (error: any) {
+      console.error('[WhatsApp Routes] Erro ao iniciar conversa:', error);
+      res.status(500).json({ message: 'Erro interno ao iniciar conversa' });
     }
   });
 
@@ -3070,7 +3144,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         });
       }
 
-      res.json({
+        res.json({
         success: true,
         message: 'Novo atendimento iniciado com sucesso',
         conversation: newConversation,
@@ -3183,7 +3257,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           // Processar mensagens do chat
           await whapiService.processMessagesByChatId(chatId, activeConnection.whapiToken, storage);
           totalMessagesProcessed++;
-        } catch (error) {
+    } catch (error) {
           console.error(`[WhatsApp Routes] Erro ao processar chat ${conversation.contactPhone}:`, error);
         }
       }
@@ -3195,10 +3269,10 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       });
     } catch (error: any) {
       console.error('[WhatsApp Routes] Erro na sincronização de mensagens:', error);
-      res.status(500).json({
+      res.status(500).json({ 
         success: false,
         message: 'Erro interno na sincronização',
-        error: error.message
+        error: error.message 
       });
     }
   });
@@ -3228,10 +3302,10 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       });
     } catch (error: any) {
       console.error('[WhatsApp Routes] Erro ao listar chat sessions:', error);
-      res.status(500).json({
+      res.status(500).json({ 
         success: false,
         message: 'Erro interno ao listar chat sessions',
-        error: error.message
+        error: error.message 
       });
     }
   });
@@ -3295,7 +3369,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       ]);
       console.log(`[DEBUG] Chat sessions específicas encontradas: ${specificChatSessions.length}`);
       
-      res.json({ 
+      res.json({
         recentMessages: recentMessages.slice(0, 10), // Últimas 10 mensagens
         testConversations,
         allConversations: allConversations.slice(0, 5), // Primeiras 5 conversas
@@ -3462,6 +3536,952 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
     } catch (error: any) {
       console.error('[WhatsApp Routes] Erro ao adicionar créditos:', error);
       res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // ===== ROTAS DE TAGS =====
+  
+  // GET /api/tags - Listar tags da empresa
+  router.get('/tags', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const tags = await storage.getTagsByCompany(companyId);
+      
+      res.json({
+        success: true,
+        tags
+      });
+    } catch (error: any) {
+      console.error('[Tags] Erro ao listar tags:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao listar tags',
+        error: error.message
+      });
+    }
+  });
+
+  // POST /api/tags - Criar nova tag
+  router.post('/tags', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { name, color, description } = req.body;
+
+      if (!name || !color) {
+        return res.status(400).json({
+          success: false,
+          message: 'Nome e cor são obrigatórios'
+        });
+      }
+
+      const tag = await storage.createTag({
+        name,
+        color,
+        description,
+        companyId,
+        environment: 'production'
+      });
+
+      res.json({
+        success: true,
+        message: 'Tag criada com sucesso',
+        tag
+      });
+    } catch (error: any) {
+      console.error('[Tags] Erro ao criar tag:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao criar tag',
+        error: error.message
+      });
+    }
+  });
+
+  // PUT /api/tags/:id - Atualizar tag
+  router.put('/tags/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, color, description } = req.body;
+      const { companyId } = req.user!;
+
+      // Verificar se a tag pertence à empresa
+      const existingTag = await storage.getTag(id);
+      if (!existingTag || existingTag.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tag não encontrada'
+        });
+      }
+
+      const updatedTag = await storage.updateTag(id, {
+        name,
+        color,
+        description
+      });
+
+      res.json({
+        success: true,
+        message: 'Tag atualizada com sucesso',
+        tag: updatedTag
+      });
+    } catch (error: any) {
+      console.error('[Tags] Erro ao atualizar tag:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao atualizar tag',
+        error: error.message
+      });
+    }
+  });
+
+  // DELETE /api/tags/:id - Deletar tag
+  router.delete('/tags/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { companyId } = req.user!;
+
+      // Verificar se a tag pertence à empresa
+      const existingTag = await storage.getTag(id);
+      if (!existingTag || existingTag.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tag não encontrada'
+        });
+      }
+
+      const deleted = await storage.deleteTag(id);
+      if (!deleted) {
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao deletar tag'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Tag deletada com sucesso'
+      });
+    } catch (error: any) {
+      console.error('[Tags] Erro ao deletar tag:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao deletar tag',
+        error: error.message
+      });
+    }
+  });
+
+  // GET /api/conversations/:id/tags - Listar tags de uma conversa
+  router.get('/conversations/:id/tags', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { companyId } = req.user!;
+
+      // Verificar se a conversa pertence à empresa
+      const conversation = await storage.getConversation(id);
+      if (!conversation || conversation.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Conversa não encontrada'
+        });
+      }
+
+      const tags = await storage.getConversationTags(id);
+
+      res.json({
+        success: true,
+        tags
+      });
+    } catch (error: any) {
+      console.error('[Tags] Erro ao listar tags da conversa:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao listar tags da conversa',
+        error: error.message
+      });
+    }
+  });
+
+  // POST /api/conversations/:id/tags - Adicionar tag à conversa
+  router.post('/conversations/:id/tags', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { tagId } = req.body;
+      const { companyId } = req.user!;
+
+      if (!tagId) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID da tag é obrigatório'
+        });
+      }
+
+      // Verificar se a conversa pertence à empresa
+      const conversation = await storage.getConversation(id);
+      if (!conversation || conversation.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Conversa não encontrada'
+        });
+      }
+
+      // Verificar se a tag pertence à empresa
+      const tag = await storage.getTag(tagId);
+      if (!tag || tag.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tag não encontrada'
+        });
+      }
+
+      const conversationTag = await storage.addTagToConversation(id, tagId);
+
+      res.json({
+        success: true,
+        message: 'Tag adicionada à conversa com sucesso',
+        conversationTag
+      });
+    } catch (error: any) {
+      console.error('[Tags] Erro ao adicionar tag à conversa:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao adicionar tag à conversa',
+        error: error.message
+      });
+    }
+  });
+
+  // DELETE /api/conversations/:id/tags/:tagId - Remover tag da conversa
+  router.delete('/conversations/:id/tags/:tagId', requireAuth, async (req, res) => {
+    try {
+      const { id, tagId } = req.params;
+      const { companyId } = req.user!;
+
+      // Verificar se a conversa pertence à empresa
+      const conversation = await storage.getConversation(id);
+      if (!conversation || conversation.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Conversa não encontrada'
+        });
+      }
+
+      const removed = await storage.removeTagFromConversation(id, tagId);
+      if (!removed) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tag não encontrada na conversa'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Tag removida da conversa com sucesso'
+      });
+    } catch (error: any) {
+      console.error('[Tags] Erro ao remover tag da conversa:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao remover tag da conversa',
+        error: error.message
+      });
+    }
+  });
+
+  // ===== ROTAS DE TEMPLATES DE MENSAGENS =====
+  
+  // GET /api/templates - Listar templates da empresa
+  router.get('/templates', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const templates = await storage.getMessageTemplatesByCompany(companyId);
+      
+      res.json({
+        success: true,
+        templates
+      });
+    } catch (error: any) {
+      console.error('[Templates] Erro ao listar templates:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao listar templates',
+        error: error.message
+      });
+    }
+  });
+
+  // POST /api/templates - Criar novo template
+  router.post('/templates', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { name, content, category, variables } = req.body;
+
+      if (!name || !content) {
+        return res.status(400).json({
+          success: false,
+          message: 'Nome e conteúdo são obrigatórios'
+        });
+      }
+
+      const template = await storage.createMessageTemplate({
+        name,
+        content,
+        category: category || 'geral',
+        variables: variables || [],
+        companyId,
+        isActive: true,
+        environment: 'production'
+      });
+
+      res.json({
+        success: true,
+        message: 'Template criado com sucesso',
+        template
+      });
+    } catch (error: any) {
+      console.error('[Templates] Erro ao criar template:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao criar template',
+        error: error.message
+      });
+    }
+  });
+
+  // PUT /api/templates/:id - Atualizar template
+  router.put('/templates/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, content, category, variables, isActive } = req.body;
+      const { companyId } = req.user!;
+
+      // Verificar se o template pertence à empresa
+      const existingTemplate = await storage.getMessageTemplate(id);
+      if (!existingTemplate || existingTemplate.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Template não encontrado'
+        });
+      }
+
+      const updatedTemplate = await storage.updateMessageTemplate(id, {
+        name,
+        content,
+        category,
+        variables,
+        isActive
+      });
+
+      res.json({
+        success: true,
+        message: 'Template atualizado com sucesso',
+        template: updatedTemplate
+      });
+    } catch (error: any) {
+      console.error('[Templates] Erro ao atualizar template:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao atualizar template',
+        error: error.message
+      });
+    }
+  });
+
+  // DELETE /api/templates/:id - Deletar template
+  router.delete('/templates/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { companyId } = req.user!;
+
+      // Verificar se o template pertence à empresa
+      const existingTemplate = await storage.getMessageTemplate(id);
+      if (!existingTemplate || existingTemplate.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Template não encontrado'
+        });
+      }
+
+      const deleted = await storage.deleteMessageTemplate(id);
+      if (!deleted) {
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao deletar template'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Template deletado com sucesso'
+      });
+    } catch (error: any) {
+      console.error('[Templates] Erro ao deletar template:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao deletar template',
+        error: error.message
+      });
+    }
+  });
+
+  // POST /api/templates/:id/process - Processar template com variáveis
+  router.post('/templates/:id/process', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { variables } = req.body;
+      const { companyId } = req.user!;
+
+      // Buscar template
+      const template = await storage.getMessageTemplate(id);
+      if (!template || template.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Template não encontrado'
+        });
+      }
+
+      // Processar variáveis no conteúdo
+      let processedContent = template.content;
+      if (variables && typeof variables === 'object') {
+        Object.entries(variables).forEach(([key, value]) => {
+          const regex = new RegExp(`{{${key}}}`, 'g');
+          processedContent = processedContent.replace(regex, String(value));
+        });
+      }
+
+      res.json({
+        success: true,
+        processedContent
+      });
+    } catch (error: any) {
+      console.error('[Templates] Erro ao processar template:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao processar template',
+        error: error.message
+      });
+    }
+  });
+
+  // ===== ROTAS DE ANALYTICS & MONITORAMENTO =====
+  
+  // GET /api/analytics/sla - Dashboard de métricas SLA
+  router.get('/analytics/sla', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { dateFrom, dateTo } = req.query;
+
+      // Calcular métricas SLA
+      const conversations = await storage.getConversationsByCompany(companyId);
+      
+      // Filtrar por período se especificado
+      let filteredConversations = conversations;
+      if (dateFrom && dateTo) {
+        const startDate = new Date(dateFrom as string);
+        const endDate = new Date(dateTo as string);
+        filteredConversations = conversations.filter(conv => {
+          const convDate = new Date(conv.createdAt);
+          return convDate >= startDate && convDate <= endDate;
+        });
+      }
+
+      // Calcular métricas
+      const totalConversations = filteredConversations.length;
+      const completedConversations = filteredConversations.filter(c => c.status === 'finished').length;
+      const completionRate = totalConversations > 0 ? Math.round((completedConversations / totalConversations) * 100) : 0;
+      
+      // Tempo médio de primeira resposta (simulado)
+      const avgFirstResponse = '2m 15s';
+      
+      // Tempo médio de resolução (simulado)
+      const avgResolution = '15m 30s';
+      
+      // Conversas por status
+      const conversationsByStatus = {
+        waiting: filteredConversations.filter(c => c.status === 'waiting').length,
+        in_progress: filteredConversations.filter(c => c.status === 'in_progress').length,
+        finished: filteredConversations.filter(c => c.status === 'finished').length
+      };
+
+      res.json({
+        success: true,
+        metrics: {
+          totalConversations,
+          completedConversations,
+          completionRate,
+          avgFirstResponse,
+          avgResolution,
+          conversationsByStatus
+        }
+      });
+    } catch (error: any) {
+      console.error('[Analytics] Erro ao buscar métricas SLA:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao buscar métricas SLA',
+        error: error.message
+      });
+    }
+  });
+
+  // GET /api/analytics/heatmap - Heatmap de atendimento
+  router.get('/analytics/heatmap', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { dateFrom, dateTo } = req.query;
+
+      // Simular dados de heatmap (hora do dia vs dia da semana)
+      const heatmapData = [];
+      const days = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+      const hours = Array.from({ length: 24 }, (_, i) => i);
+
+      for (let day = 0; day < 7; day++) {
+        for (let hour = 0; hour < 24; hour++) {
+          // Simular padrão de atendimento (mais movimentado em dias úteis, 9h-18h)
+          const isWeekday = day >= 1 && day <= 5;
+          const isBusinessHours = hour >= 9 && hour <= 18;
+          const baseValue = isWeekday && isBusinessHours ? Math.random() * 50 + 20 : Math.random() * 10;
+          
+          heatmapData.push({
+            day: days[day],
+            hour: hour,
+            value: Math.round(baseValue),
+            dayIndex: day,
+            hourIndex: hour
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        heatmapData
+      });
+    } catch (error: any) {
+      console.error('[Analytics] Erro ao buscar heatmap:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao buscar heatmap',
+        error: error.message
+      });
+    }
+  });
+
+  // GET /api/analytics/agent-performance - Performance por agente
+  router.get('/analytics/agent-performance', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { dateFrom, dateTo } = req.query;
+
+      // Simular dados de performance por agente
+      const agentPerformance = [
+        {
+          agentId: 'agent-1',
+          agentName: 'João Silva',
+          totalConversations: 45,
+          completedConversations: 42,
+          avgResponseTime: '1m 30s',
+          satisfaction: 4.8,
+          completionRate: 93
+        },
+        {
+          agentId: 'agent-2', 
+          agentName: 'Maria Santos',
+          totalConversations: 38,
+          completedConversations: 36,
+          avgResponseTime: '2m 15s',
+          satisfaction: 4.6,
+          completionRate: 95
+        },
+        {
+          agentId: 'agent-3',
+          agentName: 'Pedro Costa',
+          totalConversations: 52,
+          completedConversations: 48,
+          avgResponseTime: '1m 45s',
+          satisfaction: 4.9,
+          completionRate: 92
+        }
+      ];
+
+      res.json({
+        success: true,
+        agentPerformance
+      });
+    } catch (error: any) {
+      console.error('[Analytics] Erro ao buscar performance de agentes:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao buscar performance de agentes',
+        error: error.message
+      });
+    }
+  });
+
+  // GET /api/analytics/channel-status - Status dos canais
+  router.get('/analytics/channel-status', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      
+      // Buscar conexões WhatsApp da empresa
+      const connections = await storage.getWhatsAppConnectionsByCompany(companyId);
+      
+      const channelStatus = connections.map(conn => ({
+        id: conn.id,
+        name: conn.name || 'Canal WhatsApp',
+        status: conn.status || 'active',
+        lastSeen: conn.updatedAt,
+        isOnline: conn.status === 'active'
+      }));
+
+      res.json({
+        success: true,
+        channels: channelStatus
+      });
+    } catch (error: any) {
+      console.error('[Analytics] Erro ao buscar status dos canais:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao buscar status dos canais',
+        error: error.message
+      });
+    }
+  });
+
+  // ===== ROTAS DE AUTO-ASSIGN =====
+  
+  // GET /api/auto-assign/rules - Listar regras de auto-assign
+  router.get('/auto-assign/rules', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const rules = await storage.getAutoAssignRulesByCompany(companyId);
+      
+      res.json({
+        success: true,
+        rules
+      });
+    } catch (error: any) {
+      console.error('[Auto-assign] Erro ao listar regras:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao listar regras',
+        error: error.message
+      });
+    }
+  });
+
+  // POST /api/auto-assign/rules - Criar nova regra
+  router.post('/auto-assign/rules', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { name, priority, conditions, actions } = req.body;
+
+      if (!name || !conditions || !actions) {
+        return res.status(400).json({
+          success: false,
+          message: 'Nome, condições e ações são obrigatórios'
+        });
+      }
+
+      const rule = await storage.createAutoAssignRule({
+        name,
+        priority: priority || 1,
+        conditions,
+        actions,
+        companyId,
+        isActive: true,
+        environment: 'production'
+      });
+
+      res.json({
+        success: true,
+        message: 'Regra criada com sucesso',
+        rule
+      });
+    } catch (error: any) {
+      console.error('[Auto-assign] Erro ao criar regra:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao criar regra',
+        error: error.message
+      });
+    }
+  });
+
+  // PUT /api/auto-assign/rules/:id - Atualizar regra
+  router.put('/auto-assign/rules/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, priority, conditions, actions, isActive } = req.body;
+      const { companyId } = req.user!;
+
+      // Verificar se a regra pertence à empresa
+      const existingRule = await storage.getAutoAssignRule(id);
+      if (!existingRule || existingRule.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Regra não encontrada'
+        });
+      }
+
+      const updatedRule = await storage.updateAutoAssignRule(id, {
+        name,
+        priority,
+        conditions,
+        actions,
+        isActive
+      });
+
+      res.json({
+        success: true,
+        message: 'Regra atualizada com sucesso',
+        rule: updatedRule
+      });
+    } catch (error: any) {
+      console.error('[Auto-assign] Erro ao atualizar regra:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao atualizar regra',
+        error: error.message
+      });
+    }
+  });
+
+  // DELETE /api/auto-assign/rules/:id - Deletar regra
+  router.delete('/auto-assign/rules/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { companyId } = req.user!;
+
+      // Verificar se a regra pertence à empresa
+      const existingRule = await storage.getAutoAssignRule(id);
+      if (!existingRule || existingRule.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Regra não encontrada'
+        });
+      }
+
+      const deleted = await storage.deleteAutoAssignRule(id);
+      if (!deleted) {
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao deletar regra'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Regra deletada com sucesso'
+      });
+    } catch (error: any) {
+      console.error('[Auto-assign] Erro ao deletar regra:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao deletar regra',
+        error: error.message
+      });
+    }
+  });
+
+  // POST /api/auto-assign/process - Processar auto-assign para uma conversa
+  router.post('/auto-assign/process', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { conversationId } = req.body;
+
+      if (!conversationId) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID da conversa é obrigatório'
+        });
+      }
+
+      // Buscar conversa
+      const conversation = await storage.getConversation(conversationId);
+      if (!conversation || conversation.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Conversa não encontrada'
+        });
+      }
+
+      // Buscar regras ativas
+      const rules = await storage.getActiveAutoAssignRules(companyId);
+      
+      // Simular processamento de auto-assign
+      let assigned = false;
+      let assignedAgent = null;
+
+      for (const rule of rules) {
+        // Verificar condições (simulado)
+        const conditions = rule.conditions as any;
+        if (conditions && conditions.status === 'waiting') {
+          // Simular atribuição
+          assigned = true;
+          assignedAgent = 'agent-auto-assigned';
+          break;
+        }
+      }
+
+      res.json({
+        success: true,
+        assigned,
+        assignedAgent,
+        message: assigned ? 'Conversa atribuída automaticamente' : 'Nenhuma regra aplicável'
+      });
+    } catch (error: any) {
+      console.error('[Auto-assign] Erro ao processar auto-assign:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao processar auto-assign',
+        error: error.message
+      });
+    }
+  });
+
+  // ===== ROTAS DE AUDITORIA =====
+  
+  // GET /api/audit/logs - Listar logs de auditoria
+  router.get('/audit/logs', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { limit = 100 } = req.query;
+      
+      const logs = await storage.getAuditLogsByCompany(companyId, Number(limit));
+      
+      res.json({
+        success: true,
+        logs
+      });
+    } catch (error: any) {
+      console.error('[Audit] Erro ao listar logs:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao listar logs',
+        error: error.message
+      });
+    }
+  });
+
+  // GET /api/audit/logs/entity/:entityType/:entityId - Logs de uma entidade específica
+  router.get('/audit/logs/entity/:entityType/:entityId', requireAuth, async (req, res) => {
+    try {
+      const { entityType, entityId } = req.params;
+      const { companyId } = req.user!;
+      
+      const logs = await storage.getAuditLogsByEntity(entityType, entityId, companyId);
+      
+      res.json({
+        success: true,
+        logs
+      });
+    } catch (error: any) {
+      console.error('[Audit] Erro ao listar logs da entidade:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao listar logs da entidade',
+        error: error.message
+      });
+    }
+  });
+
+  // ===== ROTAS DE EXPORT =====
+  
+  // GET /api/export/conversations - Exportar conversas
+  router.get('/export/conversations', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { format = 'csv', dateFrom, dateTo } = req.query;
+
+      // Buscar conversas do período
+      const conversations = await storage.getConversationsByCompany(companyId);
+      
+      let filteredConversations = conversations;
+      if (dateFrom && dateTo) {
+        const startDate = new Date(dateFrom as string);
+        const endDate = new Date(dateTo as string);
+        filteredConversations = conversations.filter(conv => {
+          const convDate = new Date(conv.createdAt);
+          return convDate >= startDate && convDate <= endDate;
+        });
+      }
+
+      if (format === 'csv') {
+        // Gerar CSV
+        const csvHeader = 'ID,Cliente,Telefone,Status,Criado em,Atualizado em\n';
+        const csvData = filteredConversations.map(conv => 
+          `${conv.id},"${conv.contactName || ''}","${conv.contactPhone || ''}",${conv.status},"${conv.createdAt}","${conv.updatedAt}"`
+        ).join('\n');
+        
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename=conversations.csv');
+        res.send(csvHeader + csvData);
+      } else {
+        res.json({
+          success: true,
+          data: filteredConversations,
+          total: filteredConversations.length
+        });
+      }
+    } catch (error: any) {
+      console.error('[Export] Erro ao exportar conversas:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao exportar conversas',
+        error: error.message
+      });
+    }
+  });
+
+  // GET /api/export/messages - Exportar mensagens
+  router.get('/export/messages', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user!;
+      const { conversationId, format = 'csv' } = req.query;
+
+      if (!conversationId) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID da conversa é obrigatório'
+        });
+      }
+
+      // Verificar se a conversa pertence à empresa
+      const conversation = await storage.getConversation(conversationId as string);
+      if (!conversation || conversation.companyId !== companyId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Conversa não encontrada'
+        });
+      }
+
+      // Buscar mensagens da conversa
+      const messages = await storage.getMessagesByConversation(conversationId as string);
+
+      if (format === 'csv') {
+        // Gerar CSV
+        const csvHeader = 'ID,Conteúdo,Direção,Enviado em\n';
+        const csvData = messages.map(msg => 
+          `${msg.id},"${msg.content || ''}",${msg.direction},"${msg.sentAt || msg.createdAt}"`
+        ).join('\n');
+        
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename=messages.csv');
+        res.send(csvHeader + csvData);
+      } else {
+        res.json({
+          success: true,
+          data: messages,
+          total: messages.length
+        });
+      }
+    } catch (error: any) {
+      console.error('[Export] Erro ao exportar mensagens:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao exportar mensagens',
+        error: error.message
+      });
     }
   });
 

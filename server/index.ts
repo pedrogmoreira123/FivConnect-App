@@ -62,6 +62,27 @@ io.on('connection', (socket) => {
   // Join user to their company room
   socket.join(`company_${socket.companyId}`);
   console.log(`🏠 Cliente ${socket.id} entrou na sala: company_${socket.companyId}`);
+
+  // Rooms por conversa: join/leave para sincronização precisa por chat
+  socket.on('joinConversation', (conversationId: string) => {
+    if (!conversationId) return;
+    const room = `conversation:${conversationId}`;
+    socket.join(room);
+    console.log(`🧩 ${socket.id} entrou na sala ${room}`);
+  });
+
+  socket.on('leaveConversation', (conversationId: string) => {
+    if (!conversationId) return;
+    const room = `conversation:${conversationId}`;
+    socket.leave(room);
+    console.log(`🧩 ${socket.id} saiu da sala ${room}`);
+  });
+
+  // Indicador de digitação
+  socket.on('userTyping', ({ userId, conversationId }) => {
+    if (!conversationId) return;
+    io.to(`conversation:${conversationId}`).emit('userTyping', { userId, conversationId });
+  });
   
   socket.on('disconnect', (reason) => {
     console.log(`🔌 Cliente WebSocket desconectado: ${socket.id} (Motivo: ${reason})`);
