@@ -39,10 +39,13 @@ import {
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { Logger } from "./logger";
+import { EmailService } from "./services/email-service";
+import crypto from "crypto";
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1)
+  password: z.string().min(1),
+  companyId: z.string().optional() // Optional company selection for multi-tenant login
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -54,28 +57,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
       endpoint: req.originalUrl,
       method: req.method
     };
-    
+
     try {
-      const { email, password } = loginSchema.parse(req.body);
-      
-      Logger.auth(`Login attempt for email: ${email}`, {
+      const { email, password, companyId } = loginSchema.parse(req.body);
+
+      Logger.auth(`Login attempt for email: ${email}${companyId ? ` (company: ${companyId})` : ''}`, {
         ...requestContext,
         email,
+        companyId: companyId || 'auto-select',
         environment: storage.getCurrentEnvironment()
       });
-      
+
+      // If companyId not provided, check if user has multiple companies
+      if (!companyId) {
+        // Validate credentials first
+        const user = await storage.getUserByEmail(email);
+        if (!user) {
+          Logger.warn(`Login failed - user not found: ${email}`, requestContext);
+          return res.status(401).json({ message: "Invalid email or password" });
+        }
+
+        const bcrypt = await import('bcryptjs');
+        const isValidPassword = await bcrypt.compare(password, user.password);
+        if (!isValidPassword) {
+          Logger.warn(`Login failed - invalid password: ${email}`, requestContext);
+          return res.status(401).json({ message: "Invalid email or password" });
+        }
+
+        // Get user's companies
+        const userCompanies = await storage.getUserCompaniesByUser(user.id);
+        const activeCompanies = userCompanies.filter(uc =>
+          uc.company.status === 'active' && uc.isActive
+        );
+
+        if (activeCompanies.length === 0) {
+          Logger.warn(`Login failed - no active companies: ${email}`, requestContext);
+          return res.status(403).json({ message: "No active companies associated with this account" });
+        }
+
+        // If user has multiple companies, require company selection
+        if (activeCompanies.length > 1) {
+          Logger.info(`Multiple companies detected for user: ${email}`, {
+            ...requestContext,
+            email,
+            companiesCount: activeCompanies.length
+          });
+          return res.status(400).json({
+            message: "Multiple companies found. Please select one.",
+            requiresCompanySelection: true,
+            companiesCount: activeCompanies.length
+          });
+        }
+
+        // Single company - proceed with auto-selection (backward compatibility)
+      }
+
       const result = await authenticateUser(
-        email, 
-        password, 
-        undefined, // companyId - let it auto-select
+        email,
+        password,
+        companyId, // Pass companyId if provided
         req.ip,
         req.get('User-Agent')
       );
-      
+
       if (!result) {
         Logger.warn(`Login failed for email: ${email} - Invalid credentials or no company association`, {
           ...requestContext,
           email,
+          companyId: companyId || 'auto-select',
           reason: 'invalid_credentials_or_no_company'
         });
         return res.status(401).json({ message: "Invalid email or password" });
@@ -88,7 +137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         companyId: (result.user as any)?.company?.id,
         companyName: (result.user as any)?.company?.name
       });
-      
+
       res.json({
         message: "Login successful",
         user: result.user,
@@ -101,6 +150,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
         errorType: error instanceof Error ? error.name : 'unknown'
       });
       res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  /**
+   * POST /api/auth/companies
+   * Get list of companies for a user (without creating session)
+   * Used for company selection in multi-tenant login
+   */
+  app.post('/api/auth/companies', async (req, res) => {
+    const requestContext = {
+      ip: req.ip,
+      userAgent: req.get('User-Agent'),
+      endpoint: req.originalUrl,
+      method: req.method
+    };
+
+    try {
+      const { email, password } = loginSchema.parse(req.body);
+
+      Logger.auth(`Fetching companies for email: ${email}`, {
+        ...requestContext,
+        email
+      });
+
+      // Validate credentials
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        Logger.warn(`Companies fetch failed - user not found: ${email}`, requestContext);
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      const bcrypt = await import('bcryptjs');
+      const isValidPassword = await bcrypt.compare(password, user.password);
+      if (!isValidPassword) {
+        Logger.warn(`Companies fetch failed - invalid password: ${email}`, requestContext);
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+
+      // Get user's companies
+      const userCompanies = await storage.getUserCompaniesByUser(user.id);
+
+      if (userCompanies.length === 0) {
+        Logger.warn(`Companies fetch failed - no companies found: ${email}`, requestContext);
+        return res.status(403).json({ message: "No companies associated with this account" });
+      }
+
+      // Filter active companies only
+      const activeCompanies = userCompanies.filter(uc =>
+        uc.company.status === 'active' && uc.isActive
+      );
+
+      if (activeCompanies.length === 0) {
+        Logger.warn(`Companies fetch failed - no active companies: ${email}`, requestContext);
+        return res.status(403).json({ message: "No active companies found" });
+      }
+
+      // Return company list (without sensitive data)
+      const companies = activeCompanies.map(uc => ({
+        id: uc.company.id,
+        name: uc.company.name,
+        role: uc.role,
+        isOwner: uc.isOwner || false
+      }));
+
+      Logger.success(`Companies fetched successfully for: ${email}`, {
+        ...requestContext,
+        email,
+        companiesCount: companies.length
+      });
+
+      res.json({ companies });
+    } catch (error) {
+      Logger.error('Companies fetch error', error, {
+        ...requestContext,
+        errorType: error instanceof Error ? error.name : 'unknown'
+      });
+      res.status(500).json({ message: "Failed to fetch companies" });
     }
   });
 
@@ -173,11 +299,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User management routes (protected)
   app.get('/api/users', requireAuth, requireRole(['admin', 'supervisor', 'superadmin']), async (req, res) => {
     try {
-      const users = await storage.getAllUsers();
-      // Remove passwords from response
-      const safeUsers = users.map(({ password, ...user }) => user);
-      res.json(safeUsers);
+      let usersData;
+
+      // Superadmins podem ver todos os usuários (administração global)
+      if (req.user!.role === 'superadmin') {
+        const users = await storage.getAllUsers();
+        usersData = users.map(({ password, ...user }) => user);
+      } else {
+        // Admins e Supervisors veem apenas usuários da própria empresa (multi-tenant isolation)
+        const companyId = req.user!.companyId;
+
+        if (!companyId) {
+          return res.status(400).json({ message: "Company ID not found for user" });
+        }
+
+        const userCompanies = await storage.getUsersByCompany(companyId);
+
+        // Transformar para formato compatível com o frontend
+        usersData = userCompanies.map(uc => {
+          const { password, ...safeUser } = uc.user;
+          return {
+            ...safeUser,
+            role: uc.role,  // Usar role específico da empresa
+            isActive: uc.isActive
+          };
+        });
+      }
+
+      res.json(usersData);
     } catch (error) {
+      console.error('[Routes] Erro ao buscar usuários:', error);
       res.status(500).json({ message: "Failed to fetch users" });
     }
   });
@@ -241,7 +392,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Client management routes
   app.get('/api/clients', requireAuth, async (req, res) => {
     try {
-      const clients = await storage.getAllClients();
+      const { companyId } = req.user;
+      const clients = await storage.getAllClients(companyId);
       res.json(clients);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch clients" });
@@ -359,21 +511,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/conversations', requireAuth, async (req, res) => {
     try {
       const { status, agentId } = req.query;
-      
+      const { companyId } = req.user;
+
       let conversations;
       if (status) {
-        conversations = await storage.getConversationsByStatus(status as string);
+        // SECURITY FIX: Added companyId filter
+        conversations = await storage.getConversationsByStatus(status as string, companyId);
       } else if (agentId) {
-        conversations = await storage.getConversationsByAgent(agentId as string);
+        // SECURITY FIX: Added companyId filter
+        conversations = await storage.getConversationsByAgent(agentId as string, companyId);
       } else {
         // Agents can only see their own conversations unless they're admin/supervisor
         if (req.user.role === 'agent') {
-          conversations = await storage.getConversationsByAgent(req.user.id);
+          conversations = await storage.getConversationsByAgent(req.user.id, companyId);
         } else {
-          conversations = await storage.getAllConversations();
+          // SECURITY FIX: Now filters by company instead of returning all
+          conversations = await storage.getAllConversations(companyId);
         }
       }
-      
+
       res.json(conversations);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch conversations" });
@@ -405,6 +561,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/conversations/:conversationId/messages', requireAuth, async (req, res) => {
     try {
       const { conversationId } = req.params;
+      const { companyId } = req.user;
+
+      // SECURITY FIX: Verify conversation belongs to user's company
+      const conversation = await storage.getConversation(conversationId);
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      if (conversation.companyId !== companyId) {
+        return res.status(403).json({ message: "Unauthorized access to conversation" });
+      }
+
       const messages = await storage.getMessagesByConversation(conversationId);
       res.json(messages);
     } catch (error) {
@@ -642,17 +809,337 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // AI Agent routes (protected)
+  // ===== CHATBOT CONFIGURATION ROUTES (MULTI-TENANT) =====
+
+  /**
+   * GET /api/chatbot/configs
+   * Listar todos os chatbots da empresa
+   */
+  app.get('/api/chatbot/configs', requireAuth, requireRole(['admin', 'supervisor', 'superadmin']), async (req, res) => {
+    try {
+      const { companyId } = req.user;
+      const configs = await storage.getAllChatbotConfigs(companyId);
+
+      // Não expor API keys nas respostas
+      const safeConfigs = configs.map(config => {
+        if (config.aiAgentConfig?.apiKey) {
+          return {
+            ...config,
+            aiAgentConfig: {
+              ...config.aiAgentConfig,
+              hasApiKey: true,
+              apiKey: undefined
+            }
+          };
+        }
+        return config;
+      });
+
+      res.json(safeConfigs);
+    } catch (error) {
+      console.error('Error fetching chatbot configs:', error);
+      res.status(500).json({ message: "Failed to fetch chatbot configs" });
+    }
+  });
+
+  /**
+   * GET /api/chatbot/configs/:id
+   * Buscar chatbot específico por ID
+   */
+  app.get('/api/chatbot/configs/:id', requireAuth, requireRole(['admin', 'supervisor', 'superadmin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { companyId } = req.user;
+
+      const config = await storage.getChatbotConfigById(id);
+
+      if (!config) {
+        return res.status(404).json({ message: "Chatbot not found" });
+      }
+
+      // Verificar se pertence à empresa do usuário
+      if (config.companyId !== companyId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Não expor API key
+      if (config.aiAgentConfig?.apiKey) {
+        config.aiAgentConfig.hasApiKey = true;
+        delete config.aiAgentConfig.apiKey;
+      }
+
+      res.json(config);
+    } catch (error) {
+      console.error('Error fetching chatbot config:', error);
+      res.status(500).json({ message: "Failed to fetch chatbot config" });
+    }
+  });
+
+  /**
+   * POST /api/chatbot/configs
+   * Criar novo chatbot para a empresa
+   */
+  app.post('/api/chatbot/configs', requireAuth, requireRole(['admin', 'supervisor', 'superadmin']), async (req, res) => {
+    try {
+      const { companyId } = req.user;
+      const { name, whatsappConnectionId, mode, isEnabled, simpleBotConfig, aiAgentConfig, triggerRules } = req.body;
+
+      if (!name) {
+        return res.status(400).json({ message: "Nome do chatbot é obrigatório" });
+      }
+
+      // Preparar dados do chatbot
+      const chatbotData: any = {
+        companyId,
+        name,
+        whatsappConnectionId: whatsappConnectionId || null,
+        mode: mode || 'disabled',
+        isEnabled: isEnabled || false,
+        simpleBotConfig: simpleBotConfig || {
+          welcomeMessage: 'Olá! Como posso ajudar?',
+          queueSelectionMessage: 'Escolha uma opção:\n1 - Suporte\n2 - Vendas\n3 - Financeiro',
+          outsideHoursMessage: 'No momento estamos fora do horário de atendimento.',
+          closingMessage: 'Obrigado pelo contato!',
+          responseDelay: 3
+        },
+        aiAgentConfig: aiAgentConfig || {
+          provider: 'gemini',
+          systemPrompt: 'Você é um assistente virtual prestativo e educado.',
+          temperature: 0.7,
+          maxTokens: 150,
+          contextMemory: true
+        },
+        triggerRules: triggerRules || {
+          autoReplyEnabled: true,
+          businessHoursOnly: false,
+          maxMessagesBeforeTransfer: 5,
+          transferToHumanKeywords: ['atendente', 'humano', 'pessoa'],
+          enableSmartRouting: false,
+          enableSentimentAnalysis: false
+        }
+      };
+
+      // Criptografar API key se fornecida
+      if (chatbotData.aiAgentConfig?.apiKey) {
+        chatbotData.aiAgentConfig.apiKey = encryptData(chatbotData.aiAgentConfig.apiKey);
+      }
+
+      const config = await storage.createChatbotConfig(chatbotData);
+
+      // Não expor API key na resposta
+      if (config.aiAgentConfig?.apiKey) {
+        config.aiAgentConfig.hasApiKey = true;
+        delete config.aiAgentConfig.apiKey;
+      }
+
+      res.status(201).json(config);
+    } catch (error) {
+      console.error('Error creating chatbot config:', error);
+      res.status(500).json({ message: "Failed to create chatbot config" });
+    }
+  });
+
+  /**
+   * PUT /api/chatbot/configs/:id
+   * Atualizar chatbot específico
+   */
+  app.put('/api/chatbot/configs/:id', requireAuth, requireRole(['admin', 'supervisor', 'superadmin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { companyId } = req.user;
+      const updates = req.body;
+
+      // Verificar se chatbot existe e pertence à empresa
+      const existing = await storage.getChatbotConfigById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Chatbot not found" });
+      }
+      if (existing.companyId !== companyId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Criptografar API key se fornecida
+      if (updates.aiAgentConfig?.apiKey && updates.aiAgentConfig.apiKey !== '***CONFIGURED***') {
+        updates.aiAgentConfig.apiKey = encryptData(updates.aiAgentConfig.apiKey);
+      } else if (updates.aiAgentConfig?.apiKey === '***CONFIGURED***') {
+        delete updates.aiAgentConfig.apiKey;
+      }
+
+      const config = await storage.updateChatbotConfigById(id, updates);
+
+      // Não expor API key na resposta
+      if (config.aiAgentConfig?.apiKey) {
+        config.aiAgentConfig.hasApiKey = true;
+        delete config.aiAgentConfig.apiKey;
+      }
+
+      res.json(config);
+    } catch (error) {
+      console.error('Error updating chatbot config:', error);
+      res.status(500).json({ message: "Failed to update chatbot config" });
+    }
+  });
+
+  /**
+   * DELETE /api/chatbot/configs/:id
+   * Deletar chatbot específico
+   */
+  app.delete('/api/chatbot/configs/:id', requireAuth, requireRole(['admin', 'supervisor', 'superadmin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { companyId } = req.user;
+
+      // Verificar se chatbot existe e pertence à empresa
+      const existing = await storage.getChatbotConfigById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Chatbot not found" });
+      }
+      if (existing.companyId !== companyId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const success = await storage.deleteChatbotConfigById(id);
+
+      if (success) {
+        res.json({ message: "Chatbot deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Chatbot not found" });
+      }
+    } catch (error) {
+      console.error('Error deleting chatbot config:', error);
+      res.status(500).json({ message: "Failed to delete chatbot config" });
+    }
+  });
+
+  // ===== BACKWARD COMPATIBILITY ROUTES =====
+
+  /**
+   * GET /api/chatbot/config
+   * Buscar primeiro chatbot da empresa (compatibilidade)
+   */
+  app.get('/api/chatbot/config', requireAuth, requireRole(['admin', 'supervisor', 'superadmin']), async (req, res) => {
+    try {
+      const { companyId } = req.user;
+
+      let config = await storage.getChatbotConfig(companyId);
+
+      // Se não existe, retornar configuração padrão
+      if (!config) {
+        config = {
+          mode: 'disabled',
+          isEnabled: false,
+          simpleBotConfig: {
+            welcomeMessage: 'Olá! Como posso ajudar?',
+            queueSelectionMessage: 'Escolha uma opção:\n1 - Suporte\n2 - Vendas\n3 - Financeiro',
+            outsideHoursMessage: 'No momento estamos fora do horário de atendimento.',
+            closingMessage: 'Obrigado pelo contato!',
+            responseDelay: 3
+          },
+          aiAgentConfig: {
+            provider: 'gemini',
+            systemPrompt: 'Você é um assistente virtual prestativo e educado.',
+            temperature: 0.7,
+            maxTokens: 150,
+            contextMemory: true
+          },
+          triggerRules: {
+            autoReplyEnabled: true,
+            businessHoursOnly: false,
+            maxMessagesBeforeTransfer: 5,
+            transferToHumanKeywords: ['atendente', 'humano', 'pessoa'],
+            enableSmartRouting: false,
+            enableSentimentAnalysis: false
+          }
+        };
+      }
+
+      // Não expor API key na resposta
+      if (config.aiAgentConfig?.apiKey) {
+        config.aiAgentConfig.hasApiKey = true;
+        delete config.aiAgentConfig.apiKey;
+      }
+
+      res.json(config);
+    } catch (error) {
+      console.error('Error fetching chatbot config:', error);
+      res.status(500).json({ message: "Failed to fetch chatbot config" });
+    }
+  });
+
+  /**
+   * PUT /api/chatbot/config
+   * Atualizar primeiro chatbot da empresa (compatibilidade)
+   */
+  app.put('/api/chatbot/config', requireAuth, requireRole(['admin', 'supervisor', 'superadmin']), async (req, res) => {
+    try {
+      const { companyId } = req.user;
+      const updates = req.body;
+
+      // Criptografar API key se fornecida
+      if (updates.aiAgentConfig?.apiKey && updates.aiAgentConfig.apiKey !== '***CONFIGURED***') {
+        updates.aiAgentConfig.apiKey = encryptData(updates.aiAgentConfig.apiKey);
+      } else if (updates.aiAgentConfig?.apiKey === '***CONFIGURED***') {
+        // Remover se for o placeholder
+        delete updates.aiAgentConfig.apiKey;
+      }
+
+      const config = await storage.updateChatbotConfig(companyId, updates);
+
+      // Não expor API key na resposta
+      if (config.aiAgentConfig?.apiKey) {
+        config.aiAgentConfig.hasApiKey = true;
+        delete config.aiAgentConfig.apiKey;
+      }
+
+      res.json(config);
+    } catch (error) {
+      console.error('Error updating chatbot config:', error);
+      res.status(400).json({ message: "Failed to update chatbot config" });
+    }
+  });
+
+  /**
+   * DELETE /api/chatbot/config
+   * Deletar primeiro chatbot da empresa (compatibilidade)
+   */
+  app.delete('/api/chatbot/config', requireAuth, requireRole(['admin', 'supervisor', 'superadmin']), async (req, res) => {
+    try {
+      const { companyId } = req.user;
+
+      const success = await storage.deleteChatbotConfig(companyId);
+
+      if (success) {
+        res.json({ message: "Chatbot configuration deleted successfully" });
+      } else {
+        res.status(404).json({ message: "Chatbot configuration not found" });
+      }
+    } catch (error) {
+      console.error('Error deleting chatbot config:', error);
+      res.status(500).json({ message: "Failed to delete chatbot config" });
+    }
+  });
+
+  // LEGACY: Old AI Agent routes (backward compatibility)
   app.get('/api/ai-agent/config', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
     try {
-      const config = await storage.getAiAgentConfig();
-      if (config && config.geminiApiKey) {
-        // Don't expose the encrypted API key in responses
-        const { geminiApiKey, ...safeConfig } = config;
-        res.json({ ...safeConfig, hasApiKey: !!geminiApiKey });
-      } else {
-        res.json(config || { mode: 'chatbot', isEnabled: false, welcomeMessage: "", responseDelay: 3, hasApiKey: false });
+      const { companyId } = req.user;
+      const config = await storage.getChatbotConfig(companyId);
+
+      if (!config) {
+        return res.json({ mode: 'chatbot', isEnabled: false, welcomeMessage: "", responseDelay: 3, hasApiKey: false });
       }
+
+      // Transformar para formato antigo
+      const legacyConfig = {
+        mode: config.mode === 'simple_bot' ? 'chatbot' : 'ai_agent',
+        isEnabled: config.isEnabled,
+        welcomeMessage: config.simpleBotConfig?.welcomeMessage || '',
+        responseDelay: config.simpleBotConfig?.responseDelay || 3,
+        agentPrompt: config.aiAgentConfig?.systemPrompt || '',
+        hasApiKey: !!config.aiAgentConfig?.apiKey
+      };
+
+      res.json(legacyConfig);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch AI agent config" });
     }
@@ -660,18 +1147,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/ai-agent/config', requireAuth, requireRole(['admin', 'supervisor']), async (req, res) => {
     try {
-      const configData = insertAiAgentConfigSchema.parse(req.body);
-      
-      // Encrypt API key if provided
-      if (configData.geminiApiKey) {
-        configData.geminiApiKey = encryptData(configData.geminiApiKey);
+      const { companyId } = req.user;
+      const legacyData = req.body;
+
+      // Transformar formato antigo para novo
+      const updates: any = {
+        mode: legacyData.mode === 'chatbot' ? 'simple_bot' : 'ai_agent',
+        isEnabled: legacyData.isEnabled
+      };
+
+      if (legacyData.mode === 'chatbot') {
+        updates.simpleBotConfig = {
+          welcomeMessage: legacyData.welcomeMessage,
+          responseDelay: legacyData.responseDelay
+        };
+      } else if (legacyData.mode === 'ai_agent') {
+        updates.aiAgentConfig = {
+          provider: 'gemini',
+          systemPrompt: legacyData.agentPrompt,
+          temperature: 0.7,
+          maxTokens: 150
+        };
+
+        if (legacyData.geminiApiKey) {
+          updates.aiAgentConfig.apiKey = encryptData(legacyData.geminiApiKey);
+        }
       }
-      
-      const config = await storage.updateAiAgentConfig(configData);
-      
-      // Don't expose the encrypted API key in response
-      const { geminiApiKey, ...safeConfig } = config;
-      res.json({ ...safeConfig, hasApiKey: !!geminiApiKey });
+
+      const config = await storage.updateChatbotConfig(companyId, updates);
+
+      res.json({
+        mode: config.mode === 'simple_bot' ? 'chatbot' : 'ai_agent',
+        isEnabled: config.isEnabled,
+        hasApiKey: !!config.aiAgentConfig?.apiKey
+      });
     } catch (error) {
       res.status(400).json({ message: "Invalid AI agent config" });
     }
@@ -1422,23 +1931,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/companies', requireAuth, requireRole(['superadmin']), async (req, res) => {
-    try {
-      const companyData = insertCompanySchema.parse(req.body);
-      
-      // Ensure email is unique
-      const existingCompany = await storage.getAllCompanies();
-      if (existingCompany.find(c => c.email === companyData.email)) {
-        return res.status(400).json({ message: "A company with this email already exists" });
-      }
-
-      const company = await storage.createCompany(companyData);
-      res.json(company);
-    } catch (error) {
-      console.error('Failed to create company:', error);
-      res.status(500).json({ message: "Failed to create company" });
-    }
-  });
+  // POST /api/admin/companies moved to invite routes section below (with invite functionality)
 
   app.put('/api/admin/companies/:id', requireAuth, requireRole(['superadmin']), async (req, res) => {
     try {
@@ -1457,7 +1950,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { id } = req.params;
       const success = await storage.deleteCompany(id);
-      
+
       if (success) {
         res.json({ message: "Company deleted successfully" });
       } else {
@@ -1466,6 +1959,448 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Failed to delete company:', error);
       res.status(500).json({ message: "Failed to delete company" });
+    }
+  });
+
+  // ===== COMPANY INVITE ROUTES =====
+
+  /**
+   * POST /api/admin/companies
+   * Criar empresa e enviar convite por email
+   */
+  app.post('/api/admin/companies', requireAuth, requireRole(['superadmin']), async (req, res) => {
+    const requestContext = Logger.createRequestContext(req);
+
+    try {
+      const {
+        name,
+        contactName,
+        contactEmail,
+        document,
+        phone,
+        subscriptionPlan,
+        email
+      } = req.body;
+
+      // Validar campos obrigatórios
+      if (!name || !contactName || !contactEmail || !document || !phone || !subscriptionPlan) {
+        Logger.warn('Company creation failed - missing required fields', requestContext);
+        return res.status(400).json({
+          message: "Todos os campos são obrigatórios: name, contactName, contactEmail, document, phone, subscriptionPlan"
+        });
+      }
+
+      // Verificar se email já existe
+      const companies = await storage.getAllCompanies();
+      if (companies.find(c => c.contactEmail === contactEmail)) {
+        Logger.warn('Company creation failed - email already exists', {
+          ...requestContext,
+          email: contactEmail
+        });
+        return res.status(400).json({
+          message: "Já existe uma empresa cadastrada com este email de contato"
+        });
+      }
+
+      // Criar empresa com status "pending"
+      const companyData = {
+        name,
+        contactName,
+        contactEmail,
+        document,
+        phone,
+        subscriptionPlan,
+        email: email || contactEmail,
+        status: 'pending' as const,
+        isActive: false
+      };
+
+      const company = await storage.createCompany(companyData);
+      Logger.success('Company created successfully', {
+        ...requestContext,
+        companyId: company.id,
+        companyName: company.name
+      });
+
+      // Gerar token de convite (UUID v4)
+      const inviteToken = crypto.randomUUID();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7); // 7 dias
+
+      // Criar convite no banco
+      await storage.createCompanyInvite({
+        companyId: company.id,
+        email: contactEmail,
+        token: inviteToken,
+        expiresAt
+      });
+
+      Logger.info('Company invite created', {
+        ...requestContext,
+        companyId: company.id,
+        inviteEmail: contactEmail,
+        expiresAt: expiresAt.toISOString()
+      });
+
+      // Enviar email de convite
+      const emailService = new EmailService(Logger);
+
+      try {
+        await emailService.sendCompanyInvite({
+          to: contactEmail,
+          clientName: contactName,
+          companyName: name,
+          inviteToken,
+          expiresInDays: 7
+        });
+
+        Logger.success('Invite email sent successfully', {
+          ...requestContext,
+          companyId: company.id,
+          inviteEmail: contactEmail
+        });
+      } catch (emailError) {
+        Logger.error('Failed to send invite email', emailError, {
+          ...requestContext,
+          companyId: company.id
+        });
+        // Não falhar a requisição se o email não for enviado
+        // A empresa foi criada e o convite está no banco
+      }
+
+      res.status(201).json({
+        message: "Empresa criada e convite enviado com sucesso",
+        company,
+        inviteToken: inviteToken // Retornar token para debug/desenvolvimento
+      });
+
+    } catch (error) {
+      Logger.error('Company creation failed', error, requestContext);
+      res.status(500).json({ message: "Falha ao criar empresa" });
+    }
+  });
+
+  /**
+   * GET /api/invite/validate/:token
+   * Validar token de convite e retornar dados da empresa
+   */
+  app.get('/api/invite/validate/:token', async (req, res) => {
+    try {
+      const { token } = req.params;
+
+      if (!token) {
+        return res.status(400).json({ message: "Token é obrigatório" });
+      }
+
+      // Buscar convite pelo token
+      const invite = await storage.getCompanyInviteByToken(token);
+
+      if (!invite) {
+        Logger.warn('Invite validation failed - token not found', { token });
+        return res.status(404).json({
+          message: "Token de convite inválido ou expirado"
+        });
+      }
+
+      // Verificar se já foi usado
+      if (invite.usedAt) {
+        Logger.warn('Invite validation failed - already used', {
+          token,
+          usedAt: invite.usedAt
+        });
+        return res.status(400).json({
+          message: "Este convite já foi utilizado"
+        });
+      }
+
+      // Verificar se expirou
+      if (new Date(invite.expiresAt) < new Date()) {
+        Logger.warn('Invite validation failed - expired', {
+          token,
+          expiresAt: invite.expiresAt
+        });
+        return res.status(400).json({
+          message: "Este convite expirou. Solicite um novo convite ao administrador."
+        });
+      }
+
+      // Buscar dados da empresa
+      const company = await storage.getCompanyById(invite.companyId);
+
+      if (!company) {
+        Logger.error('Invite validation failed - company not found', undefined, {
+          token,
+          companyId: invite.companyId
+        });
+        return res.status(404).json({
+          message: "Empresa não encontrada"
+        });
+      }
+
+      Logger.info('Invite validated successfully', {
+        token,
+        companyId: company.id,
+        email: invite.email
+      });
+
+      // Retornar dados para preenchimento do formulário
+      res.json({
+        valid: true,
+        company: {
+          id: company.id,
+          name: company.name,
+          contactName: company.contactName,
+          contactEmail: company.contactEmail
+        },
+        email: invite.email
+      });
+
+    } catch (error) {
+      Logger.error('Invite validation error', error);
+      res.status(500).json({ message: "Erro ao validar convite" });
+    }
+  });
+
+  /**
+   * POST /api/invite/complete
+   * Completar cadastro: criar primeiro usuário e ativar empresa
+   */
+  app.post('/api/invite/complete', async (req, res) => {
+    try {
+      const { token, password, name } = req.body;
+
+      if (!token || !password || !name) {
+        return res.status(400).json({
+          message: "Token, senha e nome são obrigatórios"
+        });
+      }
+
+      // Validar senha (mínimo 6 caracteres)
+      if (password.length < 6) {
+        return res.status(400).json({
+          message: "A senha deve ter no mínimo 6 caracteres"
+        });
+      }
+
+      // Buscar e validar convite
+      const invite = await storage.getCompanyInviteByToken(token);
+
+      if (!invite) {
+        return res.status(404).json({
+          message: "Token de convite inválido"
+        });
+      }
+
+      if (invite.usedAt) {
+        return res.status(400).json({
+          message: "Este convite já foi utilizado"
+        });
+      }
+
+      if (new Date(invite.expiresAt) < new Date()) {
+        return res.status(400).json({
+          message: "Este convite expirou"
+        });
+      }
+
+      // Buscar empresa
+      const company = await storage.getCompanyById(invite.companyId);
+
+      if (!company) {
+        return res.status(404).json({
+          message: "Empresa não encontrada"
+        });
+      }
+
+      // Verificar se já existe usuário com este email
+      const existingUser = await storage.getUserByEmail(invite.email);
+
+      if (existingUser) {
+        // Se usuário já existe, apenas criar relacionamento com a empresa
+        const userCompany = await storage.createUserCompany({
+          userId: existingUser.id,
+          companyId: company.id,
+          role: 'admin',
+          isOwner: true
+        });
+
+        Logger.info('Existing user linked to company', {
+          userId: existingUser.id,
+          companyId: company.id,
+          email: invite.email
+        });
+      } else {
+        // Criar novo usuário
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        const user = await storage.createUser({
+          name,
+          username: invite.email.split('@')[0], // Gerar username a partir do email
+          email: invite.email,
+          password: hashedPassword,
+          role: 'admin',
+          isOnline: false
+        });
+
+        Logger.success('First user created successfully', {
+          userId: user.id,
+          companyId: company.id,
+          email: invite.email
+        });
+
+        // Criar relacionamento usuário-empresa
+        await storage.createUserCompany({
+          userId: user.id,
+          companyId: company.id,
+          role: 'admin',
+          isOwner: true
+        });
+
+        Logger.info('User-company relationship created', {
+          userId: user.id,
+          companyId: company.id
+        });
+      }
+
+      // Ativar empresa (mudar status de "pending" para "active")
+      await storage.updateCompany(company.id, {
+        status: 'active',
+        isActive: true
+      });
+
+      Logger.success('Company activated', {
+        companyId: company.id,
+        companyName: company.name
+      });
+
+      // Marcar convite como usado
+      await storage.markInviteAsUsed(token);
+
+      Logger.success('Invite completed successfully', {
+        companyId: company.id,
+        email: invite.email,
+        token
+      });
+
+      res.json({
+        message: "Cadastro finalizado com sucesso! Você já pode fazer login.",
+        company: {
+          id: company.id,
+          name: company.name
+        },
+        email: invite.email
+      });
+
+    } catch (error) {
+      Logger.error('Invite completion failed', error);
+      res.status(500).json({ message: "Erro ao finalizar cadastro" });
+    }
+  });
+
+  /**
+   * POST /api/admin/companies/:id/resend-invite
+   * Reenviar convite (gera novo token e envia novo email)
+   */
+  app.post('/api/admin/companies/:id/resend-invite', requireAuth, requireRole(['superadmin']), async (req, res) => {
+    const requestContext = Logger.createRequestContext(req);
+
+    try {
+      const { id: companyId } = req.params;
+
+      // Buscar empresa
+      const company = await storage.getCompanyById(companyId);
+
+      if (!company) {
+        Logger.warn('Resend invite failed - company not found', {
+          ...requestContext,
+          companyId
+        });
+        return res.status(404).json({
+          message: "Empresa não encontrada"
+        });
+      }
+
+      // Verificar se empresa já está ativa
+      if (company.status === 'active') {
+        Logger.warn('Resend invite failed - company already active', {
+          ...requestContext,
+          companyId,
+          status: company.status
+        });
+        return res.status(400).json({
+          message: "Esta empresa já está ativa. Não é possível reenviar convite."
+        });
+      }
+
+      if (!company.contactEmail) {
+        Logger.warn('Resend invite failed - no contact email', {
+          ...requestContext,
+          companyId
+        });
+        return res.status(400).json({
+          message: "Empresa não possui email de contato cadastrado"
+        });
+      }
+
+      // Deletar convites antigos não utilizados desta empresa
+      const oldInvites = await storage.getPendingInvitesByCompany(companyId);
+      for (const oldInvite of oldInvites) {
+        if (!oldInvite.usedAt) {
+          await storage.deleteExpiredInvites(); // Cleanup geral
+        }
+      }
+
+      // Gerar novo token
+      const inviteToken = crypto.randomUUID();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7); // 7 dias
+
+      // Criar novo convite
+      await storage.createCompanyInvite({
+        companyId: company.id,
+        email: company.contactEmail,
+        token: inviteToken,
+        expiresAt
+      });
+
+      Logger.info('New invite created', {
+        ...requestContext,
+        companyId: company.id,
+        inviteEmail: company.contactEmail
+      });
+
+      // Enviar email
+      const emailService = new EmailService(Logger);
+
+      try {
+        await emailService.sendInviteReminder({
+          to: company.contactEmail,
+          clientName: company.contactName || 'Cliente',
+          companyName: company.name,
+          inviteToken,
+          expiresInDays: 7
+        });
+
+        Logger.success('Reminder email sent successfully', {
+          ...requestContext,
+          companyId: company.id,
+          inviteEmail: company.contactEmail
+        });
+      } catch (emailError) {
+        Logger.error('Failed to send reminder email', emailError, {
+          ...requestContext,
+          companyId: company.id
+        });
+      }
+
+      res.json({
+        message: "Convite reenviado com sucesso",
+        inviteToken // Para debug/desenvolvimento
+      });
+
+    } catch (error) {
+      Logger.error('Resend invite failed', error, requestContext);
+      res.status(500).json({ message: "Erro ao reenviar convite" });
     }
   });
 
@@ -1484,8 +2419,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/admin/companies/:id/users', requireAuth, requireRole(['superadmin']), async (req, res) => {
     try {
       const { id: companyId } = req.params;
+
+      // Gerar username a partir do email se não fornecido
+      if (!req.body.username && req.body.email) {
+        req.body.username = req.body.email.split('@')[0];
+      }
+
       const userData = insertUserSchema.parse(req.body);
-      
+
       // Check if user email already exists
       const existingUser = await storage.getUserByEmail(userData.email);
       if (existingUser) {

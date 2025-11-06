@@ -47,13 +47,16 @@ export function setupWhatsAppRoutes(app: Express, io?: any): void {
   const whapiService = new WhapiService(Logger as any);
 
   // Função para notificar atualizações de status
-  const notifyStatusUpdate = (companyId: string, connectionId: string, status: string, connectionData?: any) => {
+  const notifyStatusUpdate = (companyId: string, whapiChannelId: string, connected: boolean, connectionData?: any) => {
     if (io) {
-      console.log(`📢 Notificando atualização de status WhatsApp: Company ${companyId}, Connection ${connectionId}, Status: ${status}`);
-      io.to(`company_${companyId}`).emit('whatsappStatusUpdate', {
-        connectionId,
-        status,
-        connectionData,
+      console.log(`📢 Notificando atualização de status WhatsApp: Company ${companyId}, Channel ${whapiChannelId}, Connected: ${connected}`);
+      io.to(`company_${companyId}`).emit('connectionUpdate', {
+        channelId: whapiChannelId,
+        connected,
+        number: connectionData?.phone,
+        name: connectionData?.name,
+        profilePictureUrl: connectionData?.profilePictureUrl,
+        lastSeen: connectionData?.lastSeen,
         timestamp: new Date().toISOString()
       });
     }
@@ -91,7 +94,7 @@ export function setupWhatsAppRoutes(app: Express, io?: any): void {
               // Timeout individual de 3 segundos por conexão
               const currentStatus = await Promise.race([
                 whapiService.getConnectionStatus(connection.whapiToken),
-                new Promise((_, reject) => 
+                new Promise((_, reject) =>
                   setTimeout(() => reject(new Error('Timeout individual')), 3000)
                 )
               ]) as any;
@@ -107,12 +110,19 @@ export function setupWhatsAppRoutes(app: Express, io?: any): void {
                 });
 
                 // Notificar mudança de status via WebSocket
-                notifyStatusUpdate(connection.companyId, connection.id, currentStatus.status, {
-                  phone: currentStatus.phone,
-                  name: currentStatus.name,
-                  profilePictureUrl: currentStatus.profilePictureUrl,
-                  lastSeen: currentStatus.lastSeen
-                });
+                if (connection.whapiChannelId) {
+                  notifyStatusUpdate(
+                    connection.companyId,
+                    connection.whapiChannelId,
+                    currentStatus.status === 'connected',
+                    {
+                      phone: currentStatus.phone,
+                      name: currentStatus.name,
+                      profilePictureUrl: currentStatus.profilePictureUrl,
+                      lastSeen: currentStatus.lastSeen
+                    }
+                  );
+                }
               }
               
               return {
@@ -189,10 +199,19 @@ export function setupWhatsAppRoutes(app: Express, io?: any): void {
 
       console.log(`[WhatsApp Routes] Canal criado: ${channelResult.channelId}`);
 
-      // 3. Configurar webhook
+      // 3. Configurar webhook (não-crítico - pode falhar temporariamente)
       const webhookUrl = `${process.env.MAIN_APP_URL}/api/whatsapp/webhook`;
       console.log(`[WhatsApp Routes] Configurando webhook: ${webhookUrl}`);
-      await whapiService.configureChannelWebhook(channelResult.clientToken, webhookUrl);
+
+      let webhookConfigured = false;
+      try {
+        await whapiService.configureChannelWebhook(channelResult.clientToken, webhookUrl, channelResult.channelId);
+        webhookConfigured = true;
+        console.log(`[WhatsApp Routes] ✅ Webhook configurado com sucesso`);
+      } catch (webhookError: any) {
+        console.warn(`[WhatsApp Routes] ⚠️ Não foi possível configurar webhook automaticamente:`, webhookError.message);
+        console.warn(`[WhatsApp Routes] Você pode configurar manualmente no painel Whapi.Cloud`);
+      }
 
       // 4. Salvar no banco de dados
       console.log(`[WhatsApp Routes] Salvando conexão no banco de dados...`);
@@ -208,21 +227,60 @@ export function setupWhatsAppRoutes(app: Express, io?: any): void {
         status: 'disconnected', // Inicialmente desconectado
       });
 
-      // 5. Não tentar obter QR Code na criação - será obtido quando solicitado
-      console.log(`[WhatsApp Routes] Conexão criada, QR Code será obtido quando solicitado...`);
+      // 5. Tentar obter QR Code automaticamente
+      console.log(`[WhatsApp Routes] 📱 Tentando obter QR Code automaticamente...`);
+      let qrCode: string | null = null;
+      let finalStatus = 'disconnected';
+
+      try {
+        qrCode = await whapiService.getQRCode(channelResult.clientToken);
+        if (qrCode) {
+          finalStatus = 'qr_ready';
+          console.log(`[WhatsApp Routes] ✅ QR Code obtido com sucesso!`);
+
+          // Atualizar conexão com QR Code
+          await storage.updateWhatsAppConnection(savedConnection.id, {
+            qrcode: qrCode,
+            status: 'qr_ready'
+          });
+        } else {
+          console.log(`[WhatsApp Routes] ℹ️ QR Code não disponível ainda, pode tentar novamente em alguns segundos`);
+        }
+      } catch (qrError: any) {
+        // Se o canal já está autenticado, verificar status da conexão
+        if (qrError.message && (qrError.message.includes('ALREADY_AUTHENTICATED') || qrError.message.includes('channel already authenticated'))) {
+          console.log(`[WhatsApp Routes] Canal já autenticado, verificando status...`);
+
+          // Verificar status da conexão
+          const status = await whapiService.getConnectionStatus(channelResult.clientToken);
+          if (status.connected) {
+            finalStatus = 'connected';
+            await storage.updateWhatsAppConnection(savedConnection.id, {
+              status: 'connected',
+              phoneNumber: status.phoneNumber || undefined
+            });
+          }
+        } else {
+          console.warn(`[WhatsApp Routes] ⚠️ Erro ao obter QR Code:`, qrError.message);
+          // Não falhar a criação do canal se o QR Code não estiver disponível
+        }
+      }
 
       console.log(`[WhatsApp Routes] Conexão criada com sucesso: ${savedConnection.id}`);
 
       res.status(201).json({
         success: true,
-        message: '🎉 Canal WhatsApp criado em modo sandbox com sucesso!',
+        message: webhookConfigured
+          ? '🎉 Canal WhatsApp criado em modo sandbox com sucesso!'
+          : '🎉 Canal WhatsApp criado! Configure o webhook manualmente no painel Whapi.Cloud.',
         connection: {
           id: savedConnection.id,
           name: savedConnection.name,
-          status: 'disconnected',
-          qrCode: null,
+          status: finalStatus,
+          qrCode: qrCode,
           channelId: channelResult.channelId,
-          createdAt: savedConnection.createdAt
+          createdAt: savedConnection.createdAt,
+          webhookConfigured
         }
       });
 
@@ -270,9 +328,9 @@ export function setupWhatsAppRoutes(app: Express, io?: any): void {
         }
       } catch (qrError: any) {
         // Se o canal já está autenticado, verificar status da conexão
-        if (qrError.message && qrError.message.includes('channel already authenticated')) {
+        if (qrError.message && (qrError.message.includes('ALREADY_AUTHENTICATED') || qrError.message.includes('channel already authenticated'))) {
           console.log(`[WhatsApp Routes] Canal já autenticado, verificando status...`);
-          
+
           // Verificar status da conexão
           const status = await whapiService.getConnectionStatus(connection.whapiToken);
           
@@ -287,12 +345,19 @@ export function setupWhatsAppRoutes(app: Express, io?: any): void {
             });
 
             // Notificar conexão via WebSocket
-            notifyStatusUpdate(connection.companyId, connectionId, 'connected', {
-              phone: status.phone,
-              name: status.name,
-              profilePictureUrl: status.profilePictureUrl,
-              lastSeen: status.lastSeen
-            });
+            if (connection.whapiChannelId) {
+              notifyStatusUpdate(
+                connection.companyId,
+                connection.whapiChannelId,
+                true,
+                {
+                  phone: status.phone,
+                  name: status.name,
+                  profilePictureUrl: status.profilePictureUrl,
+                  lastSeen: status.lastSeen
+                }
+              );
+            }
       
       res.json({ 
               success: true,
@@ -339,10 +404,10 @@ export function setupWhatsAppRoutes(app: Express, io?: any): void {
       if (connection.whapiChannelId) {
         try {
           console.log(`[WhatsApp Routes] Deletando canal na Whapi.Cloud: ${connection.whapiChannelId}`);
-          // TODO: Implementar deleção de canal via Partner API
-          // await whapiService.deleteChannel(connection.whapiChannelId);
+          await whapiService.deleteChannel(connection.whapiChannelId);
+          console.log(`[WhatsApp Routes] ✅ Canal deletado do Whapi.Cloud`);
         } catch (error: any) {
-          console.error('[WhatsApp Routes] Erro ao deletar canal na Whapi.Cloud:', error);
+          console.error('[WhatsApp Routes] ⚠️ Erro ao deletar canal na Whapi.Cloud:', error.message);
           // Continuar com a deleção local mesmo se falhar na Whapi.Cloud
         }
       }
@@ -360,6 +425,40 @@ export function setupWhatsAppRoutes(app: Express, io?: any): void {
       res.status(500).json({ 
         message: 'Erro interno ao deletar conexão WhatsApp',
         error: error.message 
+      });
+    }
+  });
+
+  // Rota para atualizar configuração de Auto Assign
+  router.patch('/connections/:connectionId/auto-assign', requireAuth, async (req, res) => {
+    const { connectionId } = req.params;
+    const { autoAssignEnabled } = req.body;
+    const { companyId } = req.user!;
+
+    try {
+      console.log(`[WhatsApp Routes] Atualizando Auto Assign para conexão: ${connectionId}, enabled: ${autoAssignEnabled}`);
+
+      const connection = await storage.getWhatsAppConnection(connectionId);
+      if (!connection || connection.companyId !== companyId) {
+        return res.status(404).json({ message: 'Conexão não encontrada' });
+      }
+
+      // Atualizar configuração de auto assign
+      await storage.updateWhatsAppConnection(connectionId, {
+        autoAssignEnabled: autoAssignEnabled
+      });
+
+      res.json({
+        success: true,
+        message: 'Configuração de atribuição automática atualizada com sucesso',
+        autoAssignEnabled
+      });
+
+    } catch (error: any) {
+      console.error('[WhatsApp Routes] Erro ao atualizar Auto Assign:', error);
+      res.status(500).json({
+        message: 'Erro interno ao atualizar configuração de Auto Assign',
+        error: error.message
       });
     }
   });
@@ -1086,14 +1185,27 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
   // Rota para webhook (receber mensagens)
   router.post('/webhook', async (req, res) => {
     try {
+      // SOLUÇÃO MULTI-TENANT: Identificar canal por múltiplas fontes
+      // 1. Query parameter (se disponível)
+      let channelId = req.query.channelId as string | undefined;
+
+      // 2. Authorization header - Whapi.Cloud envia o token do canal
+      const authHeader = req.headers.authorization;
+      let channelToken: string | undefined;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        channelToken = authHeader.substring(7);
+      }
+
       // Responder IMEDIATAMENTE para evitar timeout da Whapi.cloud
       res.status(200).json({ success: true, message: 'Webhook processado com sucesso' });
-      
+
       // Processar de forma assíncrona (não bloqueia resposta)
       setImmediate(async () => {
     try {
       console.log('='.repeat(80));
       console.log('[WEBHOOK RECEIVED] Timestamp:', new Date().toISOString());
+          console.log('[WEBHOOK] Channel ID (query):', channelId || 'NÃO FORNECIDO');
+          console.log('[WEBHOOK] Channel Token (header):', channelToken ? `${channelToken.substring(0, 20)}...` : 'NÃO FORNECIDO');
           console.log('[WEBHOOK] IP Origem:', req.ip);
           console.log('[WEBHOOK] X-Real-IP:', req.headers['x-real-ip']);
           console.log('[WEBHOOK] X-Forwarded-For:', req.headers['x-forwarded-for']);
@@ -1107,19 +1219,19 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
           console.log('[WEBHOOK] Data Keys:', req.body?.data ? Object.keys(req.body.data) : 'no data');
           console.log('[WEBHOOK] Payload completo:', JSON.stringify(req.body, null, 2));
       console.log('='.repeat(80));
-      
+
       // Validar assinatura HMAC se disponível
       const signature = req.headers['x-whapi-signature'] || req.headers['x-signature'];
       if (signature) {
         console.log('[WEBHOOK] Assinatura recebida:', signature);
         // TODO: Implementar validação HMAC se necessário
       }
-      
+
       // Processar diferentes tipos de webhook da Whapi.Cloud
       const webhookData = req.body;
-      
+
       // Processar eventos conforme documentação oficial Whapi.Cloud
-      await processWebhookEvent(webhookData, io);
+      await processWebhookEvent(webhookData, io, channelId, channelToken);
     } catch (error: any) {
           console.error('[WEBHOOK] Erro no processamento assíncrono:', error);
         }
@@ -1131,12 +1243,111 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
   });
 
   // Função para processar diferentes tipos de eventos webhook
-  const processWebhookEvent = async (webhookData: any, ioParam?: any) => {
+  const processWebhookEvent = async (webhookData: any, ioParam?: any, channelId?: string, channelToken?: string) => {
     const ioToUse = ioParam || io;
-    
+
+    // Buscar conexão e companyId por múltiplas fontes
+    let connection: any = null;
+    let companyId: string | null = null;
+
+    // Método 1: Por channelId (query parameter)
+    if (channelId) {
+      console.log(`[WEBHOOK] 🔍 Método 1 - Buscando conexão por channelId: ${channelId}`);
+      connection = await storage.getWhatsAppConnectionByChannelId(channelId);
+
+      if (connection) {
+        companyId = connection.companyId;
+        console.log(`[WEBHOOK] ✅ Conexão encontrada por channelId: ${connection.id} (Empresa: ${companyId})`);
+      }
+    }
+
+    // Método 2: Por channelToken (Authorization header)
+    if (!connection && channelToken) {
+      console.log(`[WEBHOOK] 🔍 Método 2 - Buscando conexão por channelToken...`);
+      const allConnections = await storage.getAllWhatsAppConnectionsGlobal();
+      connection = allConnections.find(c => c.whapiToken === channelToken);
+
+      if (connection) {
+        companyId = connection.companyId;
+        channelId = connection.whapiChannelId; // Definir channelId para uso posterior
+        console.log(`[WEBHOOK] ✅ Conexão encontrada por token: ${connection.id} (Empresa: ${companyId}, Channel: ${channelId})`);
+      }
+    }
+
+    // Método 3: Extrair informações do payload e buscar por número do WhatsApp
+    if (!connection) {
+      console.log(`[WEBHOOK] 🔍 Método 3 - Tentando extrair informações do payload...`);
+
+      // Tentar extrair número de telefone de diferentes estruturas
+      const payloadPhone =
+        webhookData?.data?.user?.phone ||
+        webhookData?.data?.user?.id ||
+        webhookData?.data?.message?.from ||
+        webhookData?.from?.phone ||
+        webhookData?.from?.id ||
+        null;
+
+      // Tentar extrair channelId do payload
+      const payloadChannelId =
+        webhookData?.data?.channelId ||
+        webhookData?.data?.channel?.id ||
+        webhookData?.channelId ||
+        null;
+
+      console.log(`[WEBHOOK] Payload info - Phone: ${payloadPhone || 'não encontrado'}, ChannelId: ${payloadChannelId || 'não encontrado'}`);
+
+      // Buscar por channelId do payload
+      if (payloadChannelId) {
+        console.log(`[WEBHOOK] 🔍 Tentando buscar por channelId do payload: ${payloadChannelId}`);
+        connection = await storage.getWhatsAppConnectionByChannelId(payloadChannelId);
+        if (connection) {
+          companyId = connection.companyId;
+          channelId = payloadChannelId;
+          console.log(`[WEBHOOK] ✅ Conexão encontrada por channelId do payload: ${connection.id} (Empresa: ${companyId})`);
+        }
+      }
+
+      // Buscar por número de telefone do WhatsApp
+      if (!connection && payloadPhone) {
+        console.log(`[WEBHOOK] 🔍 Tentando buscar por número do WhatsApp: ${payloadPhone}`);
+        const allConnections = await storage.getAllWhatsAppConnectionsGlobal();
+
+        // Normalizar número para comparação (remover caracteres especiais)
+        const normalizedPayloadPhone = payloadPhone.replace(/[^\d]/g, '');
+
+        connection = allConnections.find(c => {
+          if (!c.phone) return false;
+          const normalizedConnectionPhone = c.phone.replace(/[^\d]/g, '');
+          return normalizedConnectionPhone === normalizedPayloadPhone;
+        });
+
+        if (connection) {
+          companyId = connection.companyId;
+          channelId = connection.whapiChannelId;
+          console.log(`[WEBHOOK] ✅ Conexão encontrada por número WhatsApp: ${connection.id} (Empresa: ${companyId}, Phone: ${connection.phone})`);
+        }
+      }
+    }
+
+    // Se não encontrou a conexão, logar como WARNING (não erro crítico)
+    if (!connection) {
+      console.warn(`[WEBHOOK] ⚠️ WARNING: Conexão não identificada!`);
+      console.warn(`[WEBHOOK] ⚠️ channelId (query): ${channelId || 'NÃO FORNECIDO'}`);
+      console.warn(`[WEBHOOK] ⚠️ channelToken (header): ${channelToken ? 'FORNECIDO' : 'NÃO FORNECIDO'}`);
+      console.warn(`[WEBHOOK] ⚠️ Tipo de evento: ${webhookData.event || webhookData.type || 'DESCONHECIDO'}`);
+      console.warn(`[WEBHOOK] ⚠️ Payload completo para análise:`, JSON.stringify(webhookData, null, 2));
+      console.warn(`[WEBHOOK] ⚠️ Webhook ignorado - não foi possível identificar o canal após 3 métodos de busca`);
+
+      // Não processar, mas não tratar como erro crítico
+      // Pode ser webhook de teste, health check, ou evento não crítico
+      return;
+    }
+
     console.log('[WEBHOOK] Iniciando processamento de evento:', {
       event: webhookData.event,
       type: webhookData.type,
+      channelId: channelId || 'NÃO FORNECIDO',
+      companyId: companyId || 'NÃO IDENTIFICADO',
       hasData: !!webhookData.data,
       hasMessage: !!webhookData.data?.message,
       hasMessages: !!webhookData.data?.messages,
@@ -1160,12 +1371,12 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
     if (webhookData.event === 'messages.new' && webhookData.data?.message) {
       console.log('[WEBHOOK] Processando evento: messages.new');
       console.log('[WEBHOOK] Dados da mensagem:', JSON.stringify(webhookData.data.message, null, 2));
-      await processIncomingMessageDirect(webhookData.data.message, ioToUse);
+      await processIncomingMessageDirect(webhookData.data.message, ioToUse, companyId);
     }
     else if (webhookData.event === 'messages.upsert' && webhookData.data?.messages) {
       console.log('[WEBHOOK] Processando evento: messages.upsert');
       for (const message of webhookData.data.messages) {
-        await processIncomingMessageDirect(message, ioToUse);
+        await processIncomingMessageDirect(message, ioToUse, companyId);
       }
     }
     else if (webhookData.event === 'messages.edit' && webhookData.data?.message) {
@@ -1265,7 +1476,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
     else if (webhookData.event?.type === 'messages' && webhookData.messages && Array.isArray(webhookData.messages)) {
       console.log('[WEBHOOK] Processando formato novo Whapi.cloud (messages array)...');
       for (const message of webhookData.messages) {
-        await processIncomingMessageDirect(message, ioToUse);
+        await processIncomingMessageDirect(message, ioToUse, companyId);
       }
     }
     // Novo formato Whapi.cloud: {event: {type, event}, statuses: [...]}
@@ -1278,16 +1489,16 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
     // Formatos legados para compatibilidade
     else if (webhookData.type === 'message' && webhookData.data) {
       console.log('[WEBHOOK] Processando formato legado (message)...');
-      await processIncomingMessage(webhookData.data, ioToUse);
+      await processIncomingMessage(webhookData.data, ioToUse, companyId);
     }
     else if (webhookData.from && webhookData.text) {
       console.log('[WEBHOOK] Processando formato legado (direto)...');
-      await processIncomingMessageDirect(webhookData, ioToUse);
+      await processIncomingMessageDirect(webhookData, ioToUse, companyId);
     }
     else if (webhookData.messages && Array.isArray(webhookData.messages)) {
       console.log('[WEBHOOK] Processando formato legado (array)...');
       for (const message of webhookData.messages) {
-        await processIncomingMessageDirect(message, ioToUse);
+        await processIncomingMessageDirect(message, ioToUse, companyId);
       }
     }
     
@@ -1305,11 +1516,12 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
   };
 
   // Função para processar mensagens recebidas diretamente (webhook)
-  const processIncomingMessageDirect = async (messageData: any, ioParam?: any) => {
+  const processIncomingMessageDirect = async (messageData: any, ioParam?: any, providedCompanyId?: string | null) => {
     const webhookStartTime = Date.now();
     console.log(`[WEBHOOK] Iniciado em: ${new Date().toISOString()}`);
     console.log('[WEBHOOK] TESTE LOG SIMPLES');
-    
+    console.log(`[WEBHOOK] Company ID fornecido: ${providedCompanyId || 'NÃO FORNECIDO'}`);
+
     try {
       console.log('[WEBHOOK] Processando mensagem direta:', messageData);
       console.log('[WEBHOOK] io disponível:', ioParam ? 'SIM' : 'NÃO');
@@ -1380,28 +1592,51 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       
       console.log('[WEBHOOK] Telefone normalizado:', { from, contactPhone, formattedPhone });
       
+      // CRITICAL: Verificar se temos companyId do webhook
+      if (!providedCompanyId) {
+        console.error('[WEBHOOK] ❌ ERRO CRÍTICO: companyId não fornecido!');
+        console.error('[WEBHOOK] ❌ Webhook deve incluir channelId no query parameter');
+        console.error('[WEBHOOK] ❌ Não é possível processar mensagem sem identificar empresa');
+        console.error('[WEBHOOK] From:', from, 'To:', to);
+        return;
+      }
+
       // Detectar conexão:
-      // 1. Tentar pelo número "to" se estiver disponível
-      // 2. Se não, buscar pela companhia ativa (único canal conectado)
+      // 1. Tentar pelo número "to" se estiver disponível (e validar que pertence à empresa)
+      // 2. Se não, buscar pela primeira conexão ativa DA EMPRESA
       let activeConnection;
-      
+
       if (to) {
         const normalizedToPhone = normalizePhoneForSearch(to);
         activeConnection = await storage.getWhatsAppConnectionByPhone(normalizedToPhone);
         console.log('[WEBHOOK] Buscando conexão por número TO:', normalizedToPhone, activeConnection ? 'ENCONTRADA' : 'NÃO ENCONTRADA');
+
+        // SECURITY: Validar que a conexão pertence à empresa correta
+        if (activeConnection && activeConnection.companyId !== providedCompanyId) {
+          console.error('[WEBHOOK] ❌ ERRO DE SEGURANÇA: Conexão pertence a outra empresa!');
+          console.error('[WEBHOOK] ❌ Conexão:', activeConnection.companyId, 'vs Esperado:', providedCompanyId);
+          activeConnection = null; // Anular conexão inválida
+        }
       }
-      
-      // Se não encontrou pelo "to", buscar pela primeira conexão ativa da empresa
+
+      // Se não encontrou pelo "to", buscar pela primeira conexão ativa DA EMPRESA
       if (!activeConnection) {
-        // Buscar todas as conexões ativas e pegar a primeira (assumindo uma empresa com um canal)
-        const allConnections = await storage.getAllWhatsAppConnections();
-        activeConnection = allConnections.find(c => c.status === 'connected' && c.whapiToken);
-        console.log('[WEBHOOK] Buscando conexão ativa global:', activeConnection ? 'ENCONTRADA' : 'NÃO ENCONTRADA');
+        console.log(`[WEBHOOK] Buscando conexão ativa da empresa: ${providedCompanyId}`);
+        const companyConnections = await storage.getWhatsAppConnectionsByCompany(providedCompanyId);
+        activeConnection = companyConnections.find(c => c.status === 'connected' && c.whapiToken);
+        console.log('[WEBHOOK] Buscando conexão ativa da empresa:', activeConnection ? 'ENCONTRADA' : 'NÃO ENCONTRADA');
+        if (activeConnection) {
+          console.log('[WEBHOOK] ✅ Conexão da empresa encontrada:', {
+            id: activeConnection.id,
+            phone: activeConnection.phone,
+            companyId: activeConnection.companyId
+          });
+        }
       }
-      
+
       if (!activeConnection) {
-        console.log('[WEBHOOK] ⚠️ Nenhuma conexão ativa encontrada');
-        console.log('[WEBHOOK] From:', from, 'To:', to);
+        console.error(`[WEBHOOK] ❌ Nenhuma conexão ativa encontrada para empresa: ${providedCompanyId}`);
+        console.error('[WEBHOOK] From:', from, 'To:', to);
         return;
       }
       
@@ -1849,12 +2084,136 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
   };
 
   // Processar status do canal
-  const processChannelStatus = async (statusData: any, io?: any) => {
+  const processChannelStatus = async (statusData: any, ioParam?: any) => {
     try {
-      console.log('[WEBHOOK] Processando status do canal:', statusData);
-      // TODO: Implementar lógica de status do canal
+      console.log('[WEBHOOK] 📊 Processando status do canal:', JSON.stringify(statusData, null, 2));
+
+      // Extrair channelId do statusData
+      // A estrutura pode variar, então vamos tentar múltiplas possibilidades
+      const channelId = statusData.channelId || statusData.channel_id || statusData.id;
+      const status = statusData.status || statusData.state;
+
+      if (!channelId) {
+        console.warn('[WEBHOOK] ⚠️ channelId não encontrado no statusData');
+        return;
+      }
+
+      console.log(`[WEBHOOK] 🔍 Buscando conexão com channelId: ${channelId}, status: ${status}`);
+
+      // Buscar conexão pelo channelId
+      const connection = await storage.getWhatsAppConnectionByChannelId(channelId);
+
+      if (!connection) {
+        console.warn(`[WEBHOOK] ⚠️ Conexão não encontrada para channelId: ${channelId}`);
+        return;
+      }
+
+      console.log(`[WEBHOOK] ✅ Conexão encontrada: ${connection.id} (${connection.name})`);
+
+      // Determinar se está conectado
+      const isConnected = status === 'AUTHORIZED' || status === 'CONNECTED' || status === 'authenticated';
+      const isDisconnected = status === 'DISCONNECTED' || status === 'TIMEOUT' || status === 'disconnected';
+
+      let newStatus: 'connected' | 'disconnected' | 'qr_ready' = connection.status as any;
+
+      if (isConnected) {
+        newStatus = 'connected';
+        console.log(`[WEBHOOK] 🟢 Canal CONECTADO`);
+
+        // Buscar informações detalhadas da conexão
+        try {
+          if (connection.whapiToken) {
+            const connectionStatus = await whapiService.getConnectionStatus(connection.whapiToken);
+
+            // Atualizar no banco com todos os dados
+            await storage.updateWhatsAppConnection(connection.id, {
+              status: 'connected',
+              phone: connectionStatus.phone,
+              name: connectionStatus.name,
+              profilePictureUrl: connectionStatus.profilePictureUrl,
+              lastSeen: connectionStatus.lastSeen ? new Date(connectionStatus.lastSeen) : undefined
+            });
+
+            // Notificar via WebSocket (evento connectionUpdate - mantém compatibilidade)
+            notifyStatusUpdate(
+              connection.companyId,
+              channelId,
+              true,
+              {
+                phone: connectionStatus.phone,
+                name: connectionStatus.name,
+                profilePictureUrl: connectionStatus.profilePictureUrl,
+                lastSeen: connectionStatus.lastSeen
+              }
+            );
+
+            // Notificar via whatsappStatusUpdate com connection.id para atualizar dialog
+            const ioToUse = io || ioParam;
+            if (ioToUse) {
+              ioToUse.to(`company_${connection.companyId}`).emit('whatsappStatusUpdate', {
+                connectionId: connection.id,  // UUID do banco
+                status: 'connected',
+                connectionData: {
+                  phone: connectionStatus.phone,
+                  name: connectionStatus.name,
+                  profilePictureUrl: connectionStatus.profilePictureUrl,
+                  lastSeen: connectionStatus.lastSeen
+                },
+                timestamp: new Date().toISOString()
+              });
+              console.log(`[WEBHOOK] 📢 Evento whatsappStatusUpdate enviado com connectionId: ${connection.id}`);
+            }
+
+            console.log(`[WEBHOOK] ✅ Status atualizado e notificação enviada`);
+          }
+        } catch (error: any) {
+          console.error('[WEBHOOK] ❌ Erro ao buscar detalhes da conexão:', error);
+          // Atualizar apenas o status sem detalhes
+          await storage.updateWhatsAppConnection(connection.id, { status: 'connected' });
+          notifyStatusUpdate(connection.companyId, channelId, true, {});
+
+          // Notificar via whatsappStatusUpdate mesmo sem detalhes
+          const ioToUse = io || ioParam;
+          if (ioToUse) {
+            ioToUse.to(`company_${connection.companyId}`).emit('whatsappStatusUpdate', {
+              connectionId: connection.id,
+              status: 'connected',
+              connectionData: {},
+              timestamp: new Date().toISOString()
+            });
+            console.log(`[WEBHOOK] 📢 Evento whatsappStatusUpdate enviado (sem detalhes) com connectionId: ${connection.id}`);
+          }
+        }
+      } else if (isDisconnected) {
+        newStatus = 'disconnected';
+        console.log(`[WEBHOOK] 🔴 Canal DESCONECTADO`);
+
+        await storage.updateWhatsAppConnection(connection.id, {
+          status: 'disconnected',
+          qrcode: undefined as any
+        });
+
+        notifyStatusUpdate(connection.companyId, channelId, false, {});
+
+        // Notificar via whatsappStatusUpdate para desconexão
+        const ioToUse = io || ioParam;
+        if (ioToUse) {
+          ioToUse.to(`company_${connection.companyId}`).emit('whatsappStatusUpdate', {
+            connectionId: connection.id,
+            status: 'disconnected',
+            connectionData: {},
+            timestamp: new Date().toISOString()
+          });
+          console.log(`[WEBHOOK] 📢 Evento whatsappStatusUpdate enviado (desconexão) com connectionId: ${connection.id}`);
+        }
+
+        console.log(`[WEBHOOK] ✅ Status atualizado para desconectado`);
+      } else {
+        console.log(`[WEBHOOK] ℹ️ Status não reconhecido ou não requer ação: ${status}`);
+      }
+
     } catch (error: any) {
-      console.error('[WEBHOOK] Erro ao processar status do canal:', error);
+      console.error('[WEBHOOK] ❌ Erro ao processar status do canal:', error);
     }
   };
 
@@ -1869,22 +2228,125 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
   };
 
   // Processar conexão de usuário
-  const processUserConnect = async (userData: any, io?: any) => {
+  const processUserConnect = async (userData: any, ioParam?: any) => {
     try {
-      console.log('[WEBHOOK] Processando conexão de usuário:', userData);
-      // TODO: Implementar lógica de conexão de usuário
+      console.log('[WEBHOOK] 📱 Processando conexão de usuário:', JSON.stringify(userData, null, 2));
+
+      // Extrair informações do usuário conectado
+      const phone = userData.phone || userData.number || userData.id;
+      const name = userData.name || userData.pushname;
+      const channelId = userData.channelId || userData.channel_id;
+
+      if (!phone && !channelId) {
+        console.warn('[WEBHOOK] ⚠️ Dados insuficientes para processar conexão de usuário');
+        return;
+      }
+
+      console.log(`[WEBHOOK] 🔍 Buscando conexão - Phone: ${phone}, ChannelId: ${channelId}`);
+
+      // Buscar todas as conexões para encontrar a correta
+      const allConnections = await storage.getAllWhatsAppConnectionsGlobal();
+
+      // Tentar encontrar por channelId primeiro, depois por status qr_ready mais recente
+      let connection = channelId
+        ? allConnections.find(c => c.whapiChannelId === channelId)
+        : allConnections
+            .filter(c => c.status === 'qr_ready')
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (!connection) {
+        console.warn(`[WEBHOOK] ⚠️ Conexão não encontrada para channelId: ${channelId}`);
+        return;
+      }
+
+      console.log(`[WEBHOOK] ✅ Conexão encontrada: ${connection.id} (${connection.name})`);
+
+      // Buscar informações detalhadas da conexão
+      let connectionData: any = { phone, name };
+
+      if (connection.whapiToken) {
+        try {
+          const status = await whapiService.getConnectionStatus(connection.whapiToken);
+          connectionData = {
+            phone: status.phone || phone,
+            name: status.name || name,
+            profilePictureUrl: status.profilePictureUrl,
+            lastSeen: status.lastSeen
+          };
+          console.log('[WEBHOOK] 📊 Status detalhado obtido:', connectionData);
+        } catch (statusError: any) {
+          console.warn('[WEBHOOK] ⚠️ Não foi possível obter status detalhado:', statusError.message);
+        }
+      }
+
+      // Atualizar no banco de dados
+      await storage.updateWhatsAppConnection(connection.id, {
+        status: 'connected',
+        phone: connectionData.phone,
+        name: connectionData.name,
+        profilePictureUrl: connectionData.profilePictureUrl,
+        lastSeen: connectionData.lastSeen ? new Date(connectionData.lastSeen) : undefined,
+        qrcode: undefined as any // Limpar QR Code
+      });
+
+      console.log(`[WEBHOOK] ✅ Conexão ${connection.id} atualizada para CONECTADA`);
+
+      // Notificar via WebSocket
+      const ioToUse = ioParam || io;
+      if (ioToUse && connection.whapiChannelId) {
+        notifyStatusUpdate(
+          connection.companyId,
+          connection.whapiChannelId,
+          true,
+          connectionData
+        );
+        console.log(`[WEBHOOK] 📢 Notificação WebSocket enviada para empresa ${connection.companyId}`);
+      }
+
     } catch (error: any) {
-      console.error('[WEBHOOK] Erro ao processar conexão de usuário:', error);
+      console.error('[WEBHOOK] ❌ Erro ao processar conexão de usuário:', error);
     }
   };
 
   // Processar desconexão de usuário
-  const processUserDisconnect = async (userData: any, io?: any) => {
+  const processUserDisconnect = async (userData: any, ioParam?: any) => {
     try {
-      console.log('[WEBHOOK] Processando desconexão de usuário:', userData);
-      // TODO: Implementar lógica de desconexão de usuário
+      console.log('[WEBHOOK] 📴 Processando desconexão de usuário:', JSON.stringify(userData, null, 2));
+
+      const channelId = userData.channelId || userData.channel_id;
+
+      if (!channelId) {
+        console.warn('[WEBHOOK] ⚠️ channelId não encontrado nos dados de desconexão');
+        return;
+      }
+
+      // Buscar conexão pelo channelId
+      const connection = await storage.getWhatsAppConnectionByChannelId(channelId);
+
+      if (!connection) {
+        console.warn(`[WEBHOOK] ⚠️ Conexão não encontrada para channelId: ${channelId}`);
+        return;
+      }
+
+      console.log(`[WEBHOOK] ✅ Conexão encontrada: ${connection.id} (${connection.name})`);
+
+      // Atualizar no banco de dados
+      await storage.updateWhatsAppConnection(connection.id, {
+        status: 'disconnected',
+        qrcode: undefined as any
+      });
+
+      console.log(`[WEBHOOK] ✅ Conexão ${connection.id} atualizada para DESCONECTADA`);
+
+      // Notificar via WebSocket
+      const ioToUse = ioParam || io;
+      if (ioToUse) {
+        notifyStatusUpdate(connection.companyId, channelId, false, {});
+        console.log(`[WEBHOOK] 📢 Notificação de desconexão enviada para empresa ${connection.companyId}`);
+      }
+
     } catch (error: any) {
-      console.error('[WEBHOOK] Erro ao processar desconexão de usuário:', error);
+      console.error('[WEBHOOK] ❌ Erro ao processar desconexão de usuário:', error);
     }
   };
 
@@ -1939,16 +2401,24 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
   };
 
   // Função para processar mensagens recebidas
-  const processIncomingMessage = async (messageData: any, io?: any) => {
+  const processIncomingMessage = async (messageData: any, io?: any, providedCompanyId?: string | null) => {
     try {
       console.log('[WhatsApp Routes] 📨 Processando mensagem recebida:', messageData);
+      console.log(`[WhatsApp Routes] Company ID fornecido: ${providedCompanyId || 'NÃO FORNECIDO'}`);
       console.log('[WhatsApp Routes] 🔍 Dados da mensagem:', {
         from: messageData.from,
         body: messageData.body,
         text: messageData.text,
         timestamp: messageData.timestamp
       });
-      
+
+      // CRITICAL: Verificar se temos companyId
+      if (!providedCompanyId) {
+        console.error('[WhatsApp Routes] ❌ ERRO CRÍTICO: companyId não fornecido!');
+        console.error('[WhatsApp Routes] ❌ Não é possível processar mensagem sem identificar empresa');
+        return;
+      }
+
       // Extrair dados da mensagem
       const {
         from: phone,
@@ -1961,37 +2431,37 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         mediaUrl,
         fileName
       } = messageData;
-      
+
       // Usar text.body se body não estiver disponível
       const messageContent = content || (textData && textData.body);
-      
+
       if (!phone || !messageContent) {
         console.log('[WhatsApp Routes] ⚠️ Mensagem sem phone ou content, ignorando');
         console.log('[WhatsApp Routes] 🔍 Debug:', { phone, messageContent, content, textData });
         return;
       }
-      
+
       // Normalizar número de telefone
       const { normalizePhoneForSearch, formatPhoneForDisplay } = await import('./utils/phone-normalizer');
       const normalizedPhone = normalizePhoneForSearch(phone);
       const formattedPhone = formatPhoneForDisplay(normalizedPhone);
       console.log(`[WhatsApp Routes] 📱 Processando mensagem de: ${normalizedPhone} (formatado: ${formattedPhone})`);
-      
-      // Buscar ou criar cliente
+
+      // Buscar ou criar cliente (usando companyId correto)
       let client = await storage.getClientByPhone(normalizedPhone);
           if (!client) {
-        console.log(`[WhatsApp Routes] 👤 Criando novo cliente para: ${normalizedPhone}`);
+        console.log(`[WhatsApp Routes] 👤 Criando novo cliente para: ${normalizedPhone} na empresa: ${providedCompanyId}`);
         client = await storage.createClient({
           name: `Cliente ${normalizedPhone}`,
           phone: normalizedPhone,
-          companyId: '59b4b086-9171-4dbf-8177-b7c6d6fd1e33' // ID da empresa padrão
+          companyId: providedCompanyId
         });
       }
-      
-      // Buscar conversa existente por cliente
-      const allConversations = await storage.getAllConversations();
-      let conversation = allConversations.find(c => 
-        c.clientId === client.id && 
+
+      // Buscar conversa existente por cliente E empresa
+      const companyConversations = await storage.getConversationsByCompany(providedCompanyId);
+      let conversation = companyConversations.find(c =>
+        c.clientId === client.id &&
         c.contactPhone === normalizedPhone
       );
 
@@ -1999,15 +2469,15 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
       if (!conversation || conversation.status === 'finished' || conversation.isFinished) {
         // SEMPRE criar nova conversa com novo protocolo quando finalizada
         console.log(`[WhatsApp Routes] 💬 Criando NOVA conversa (conversa anterior estava finalizada ou não existe) para cliente: ${client.id}`);
-        
+
         const { ProtocolGenerator } = await import('./utils/protocol-generator');
-        const protocolNumber = await ProtocolGenerator.generateSequentialProtocolNumber('59b4b086-9171-4dbf-8177-b7c6d6fd1e33', storage);
-        
+        const protocolNumber = await ProtocolGenerator.generateSequentialProtocolNumber(providedCompanyId, storage);
+
         conversation = await storage.createConversation({
           contactName: client.name || `Cliente ${normalizedPhone}`,
           contactPhone: formattedPhone, // Usar formato brasileiro +55 11 99999-9999
           clientId: client.id,
-          companyId: '59b4b086-9171-4dbf-8177-b7c6d6fd1e33',
+          companyId: providedCompanyId,
           status: 'waiting',
           protocolNumber: protocolNumber
         });
@@ -2250,19 +2720,27 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
 
   // Rota para buscar mensagens de uma conversa
   router.get('/conversations/:conversationId/messages', requireAuth, async (req, res) => {
+    const startTime = Date.now();
     try {
       const { conversationId } = req.params;
       const { companyId } = req.user!;
-      
-      console.log(`[WhatsApp Routes] Buscando mensagens para conversa: ${conversationId}`);
-      
+
+      // OTIMIZAÇÃO: Parâmetros de paginação
+      const limit = parseInt(req.query.limit as string) || 100; // Padrão 100 mensagens
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      console.log(`[WhatsApp Routes] ⏱️ INÍCIO - Buscando mensagens para conversa: ${conversationId} (limit: ${limit}, offset: ${offset})`);
+
       // Verificar se a conversa pertence à empresa
+      const t1 = Date.now();
       const conversation = await storage.getConversation(conversationId);
+      console.log(`[WhatsApp Routes] ⏱️ Buscar conversa: ${Date.now() - t1}ms`);
       if (!conversation || conversation.companyId !== companyId) {
         return res.status(404).json({ message: 'Conversa não encontrada' });
       }
-      
+
       // Buscar última sessão ativa (não finalizada)
+      const t2 = Date.now();
       const chatId = conversation.contactPhone + '@s.whatsapp.net';
       const activeSession = await db.select()
         .from(chatSessions)
@@ -2272,52 +2750,63 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         ))
         .orderBy(desc(chatSessions.createdAt))
         .limit(1);
+      console.log(`[WhatsApp Routes] ⏱️ Buscar sessão ativa: ${Date.now() - t2}ms`);
 
+      // Buscar mensagens
+      const t3 = Date.now();
       let conversationMessages;
       if (activeSession.length > 0) {
         // Retornar apenas mensagens da sessão ativa (após startedAt)
-        conversationMessages = await storage.getMessagesByConversation(conversationId, activeSession[0].startedAt || undefined);
-        console.log(`[WhatsApp Routes] Carregando mensagens da sessão ativa desde: ${activeSession[0].startedAt}`);
+        // OTIMIZAÇÃO: Buscar com limit e offset para melhor performance
+        conversationMessages = await storage.getMessagesByConversation(conversationId, activeSession[0].startedAt || undefined, limit, offset);
+        console.log(`[WhatsApp Routes] ⏱️ Buscar mensagens: ${Date.now() - t3}ms (${conversationMessages.length} mensagens da sessão ativa)`);
           } else {
-        // Se não há sessão ativa, retornar todas as mensagens (comportamento padrão)
-        conversationMessages = await storage.getMessagesByConversation(conversationId);
-        console.log(`[WhatsApp Routes] Nenhuma sessão ativa encontrada, carregando todas as mensagens`);
+        // Se não há sessão ativa, retornar mensagens com limite
+        // OTIMIZAÇÃO: Buscar com limit e offset para melhor performance
+        conversationMessages = await storage.getMessagesByConversation(conversationId, undefined, limit, offset);
+        console.log(`[WhatsApp Routes] ⏱️ Buscar mensagens: ${Date.now() - t3}ms (${conversationMessages.length} mensagens)`);
       }
 
       // Marcar mensagens incoming como lidas automaticamente
+      const t4 = Date.now();
       try {
         await db.update(messages)
-          .set({ 
-            status: 'read', 
-            isRead: true, 
-            readAt: new Date() 
+          .set({
+            status: 'read',
+            isRead: true,
+            readAt: new Date()
           })
           .where(and(
             eq(messages.conversationId, conversationId),
             eq(messages.direction, 'incoming'),
             eq(messages.isRead, false)
           ));
-        console.log(`[WhatsApp Routes] ✅ Mensagens incoming marcadas como lidas para conversa ${conversationId}`);
+        console.log(`[WhatsApp Routes] ⏱️ Marcar como lidas: ${Date.now() - t4}ms`);
       } catch (markError) {
         console.error(`[WhatsApp Routes] Erro ao marcar mensagens como lidas:`, markError);
         // Não falhar a requisição se houver erro na marcação
       }
 
-      // Buscar e atualizar foto de perfil do WhatsApp
-      try {
-        const profilePicUrl = await whapiService.getProfilePicture(conversation.contactPhone);
-        if (profilePicUrl) {
-          await storage.updateConversation(conversationId, { profilePictureUrl: profilePicUrl });
-          if (conversation.clientId) {
-            await storage.updateClient(conversation.clientId, { profilePictureUrl: profilePicUrl });
+      // OTIMIZAÇÃO: Buscar foto de perfil de forma assíncrona (não bloqueia resposta)
+      // Fire-and-forget - não aguarda a resposta
+      setImmediate(async () => {
+        try {
+          const profilePicUrl = await whapiService.getProfilePicture(conversation.contactPhone);
+          if (profilePicUrl) {
+            await storage.updateConversation(conversationId, { profilePictureUrl: profilePicUrl });
+            if (conversation.clientId) {
+              await storage.updateClient(conversation.clientId, { profilePictureUrl: profilePicUrl });
+            }
+            console.log(`[WhatsApp Routes] 📸 Foto de perfil atualizada em background para conversa ${conversationId}`);
           }
-          console.log(`[WhatsApp Routes] Foto de perfil atualizada para conversa ${conversationId}`);
-          }
-      } catch (error) {
-        console.warn(`[WhatsApp Routes] Erro ao atualizar foto de perfil:`, error);
-      }
+        } catch (error) {
+          console.warn(`[WhatsApp Routes] Erro ao atualizar foto de perfil em background:`, error);
+        }
+      });
 
       // Garantir que sempre retorna um array válido
+      const totalTime = Date.now() - startTime;
+      console.log(`[WhatsApp Routes] ⏱️ TOTAL: ${totalTime}ms`);
       res.json(Array.isArray(conversationMessages) ? conversationMessages : []);
     } catch (error: any) {
       console.error('[WhatsApp Routes] Erro ao buscar mensagens:', error);
@@ -2644,6 +3133,12 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
         
         // Notificar via WebSocket
           if (io) {
+          console.log(`📡 [WebSocket] Emitindo newMessage para company_${companyId}:`, {
+            messageId: message.id,
+            conversationId: conversationId,
+            content: messageContent,
+            direction: 'outgoing'
+          });
           io.to(`company_${companyId}`).emit('newMessage', {
             ...message,
             conversationId: conversationId,
@@ -2655,6 +3150,9 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
               direction: quotedMessage.direction
             } : null
           });
+          console.log(`✅ [WebSocket] Evento newMessage emitido com sucesso`);
+        } else {
+          console.error(`❌ [WebSocket] io não está disponível! Não foi possível emitir evento.`);
         }
         
         res.json({ success: true, message: 'Mensagem enviada com sucesso', data: message });
@@ -2828,40 +3326,7 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
     }
   });
 
-  // Rota para buscar mensagens de um chat específico
-  router.get('/conversations/:conversationId/messages', requireAuth, async (req, res) => {
-    try {
-      const { conversationId } = req.params;
-      const { limit = 50 } = req.query;
-      const { companyId } = req.user!;
-      
-      console.log(`[WhatsApp Routes] Buscando mensagens da conversa ${conversationId}`);
-      
-      // Verificar se a conversa pertence à empresa
-      const conversation = await storage.getConversation(conversationId);
-      if (!conversation || conversation.companyId !== companyId) {
-        return res.status(404).json({ message: 'Conversa não encontrada' });
-      }
-
-      // Buscar conexão WhatsApp ativa
-      const connections = await storage.getWhatsAppConnectionsByCompany(companyId);
-      const activeConnection = connections.find(c => c.status === 'connected' && c.whapiToken);
-      
-      if (!activeConnection) {
-        return res.status(400).json({ message: 'Nenhuma conexão WhatsApp ativa encontrada' });
-      }
-      
-      // Buscar mensagens via Whapi.Cloud
-      const chatId = `${conversation.contactPhone}@s.whatsapp.net`;
-      const result = await whapiService.getMessagesByChat(activeConnection.whapiToken!, chatId, Number(limit));
-      
-      res.json({ success: true, data: result });
-      
-    } catch (error: any) {
-      console.error('[WhatsApp Routes] Erro ao buscar mensagens:', error);
-      res.status(500).json({ message: 'Erro interno ao buscar mensagens' });
-    }
-  });
+  // ROTA DUPLICADA REMOVIDA - A rota de buscar mensagens já existe acima com otimizações
 
   // Rota para processar mensagens não processadas
   router.post('/process-messages', requireAuth, async (req, res) => {
@@ -2894,34 +3359,46 @@ router.post('/test/process-chat/:chatId', async (req, res) => {
     try {
       const { connectionId } = req.params;
       const { companyId } = req.user!;
-      
+
       console.log(`[WhatsApp Routes] Configurando webhook para conexão: ${connectionId}`);
-      
+
       // Buscar conexão
       const connection = await storage.getWhatsAppConnection(connectionId);
       if (!connection || connection.companyId !== companyId) {
         return res.status(404).json({ message: 'Conexão não encontrada' });
       }
-      
+
       if (!connection.whapiToken) {
         return res.status(400).json({ message: 'Token Whapi.Cloud não encontrado' });
       }
-      
-      // Configurar webhook
+
+      if (!connection.whapiChannelId) {
+        return res.status(400).json({ message: 'ID do canal Whapi.Cloud não encontrado' });
+      }
+
+      // Configurar webhook COM channelId
       const webhookUrl = `${process.env.MAIN_APP_URL}/api/whatsapp/webhook`;
-      await whapiService.configureChannelWebhook(connection.whapiToken, webhookUrl);
-      
-      res.json({ success: true, message: 'Webhook configurado com sucesso' });
+      console.log(`[WhatsApp Routes] 🔧 Reconfigurando webhook para incluir channelId: ${connection.whapiChannelId}`);
+      await whapiService.configureChannelWebhook(connection.whapiToken, webhookUrl, connection.whapiChannelId);
+
+      console.log(`[WhatsApp Routes] ✅ Webhook reconfigurado com sucesso!`);
+      console.log(`[WhatsApp Routes] URL do webhook: ${webhookUrl}?channelId=${connection.whapiChannelId}`);
+
+      res.json({
+        success: true,
+        message: 'Webhook reconfigurado com sucesso',
+        webhookUrl: `${webhookUrl}?channelId=${connection.whapiChannelId}`
+      });
     } catch (error: any) {
       console.error('[WhatsApp Routes] Erro ao configurar webhook:', error);
-      res.status(500).json({ message: 'Erro interno ao configurar webhook' });
+      res.status(500).json({ message: 'Erro interno ao configurar webhook', error: error.message });
     }
   });
 
   // Rota temporária para listar todas as conexões (para debug)
   router.get('/connections/debug', async (req, res) => {
     try {
-      const connections = await storage.getAllWhatsAppConnections();
+      const connections = await storage.getAllWhatsAppConnectionsGlobal();
       res.json({
         connections: connections.map(c => ({
           id: c.id,

@@ -5,22 +5,20 @@ import { useSettings } from '@/contexts/settings-context';
 import { useT } from '@/hooks/use-translation';
 import { useFeedbackNotifications } from '@/hooks/use-feedback-notifications';
 import { Button } from '@/components/ui/button';
-import { 
-  BarChart3, 
-  MessageCircle, 
-  List, 
-  Users, 
-  Bot, 
-  FileBarChart, 
+import {
+  LayoutDashboard,
+  MessageCircle,
+  ListChecks,
+  UserCircle,
+  Users,
+  Bot,
+  BarChart3,
   Settings,
   LogOut,
-  TrendingUp,
-  Building2,
-  AlertCircle,
-  MessageSquare,
+  Shield,
+  Smartphone,
   DollarSign,
   Bell,
-  MessageSquare,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -30,11 +28,11 @@ const getNavigationItems = (userRole: string) => {
     {
       sectionKey: 'navigation.main',
       items: [
-        { nameKey: 'navigation.dashboard', href: '/', icon: BarChart3 },
-        { nameKey: 'navigation.tickets', href: '/tickets', icon: AlertCircle },
+        { nameKey: 'navigation.dashboard', href: '/', icon: LayoutDashboard },
+        { nameKey: 'navigation.tickets', href: '/tickets', icon: ListChecks },
         { nameKey: 'navigation.conversations', href: '/conversations', icon: MessageCircle },
-        { nameKey: 'navigation.clients', href: '/clients', icon: Users },
-        { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: TrendingUp },
+        { nameKey: 'navigation.clients', href: '/clients', icon: UserCircle },
+        { nameKey: 'navigation.reports', href: '/enhanced-reports', icon: BarChart3 },
       ]
     },
     {
@@ -43,7 +41,7 @@ const getNavigationItems = (userRole: string) => {
         { nameKey: 'navigation.users', href: '/users', icon: Users, adminOnly: true },
         { nameKey: 'navigation.chatBot', href: '/ai-agent', icon: Bot },
         { nameKey: 'navigation.financeiro', href: '/financeiro', icon: DollarSign },
-        { nameKey: 'navigation.whatsappSettings', href: '/whatsapp-settings', icon: MessageSquare },
+        { nameKey: 'navigation.whatsappSettings', href: '/whatsapp-settings', icon: Smartphone },
         { nameKey: 'navigation.settings', href: '/settings', icon: Settings },
       ]
     }
@@ -55,7 +53,7 @@ const getNavigationItems = (userRole: string) => {
       sectionKey: 'navigation.administration',
       items: [
         { nameKey: 'navigation.announcements', href: '/announcements', icon: Bell, superadminOnly: true },
-        { nameKey: 'navigation.admin', href: '/admin', icon: Building2, superadminOnly: true },
+        { nameKey: 'navigation.admin', href: '/admin', icon: Shield, superadminOnly: true },
       ]
     });
   }
@@ -137,14 +135,20 @@ export default function Sidebar() {
                     key={item.nameKey}
                     href={item.href}
                     className={`flex items-center justify-between px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200 group ${
-                      isActive 
-                        ? 'active bg-sidebar-primary text-sidebar-primary-foreground shadow-sm' 
+                      isActive
+                        ? 'active bg-sidebar-primary text-sidebar-primary-foreground shadow-sm'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:translate-x-1'
                     }`}
                     data-testid={`link-${(itemName || '').toLowerCase().replace(/\s+/g, '-')}`}
                   >
                     <div className="flex items-center">
-                      <Icon className={`mr-3 w-5 h-5 transition-transform ${isActive ? 'scale-110' : 'group-hover:scale-105'}`} />
+                      <div className={`p-1.5 rounded-lg mr-3 transition-all duration-200 ${
+                        isActive
+                          ? 'bg-sidebar-primary-foreground/20'
+                          : 'bg-sidebar-accent/50 group-hover:bg-sidebar-accent group-hover:scale-110'
+                      }`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
                       {itemName}
                     </div>
                     {item.href === '/feedback' && shouldShowNotifications && pendingCount > 0 && (
@@ -176,21 +180,25 @@ export default function Sidebar() {
               })
               .map((item) => {
                 const Icon = item.icon;
-                const isActive = location === item.href || 
+                const isActive = location === item.href ||
                   (item.href !== '/' && location.startsWith(item.href));
-                
+
                 return (
                   <Link
                     key={item.nameKey}
                     href={item.href}
-                    className={`flex items-center justify-center p-3 rounded-lg transition-all ${
-                      isActive 
-                        ? 'bg-sidebar-primary text-sidebar-primary-foreground' 
+                    className={`group flex items-center justify-center p-3 rounded-lg transition-all duration-200 ${
+                      isActive
+                        ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-sm'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent'
                     }`}
                     title={t(item.nameKey)}
                   >
-                    <Icon className="w-5 h-5" />
+                    <div className={`transition-all duration-200 ${
+                      isActive ? '' : 'group-hover:scale-110'
+                    }`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
                   </Link>
                 );
               })

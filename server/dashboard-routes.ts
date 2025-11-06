@@ -1,8 +1,9 @@
 import { Express } from 'express';
 import { requireAuth } from './auth';
 import { storage } from './storage';
-import { and, eq, or, gte, desc, lt } from 'drizzle-orm';
-import { conversations, users, queues } from '@shared/schema';
+import { db } from './db';
+import { and, eq, or, gte, desc, lt, count, avg, sql, inArray } from 'drizzle-orm';
+import { conversations, users, queues, messages, userCompanies } from '@shared/schema';
 
 /**
  * Rotas do Dashboard para métricas em tempo real
@@ -20,37 +21,51 @@ export function setupDashboardRoutes(app: Express) {
       console.log(`[Dashboard Routes] Buscando métricas para empresa: ${companyId}`);
       
       // 1. Conversas Abertas (waiting + in_progress)
-      const conversasAbertas = await storage.db.query.conversations.count({
-        where: and(
+      const conversasAbertasResult = await db.select({ count: count() })
+        .from(conversations)
+        .where(and(
           eq(conversations.companyId, companyId),
           or(
             eq(conversations.status, 'waiting'),
             eq(conversations.status, 'in_progress')
           )
-        )
-      });
-      
+        ));
+      const conversasAbertas = conversasAbertasResult[0]?.count || 0;
+
       // 2. Usuários Online
-      const usuariosOnline = await storage.db.query.users.count({
-        where: and(
-          eq(users.companyId, companyId),
-          eq(users.isOnline, true)
-        )
-      });
-      
+      // Primeiro, buscar IDs dos usuários da empresa
+      const companyUserIds = await db
+        .select({ userId: userCompanies.userId })
+        .from(userCompanies)
+        .where(eq(userCompanies.companyId, companyId));
+
+      const userIds = companyUserIds.map(u => u.userId);
+
+      // Agora contar usuários online
+      const usuariosOnlineResult = userIds.length > 0
+        ? await db.select({ count: count() })
+            .from(users)
+            .where(and(
+              inArray(users.id, userIds),
+              eq(users.isOnline, true)
+            ))
+        : [{ count: 0 }];
+      const usuariosOnline = usuariosOnlineResult[0]?.count || 0;
+
       // 3. Tempo Médio de Espera
       const tempoMedioEspera = await calcularTempoMedioEspera(companyId);
-      
+
       // 4. Finalizadas Hoje
       const hoje = new Date();
       hoje.setHours(0, 0, 0, 0);
-      const finalizadasHoje = await storage.db.query.conversations.count({
-        where: and(
+      const finalizadasHojeResult = await db.select({ count: count() })
+        .from(conversations)
+        .where(and(
           eq(conversations.companyId, companyId),
           eq(conversations.status, 'completed'),
           gte(conversations.updatedAt, hoje)
-        )
-      });
+        ));
+      const finalizadasHoje = finalizadasHojeResult[0]?.count || 0;
       
       const metrics = {
         conversasAbertas,
@@ -85,9 +100,9 @@ export function setupDashboardRoutes(app: Express) {
       const { companyId } = req.user;
       
       console.log(`[Dashboard Routes] Buscando atividade recente para empresa: ${companyId}`);
-      
+
       // Buscar conversas recentes com informações do agente
-      const recentActivity = await storage.db.query.conversations.findMany({
+      const recentActivity = await db.query.conversations.findMany({
         where: eq(conversations.companyId, companyId),
         with: {
           assignedAgent: {
@@ -195,31 +210,34 @@ export function setupDashboardRoutes(app: Express) {
       });
       
       const queueVolume = await Promise.all(queues.map(async (queue) => {
-        const totalTickets = await storage.db.query.conversations.count({
-          where: and(
+        const totalTicketsResult = await db.select({ count: count() })
+          .from(conversations)
+          .where(and(
             eq(conversations.companyId, companyId),
             eq(conversations.queueId, queue.id)
-          )
-        });
-        
-        const resolvedTickets = await storage.db.query.conversations.count({
-          where: and(
+          ));
+        const totalTickets = totalTicketsResult[0]?.count || 0;
+
+        const resolvedTicketsResult = await db.select({ count: count() })
+          .from(conversations)
+          .where(and(
             eq(conversations.companyId, companyId),
             eq(conversations.queueId, queue.id),
             eq(conversations.status, 'completed')
-          )
-        });
-        
-        const pendingTickets = await storage.db.query.conversations.count({
-          where: and(
+          ));
+        const resolvedTickets = resolvedTicketsResult[0]?.count || 0;
+
+        const pendingTicketsResult = await db.select({ count: count() })
+          .from(conversations)
+          .where(and(
             eq(conversations.companyId, companyId),
             eq(conversations.queueId, queue.id),
             or(
               eq(conversations.status, 'waiting'),
               eq(conversations.status, 'in_progress')
             )
-          )
-        });
+          ));
+        const pendingTickets = pendingTicketsResult[0]?.count || 0;
         
         return {
           queueName: queue.name,
@@ -267,20 +285,22 @@ export function setupDashboardRoutes(app: Express) {
       });
       
       const agentPerformance = await Promise.all(agents.map(async (agent) => {
-        const totalTickets = await storage.db.query.conversations.count({
-          where: and(
+        const totalTicketsResult = await db.select({ count: count() })
+          .from(conversations)
+          .where(and(
             eq(conversations.companyId, companyId),
             eq(conversations.assignedAgentId, agent.id)
-          )
-        });
-        
-        const resolvedTickets = await storage.db.query.conversations.count({
-          where: and(
+          ));
+        const totalTickets = totalTicketsResult[0]?.count || 0;
+
+        const resolvedTicketsResult = await db.select({ count: count() })
+          .from(conversations)
+          .where(and(
             eq(conversations.companyId, companyId),
             eq(conversations.assignedAgentId, agent.id),
             eq(conversations.status, 'completed')
-          )
-        });
+          ));
+        const resolvedTickets = resolvedTicketsResult[0]?.count || 0;
         
         // Calcular tempo médio de resposta (simplificado)
         const avgResponseTime = await calcularTempoMedioResposta(agent.id, companyId);
@@ -315,36 +335,37 @@ export function setupDashboardRoutes(app: Express) {
   app.get('/api/dashboard/weekly-performance', requireAuth, async (req, res) => {
     try {
       const { companyId } = req.user;
-      
+
       console.log(`[Dashboard Routes] Buscando performance semanal para empresa: ${companyId}`);
-      
+
       // Calcular performance dos últimos 7 dias
       const weeklyData = [];
       const today = new Date();
-      
+
       for (let i = 6; i >= 0; i--) {
         const date = new Date(today);
         date.setDate(date.getDate() - i);
         date.setHours(0, 0, 0, 0);
-        
+
         const nextDay = new Date(date);
         nextDay.setDate(nextDay.getDate() + 1);
-        
-        const completedTickets = await storage.db.query.conversations.count({
-          where: and(
+
+        const completedTicketsResult = await db.select({ count: count() })
+          .from(conversations)
+          .where(and(
             eq(conversations.companyId, companyId),
             eq(conversations.status, 'completed'),
             gte(conversations.updatedAt, date),
             lt(conversations.updatedAt, nextDay)
-          )
-        });
-        
+          ));
+        const completedTickets = completedTicketsResult[0]?.count || 0;
+
         weeklyData.push({
           date: date.toISOString().split('T')[0],
           completed: completedTickets
         });
       }
-      
+
       res.json({
         success: true,
         data: {
@@ -352,13 +373,93 @@ export function setupDashboardRoutes(app: Express) {
           data: weeklyData.map(d => d.completed)
         }
       });
-      
+
     } catch (error) {
       console.error('[Dashboard Routes] Erro ao buscar performance semanal:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
         message: 'Erro interno ao buscar performance semanal',
-        error: error.message 
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * GET /api/dashboard/charts
+   * Agregar dados de todos os gráficos em uma única chamada
+   */
+  app.get('/api/dashboard/charts', requireAuth, async (req, res) => {
+    try {
+      const { companyId } = req.user;
+
+      console.log(`[Dashboard Routes] Buscando dados agregados de gráficos para empresa: ${companyId}`);
+
+      // 1. Queue Volume Data
+      const filas = await storage.db.query.queues.findMany({
+        where: eq(queues.companyId, companyId),
+        columns: {
+          id: true,
+          name: true
+        }
+      });
+
+      const queueVolumeData = await Promise.all(
+        filas.map(async (fila) => {
+          const count = await storage.db.query.conversations.count({
+            where: and(
+              eq(conversations.companyId, companyId),
+              eq(conversations.queueId, fila.id)
+            )
+          });
+
+          return {
+            name: fila.name,
+            count
+          };
+        })
+      );
+
+      // 2. Weekly Performance Data
+      const weeklyData = [];
+      const today = new Date();
+
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0);
+
+        const nextDay = new Date(date);
+        nextDay.setDate(nextDay.getDate() + 1);
+
+        const completedTicketsResult = await db.select({ count: count() })
+          .from(conversations)
+          .where(and(
+            eq(conversations.companyId, companyId),
+            eq(conversations.status, 'completed'),
+            gte(conversations.updatedAt, date),
+            lt(conversations.updatedAt, nextDay)
+          ));
+        const completedTickets = completedTicketsResult[0]?.count || 0;
+
+        weeklyData.push({
+          date: date.toISOString().split('T')[0],
+          completed: completedTickets
+        });
+      }
+
+      res.json({
+        queueVolume: queueVolumeData.map(q => q.count),
+        queueLabels: queueVolumeData.map(q => q.name),
+        weeklyPerformance: weeklyData.map(d => d.completed),
+        weeklyLabels: weeklyData.map(d => formatDate(d.date))
+      });
+
+    } catch (error) {
+      console.error('[Dashboard Routes] Erro ao buscar dados agregados:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro ao buscar dados de gráficos',
+        error: error.message
       });
     }
   });

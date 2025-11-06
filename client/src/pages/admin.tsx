@@ -38,13 +38,18 @@ import { CompanyChannelsModal } from '@/components/modals/CompanyChannelsModal';
 
 // Form schemas
 const companySchema = z.object({
-  name: z.string().min(2, "Company name must be at least 2 characters"),
-  email: z.string().email("Invalid email address"),
-  phone: z.string().optional(),
-  document: z.string().optional(),
-  maxUsers: z.number().min(1, "Must allow at least 1 user").default(5),
-  maxQueues: z.number().min(1, "Must allow at least 1 queue").default(3),
-  status: z.enum(["active", "suspended", "canceled", "trial"]).default("trial"),
+  name: z.string().min(2, "Nome da empresa deve ter pelo menos 2 caracteres"),
+  contactName: z.string().min(2, "Nome do responsável deve ter pelo menos 2 caracteres"),
+  contactEmail: z.string().email("Email inválido"),
+  document: z.string().min(11, "CNPJ/CPF deve ter pelo menos 11 caracteres"),
+  phone: z.string().min(10, "Telefone inválido"),
+  subscriptionPlan: z.enum(["basic", "professional", "enterprise"], {
+    errorMap: () => ({ message: "Selecione um plano válido" })
+  }),
+  email: z.string().email("Email inválido").optional(),
+  maxUsers: z.number().min(1, "Deve permitir pelo menos 1 usuário").default(5),
+  maxQueues: z.number().min(1, "Deve permitir pelo menos 1 fila").default(3),
+  status: z.enum(["active", "suspended", "canceled", "trial", "pending"]).default("pending"),
 });
 
 const userSchema = z.object({
@@ -108,12 +113,15 @@ export default function AdminPanel() {
     resolver: zodResolver(companySchema),
     defaultValues: {
       name: '',
-      email: '',
-      phone: '',
+      contactName: '',
+      contactEmail: '',
       document: '',
+      phone: '',
+      subscriptionPlan: 'basic' as const,
+      email: '',
       maxUsers: 5,
       maxQueues: 3,
-      status: 'trial',
+      status: 'pending' as const,
     },
   });
 
@@ -158,7 +166,10 @@ export default function AdminPanel() {
   // Create user mutation
   const userMutation = useMutation({
     mutationFn: async (data: UserForm) => {
-      return await apiRequest('POST', '/api/users', { ...data, companyId: selectedCompany?.id });
+      if (!selectedCompany?.id) {
+        throw new Error('No company selected');
+      }
+      return await apiRequest('POST', `/api/admin/companies/${selectedCompany.id}/users`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ 
@@ -201,6 +212,26 @@ export default function AdminPanel() {
     },
   });
 
+  // Resend invite mutation
+  const resendInviteMutation = useMutation({
+    mutationFn: async (companyId: string) => {
+      return await apiRequest('POST', `/api/admin/companies/${companyId}/resend-invite`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Convite reenviado",
+        description: "Um novo email de convite foi enviado ao responsável",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Erro ao reenviar convite",
+        description: error.message || "Não foi possível reenviar o convite",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleCreateCompany = () => {
     setEditingCompany(null);
     companyForm.reset();
@@ -211,12 +242,15 @@ export default function AdminPanel() {
     setEditingCompany(company);
     companyForm.reset({
       name: company.name,
-      email: company.email,
-      phone: company.phone || '',
+      contactName: company.contactName || '',
+      contactEmail: company.contactEmail || company.email || '',
       document: company.document || '',
+      phone: company.phone || '',
+      subscriptionPlan: (company.subscriptionPlan || 'basic') as 'basic' | 'professional' | 'enterprise',
+      email: company.email,
       maxUsers: company.maxUsers || 5,
       maxQueues: company.maxQueues || 3,
-      status: company.status,
+      status: company.status as 'active' | 'suspended' | 'canceled' | 'trial' | 'pending',
     });
     setShowCompanyModal(true);
   };
@@ -243,13 +277,26 @@ export default function AdminPanel() {
     setShowChannelsModal(true);
   };
 
-  const getStatusColor = (status: string) => {
+  const handleResendInvite = (company: Company) => {
+    if (confirm(`Reenviar convite de acesso para ${company.contactName || company.name}?`)) {
+      resendInviteMutation.mutate(company.id);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'active': return 'bg-green-500';
-      case 'trial': return 'bg-blue-500';
-      case 'suspended': return 'bg-yellow-500';
-      case 'canceled': return 'bg-red-500';
-      default: return 'bg-gray-500';
+      case 'active':
+        return <Badge className="bg-green-500">Ativa</Badge>;
+      case 'trial':
+        return <Badge className="bg-blue-500">Teste</Badge>;
+      case 'pending':
+        return <Badge className="bg-orange-500">Aguardando Convite</Badge>;
+      case 'suspended':
+        return <Badge className="bg-yellow-500">Suspensa</Badge>;
+      case 'canceled':
+        return <Badge className="bg-red-500">Cancelada</Badge>;
+      default:
+        return <Badge className="bg-gray-500">{status}</Badge>;
     }
   };
 
@@ -408,12 +455,27 @@ export default function AdminPanel() {
                 {/* Informações da Empresa */}
                 <div className="flex items-center space-x-6 flex-1">
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-medium text-gray-900 truncate">{company.name}</h3>
-                    <p className="text-sm text-gray-500 truncate">{company.email}</p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-medium text-gray-900 truncate">{company.name}</h3>
+                      {getStatusBadge(company.status)}
+                    </div>
+                    <p className="text-sm text-gray-500 truncate">{company.contactEmail || company.email}</p>
+                    {company.contactName && (
+                      <p className="text-xs text-gray-400 truncate">Responsável: {company.contactName}</p>
+                    )}
                   </div>
-                  
+
                   {/* Estatísticas */}
                   <div className="flex items-center space-x-6 text-sm">
+                    <div className="text-center">
+                      <p className="text-xs text-gray-500">Plano</p>
+                      <p className="font-semibold text-xs">{
+                        company.subscriptionPlan === 'basic' ? 'Básico' :
+                        company.subscriptionPlan === 'professional' ? 'Profissional' :
+                        company.subscriptionPlan === 'enterprise' ? 'Enterprise' :
+                        'N/A'
+                      }</p>
+                    </div>
                     <div className="text-center">
                       <p className="text-xs text-gray-500">Usuários</p>
                       <p className="font-semibold">{company.userCount || 0}/{company.maxUsers}</p>
@@ -432,6 +494,26 @@ export default function AdminPanel() {
                 {/* Botões de Ação */}
                 <div className="flex items-center space-x-2">
                   <TooltipProvider>
+                    {company.status === 'pending' && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handleResendInvite(company)}
+                            disabled={resendInviteMutation.isPending}
+                            className="bg-orange-500 hover:bg-orange-600"
+                            data-testid={`button-resend-invite-${company.id}`}
+                          >
+                            <Mail className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Reenviar Convite</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -536,18 +618,44 @@ export default function AdminPanel() {
 
           <Form {...companyForm}>
             <form onSubmit={companyForm.handleSubmit((data) => companyMutation.mutate(data))} className="space-y-4">
+              {!editingCompany && (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
+                  <p className="text-sm text-blue-800">
+                    Um email de convite será enviado para o responsável após a criação da empresa.
+                  </p>
+                </div>
+              )}
+
+              <FormField
+                control={companyForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome da Empresa *</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Acme Corp"
+                        {...field}
+                        data-testid="input-company-name"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={companyForm.control}
-                  name="name"
+                  name="contactName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Nome da Empresa</FormLabel>
+                      <FormLabel>Nome do Responsável *</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="Acme Corp" 
-                          {...field} 
-                          data-testid="input-company-name"
+                        <Input
+                          placeholder="João Silva"
+                          {...field}
+                          data-testid="input-contact-name"
                         />
                       </FormControl>
                       <FormMessage />
@@ -557,18 +665,21 @@ export default function AdminPanel() {
 
                 <FormField
                   control={companyForm.control}
-                  name="email"
+                  name="contactEmail"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>E-mail da Empresa</FormLabel>
+                      <FormLabel>Email do Responsável *</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="contato@acme.com" 
-                          type="email" 
-                          {...field} 
-                          data-testid="input-company-email"
+                        <Input
+                          placeholder="joao@acme.com"
+                          type="email"
+                          {...field}
+                          data-testid="input-contact-email"
                         />
                       </FormControl>
+                      <FormDescription className="text-xs">
+                        {!editingCompany && "O convite será enviado para este email"}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -578,15 +689,15 @@ export default function AdminPanel() {
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={companyForm.control}
-                  name="phone"
+                  name="document"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Telefone (Opcional)</FormLabel>
+                      <FormLabel>CNPJ/CPF *</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="+55 (11) 99999-9999" 
-                          {...field} 
-                          data-testid="input-company-phone"
+                        <Input
+                          placeholder="00.000.000/0000-00"
+                          {...field}
+                          data-testid="input-company-document"
                         />
                       </FormControl>
                       <FormMessage />
@@ -596,15 +707,15 @@ export default function AdminPanel() {
 
                 <FormField
                   control={companyForm.control}
-                  name="document"
+                  name="phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Documento (Opcional)</FormLabel>
+                      <FormLabel>Telefone *</FormLabel>
                       <FormControl>
-                        <Input 
-                          placeholder="CNPJ/CPF" 
-                          {...field} 
-                          data-testid="input-company-document"
+                        <Input
+                          placeholder="(11) 99999-9999"
+                          {...field}
+                          data-testid="input-company-phone"
                         />
                       </FormControl>
                       <FormMessage />
@@ -615,27 +726,53 @@ export default function AdminPanel() {
 
               <FormField
                 control={companyForm.control}
-                name="status"
+                name="subscriptionPlan"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Status</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormLabel>Plano de Assinatura *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <SelectTrigger data-testid="select-company-status">
-                          <SelectValue placeholder="Selecione o status" />
+                        <SelectTrigger data-testid="select-subscription-plan">
+                          <SelectValue placeholder="Selecione o plano" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="trial">Teste</SelectItem>
-                        <SelectItem value="active">Ativa</SelectItem>
-                        <SelectItem value="suspended">Suspensa</SelectItem>
-                        <SelectItem value="canceled">Cancelada</SelectItem>
+                        <SelectItem value="basic">Básico</SelectItem>
+                        <SelectItem value="professional">Profissional</SelectItem>
+                        <SelectItem value="enterprise">Enterprise</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {editingCompany && (
+                <FormField
+                  control={companyForm.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-company-status">
+                            <SelectValue placeholder="Selecione o status" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="pending">Pendente (Aguardando Convite)</SelectItem>
+                          <SelectItem value="trial">Teste</SelectItem>
+                          <SelectItem value="active">Ativa</SelectItem>
+                          <SelectItem value="suspended">Suspensa</SelectItem>
+                          <SelectItem value="canceled">Cancelada</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <div className="grid grid-cols-3 gap-4">
                 <FormField

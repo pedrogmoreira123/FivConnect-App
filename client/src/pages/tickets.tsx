@@ -873,10 +873,7 @@ export default function TicketsPage() {
                 {status !== 'all' && getStatusIcon(status as TicketStatus)}
                 <span>{label}</span>
                 <Badge variant="secondary" className="ml-1">
-                  {status === 'all' 
-                    ? (counts.open || 0) + (counts.in_progress || 0) + (counts.closed || 0) + (counts.canceled || 0)
-                    : counts[status as keyof typeof counts] || 0
-                  }
+                  {counts[status as keyof typeof counts] || 0}
                 </Badge>
               </div>
             </button>

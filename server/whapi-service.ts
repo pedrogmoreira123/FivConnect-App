@@ -61,28 +61,81 @@ export class WhapiService {
   }
 
   /**
-   * Obter QR Code para reconexão (se necessário)
-   * A Whapi.Cloud não cria instâncias via API - a conexão é pré-configurada
+   * Obter QR Code para autenticação do WhatsApp
+   * Usa Gate API com token do canal específico
+   * Documentação: https://whapi.readme.io/reference/loginuser
+   * GET /users/login
+   *
+   * Implementa retry logic para aguardar o canal gerar o QR Code
    */
-  async getQRCode(): Promise<string | null> {
-    this.logger.info(`🔍 Buscando QR code da Whapi.Cloud.`);
-    try {
-      const response = await axios.get(`${this.apiUrl}users/login`, {
-        headers: this.headers,
-      });
+  async getQRCode(channelToken: string, maxRetries: number = 3): Promise<string | null> {
+    this.logger.info(`🔍 Buscando QR code da Whapi.Cloud (máx ${maxRetries} tentativas).`);
 
-      const qrCodeBase64 = response.data?.qr_code;
-      if (qrCodeBase64) {
-        this.logger.info(`✅ QR Code encontrado.`);
-        return qrCodeBase64;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await axios.get(`${this.gateApiUrl}users/login`, {
+          headers: {
+            'Authorization': `Bearer ${channelToken}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          timeout: 30000
+        });
+
+        // Log da tentativa
+        console.log(`[WhapiService] 📊 Tentativa ${attempt}/${maxRetries} - Status: ${response.data?.status}`);
+
+        // Whapi.Cloud retorna o QR Code no campo 'base64', não 'qr_code'
+        let qrCodeBase64 = response.data?.base64 || response.data?.qr_code;
+        if (qrCodeBase64) {
+          // Log do formato recebido (apenas primeiros 50 caracteres)
+          console.log(`[WhapiService] 📸 Base64 recebido (preview):`, qrCodeBase64.substring(0, 50));
+
+          // Remover prefixo se existir (ex: data:image/png;base64,)
+          // Isso garante que sempre retornamos base64 puro
+          if (qrCodeBase64.includes('base64,')) {
+            qrCodeBase64 = qrCodeBase64.split('base64,')[1];
+            console.log(`[WhapiService] 🔧 Prefixo removido - retornando base64 puro`);
+          }
+
+          this.logger.info(`✅ QR Code encontrado na tentativa ${attempt}!`);
+          return qrCodeBase64;
+        }
+
+        // Se status é TIMEOUT ou WAITING, aguardar e tentar novamente
+        const status = response.data?.status;
+        if ((status === 'TIMEOUT' || status === 'WAITING') && attempt < maxRetries) {
+          const waitTime = 3000; // 3 segundos
+          this.logger.info(`⏳ Status: ${status}. Aguardando ${waitTime/1000}s antes da tentativa ${attempt + 1}...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          continue;
+        }
+
+        // Última tentativa sem sucesso
+        this.logger.warn(`🤔 QR Code não disponível após ${attempt} tentativa(s). Status: ${status}`);
+        if (attempt === maxRetries) {
+          return null;
+        }
+      } catch (error: any) {
+        // Canal já autenticado (409 Conflict)
+        if (error.response?.status === 409) {
+          this.logger.info(`ℹ️ Canal já autenticado`);
+          throw new Error('ALREADY_AUTHENTICATED');
+        }
+
+        // Se não for a última tentativa, continuar
+        if (attempt < maxRetries) {
+          this.logger.warn(`⚠️ Erro na tentativa ${attempt}, tentando novamente...`);
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          continue;
+        }
+
+        this.handleApiError(error, 'getQRCode');
+        throw new Error('Falha ao obter o QR code');
       }
-
-      this.logger.warn(`🤔 QR Code ainda não disponível. Status: ${response.data?.status}`);
-      return null;
-    } catch (error) {
-      this.handleApiError(error, 'getQRCode');
-      throw new Error('Falha ao obter o QR code');
     }
+
+    return null;
   }
 
   /**
@@ -540,47 +593,94 @@ export class WhapiService {
 
   /**
    * Obter status da conexão
+   * @param channelToken Token específico do canal (opcional, usa token padrão se não fornecido)
    */
-  async getConnectionStatus(): Promise<any> {
+  async getConnectionStatus(channelToken?: string): Promise<any> {
     try {
-      // Tentar diferentes endpoints para status
+      // Usar token específico do canal se fornecido, senão usar token padrão
+      const headers = channelToken
+        ? {
+            'Authorization': `Bearer ${channelToken}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        : this.headers;
+
+      // Tentar diferentes endpoints para status (ordem: mais específico para mais genérico)
       const endpoints = [
-        `${this.apiUrl}status`,
-        `${this.apiUrl}connection/status`,
-        `${this.apiUrl}health`,
-        `${this.apiUrl}account/status`
+        `${this.apiUrl}screen/presence`,  // Melhor endpoint para verificar presença/conexão
+        `${this.apiUrl}users/me`,          // Retorna dados do usuário se autenticado
+        `${this.apiUrl}health`,            // Status geral do canal
+        `${this.apiUrl}status`             // Status básico
       ];
-      
+
       for (const endpoint of endpoints) {
         try {
           this.logger.info(`[WhapiService] Tentando endpoint de status: ${endpoint}`);
           const response = await axios.get(endpoint, {
-            headers: this.headers,
+            headers,
             timeout: 10000
           });
-          this.logger.info(`[WhapiService] Sucesso no endpoint de status: ${endpoint}`);
+
+          // DEBUG: Log completo da resposta
+          console.log(`[WhapiService] 🔍 Resposta de ${endpoint}:`, JSON.stringify(response.data, null, 2));
+
+          // Verificar se o status indica conexão autenticada
+          const statusData = response.data;
+
+          // Múltiplas formas de verificar se está conectado
+          const isConnected =
+            // Estados explícitos (string)
+            statusData?.status === 'AUTHORIZED' ||
+            statusData?.status === 'CONNECTED' ||
+            statusData?.status === 'WORKING' ||
+            statusData?.state === 'WORKING' ||
+            statusData?.state === 'AUTHORIZED' ||
+            // Status como objeto (Whapi.Cloud /health endpoint)
+            statusData?.status?.text === 'AUTH' ||
+            statusData?.status?.text === 'AUTHORIZED' ||
+            statusData?.status?.text === 'CONNECTED' ||
+            statusData?.status?.code === 4 ||  // Code 4 = AUTH
+            // Flags booleanas
+            statusData?.authenticated === true ||
+            statusData?.connected === true ||
+            statusData?.ready === true ||
+            // Presence indica que está online
+            (statusData?.presence && statusData.presence !== 'unavailable') ||
+            // Se tem dados de usuário, está autenticado
+            (statusData?.user && statusData.user.id) ||
+            (endpoint.includes('users/me') && statusData?.id);
+
+          this.logger.info(`[WhapiService] ✅ Sucesso no endpoint ${endpoint}, connected: ${isConnected}`);
+
           return {
-            status: response.data?.status || 'connected',
-            connected: response.data?.connected !== false
+            status: isConnected ? 'connected' : 'disconnected',
+            connected: isConnected,
+            phone: statusData?.phone || statusData?.number || statusData?.user?.id || statusData?.id,
+            name: statusData?.name || statusData?.pushname || statusData?.notify,
+            profilePictureUrl: statusData?.profilePictureUrl || statusData?.profile_pic || statusData?.picture || statusData?.user?.profile_pic,
+            lastSeen: statusData?.lastSeen
           };
         } catch (endpointError: any) {
           this.logger.warn(`[WhapiService] Endpoint de status ${endpoint} falhou: ${endpointError.response?.status}`);
           continue;
         }
       }
-      
-      // Se nenhum endpoint funcionou, assumir conectado (Whapi.Cloud é sempre conectado)
-      this.logger.warn('[WhapiService] Nenhum endpoint de status funcionou, assumindo conectado');
-      return { 
-        status: 'connected', 
-        connected: true 
+
+      // Se nenhum endpoint funcionou, retornar DESCONECTADO (não assumir conectado)
+      this.logger.warn('[WhapiService] Nenhum endpoint de status funcionou, retornando desconectado');
+      return {
+        status: 'disconnected',
+        connected: false,
+        error: 'Unable to verify connection status'
       };
     } catch (error) {
       this.handleApiError(error, 'getConnectionStatus');
-      // Em caso de erro, assumir conectado para Whapi.Cloud
-      return { 
-        status: 'connected', 
-        connected: true 
+      // Em caso de erro, retornar desconectado (não assumir conectado)
+      return {
+        status: 'disconnected',
+        connected: false,
+        error: 'Failed to check connection status'
       };
     }
   }
@@ -590,9 +690,12 @@ export class WhapiService {
    */
   
   // Compatibilidade: createInstance -> getQRCode
-  async createInstance(connectionName: string, companyId: string): Promise<any> {
+  async createInstance(connectionName: string, companyId: string, channelToken?: string): Promise<any> {
     this.logger.info(`📞 Whapi.Cloud não requer criação de instância. Obtendo QR code.`);
-    const qrCode = await this.getQRCode();
+    if (!channelToken) {
+      throw new Error('channelToken é obrigatório para obter QR Code');
+    }
+    const qrCode = await this.getQRCode(channelToken);
     return {
       success: true,
       message: "Whapi.Cloud connection ready",
@@ -602,8 +705,8 @@ export class WhapiService {
   }
 
   // Compatibilidade: getQRCode com instanceName
-  async getQRCodeForInstance(instanceName: string): Promise<string | null> {
-    return this.getQRCode();
+  async getQRCodeForInstance(_instanceName: string, channelToken: string): Promise<string | null> {
+    return this.getQRCode(channelToken);
   }
 
   // Compatibilidade: sendMessage
@@ -1301,19 +1404,234 @@ export class WhapiService {
   async addPartnerCredits(amount: number, currency: string = 'BRL'): Promise<void> {
     try {
       this.logger.info(`[WhapiService] Adicionando ${amount} ${currency} de créditos ao partner...`);
-      
-      await axios.post(`${this.managerApiUrl}credits/add`, 
-        { amount, currency }, 
+
+      await axios.post(`${this.managerApiUrl}credits/add`,
+        { amount, currency },
         {
           headers: this.partnerHeaders,
           timeout: 30000
         }
       );
-      
+
       this.logger.info(`[WhapiService] Créditos adicionados com sucesso: ${amount} ${currency}`);
     } catch (error: any) {
       this.logger.error(`[WhapiService] Erro ao adicionar créditos:`, error.response?.data || error.message);
       throw error;
+    }
+  }
+
+  /**
+   * Provisionar e ativar canal completo
+   * Cria um novo canal no Whapi.Cloud e retorna as credenciais
+   * Documentação: https://whapi-partner.readme.io/reference/createchannel
+   * PUT /channels
+   */
+  async provisionAndActivateChannel(
+    _companyId: string,
+    connectionName: string,
+    companyName: string
+  ): Promise<{ channelId: string; clientToken: string }> {
+    try {
+      this.logger.info(`[WhapiService] 🚀 Provisionando canal: ${connectionName} para empresa ${companyName}`);
+
+      // Validar configuração do Partner API
+      if (!this.partnerToken || !this.projectId) {
+        throw new Error('Partner API não configurada. Configure WHAPI_PARTNER_TOKEN e WHAPI_PROJECT_ID');
+      }
+
+      console.log(`[WhapiService] 📋 Criando canal com dados:`, {
+        name: connectionName,
+        projectId: this.projectId,
+        managerUrl: this.managerApiUrl
+      });
+
+      // 1. Criar canal via Partner API
+      const response = await axios.put(
+        `${this.managerApiUrl}channels`,
+        {
+          name: connectionName,
+          projectId: this.projectId
+        },
+        {
+          headers: this.partnerHeaders,
+          timeout: 30000
+        }
+      );
+
+      const channelData = response.data;
+
+      console.log(`[WhapiService] 📊 Resposta da API:`, {
+        statusCode: response.status,
+        channelId: channelData?.id,
+        channelName: channelData?.name,
+        channelStatus: channelData?.status,
+        hasToken: !!channelData?.token,
+        responseKeys: Object.keys(channelData || {})
+      });
+
+      if (!channelData.id || !channelData.token) {
+        throw new Error('Canal criado mas sem ID ou token na resposta');
+      }
+
+      // 2. Verificar se o canal realmente existe fazendo uma chamada de teste
+      console.log(`[WhapiService] 🔍 Verificando se canal ${channelData.id} existe...`);
+      try {
+        const testResponse = await axios.get(`${this.gateApiUrl}health`, {
+          headers: {
+            'Authorization': `Bearer ${channelData.token}`,
+            'Accept': 'application/json'
+          },
+          timeout: 10000
+        });
+        console.log(`[WhapiService] ✅ Canal verificado - Status: ${testResponse.data?.status?.text || 'OK'}`);
+      } catch (testError: any) {
+        // 404 ou 401 significa que o canal não existe ou o token é inválido
+        if (testError.response?.status === 404 || testError.response?.status === 401) {
+          throw new Error(`Canal criado mas não está acessível via Gate API. Status: ${testError.response.status}`);
+        }
+        // Outros erros podem ser temporários, não vamos falhar
+        console.warn(`[WhapiService] ⚠️ Aviso ao verificar canal (não crítico):`, testError.message);
+      }
+
+      console.log(`[WhapiService] ✅ Canal criado e verificado com sucesso:`, {
+        channelId: channelData.id,
+        name: channelData.name,
+        status: channelData.status
+      });
+
+      return {
+        channelId: channelData.id,
+        clientToken: channelData.token
+      };
+    } catch (error: any) {
+      console.error(`[WhapiService] ❌ Erro ao provisionar canal:`, {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+        headers: error.config?.headers ? { Authorization: '***' } : undefined
+      });
+
+      // Melhorar mensagem de erro para o usuário
+      let errorMessage = 'Falha ao criar canal WhatsApp';
+      if (error.response?.status === 401) {
+        errorMessage = 'Token do Partner API inválido ou expirado';
+      } else if (error.response?.status === 403) {
+        errorMessage = 'Sem permissão para criar canais. Verifique créditos ou limites da conta Partner';
+      } else if (error.response?.status === 404) {
+        errorMessage = 'API do Partner não encontrada. Verifique a configuração WHAPI_MANAGER_API_URL';
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      throw new Error(errorMessage);
+    }
+  }
+
+  /**
+   * Configurar webhook de um canal
+   * Configura a URL do webhook para receber mensagens e eventos
+   * Documentação: https://whapi.readme.io/reference/setsettings
+   * PATCH /settings
+   */
+  async configureChannelWebhook(clientToken: string, webhookUrl: string, channelId: string, maxRetries: number = 3): Promise<void> {
+    // Incluir channelId como query parameter para identificar qual canal enviou o webhook
+    const webhookUrlWithChannel = `${webhookUrl}?channelId=${encodeURIComponent(channelId)}`;
+
+    const webhookConfig = {
+      webhooks: [
+        {
+          url: webhookUrlWithChannel,
+          events: [
+            { type: 'messages', method: 'post' },
+            { type: 'statuses', method: 'post' },
+            { type: 'users', method: 'post' },      // Eventos de conexão/desconexão do usuário
+            { type: 'channel', method: 'post' }     // Eventos de status do canal
+          ],
+          mode: 'method'
+        }
+      ]
+    };
+
+    const axiosConfig = {
+      headers: {
+        'Authorization': `Bearer ${clientToken}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      timeout: 30000
+    };
+
+    // Tentar configurar webhook com retry
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.logger.info(`[WhapiService] 🔗 Configurando webhook (tentativa ${attempt}/${maxRetries}): ${webhookUrlWithChannel}`);
+
+        await axios.patch(
+          `${this.gateApiUrl}settings`,
+          webhookConfig,
+          axiosConfig
+        );
+
+        this.logger.info(`[WhapiService] ✅ Webhook configurado com sucesso na tentativa ${attempt}`);
+        return; // Sucesso, sair da função
+
+      } catch (error: any) {
+        const isLastAttempt = attempt === maxRetries;
+        const status = error.response?.status;
+        const isRetryableError = status === 503 || status === 502 || status === 504 || !status;
+
+        console.error(`[WhapiService] ❌ Erro ao configurar webhook (tentativa ${attempt}/${maxRetries}):`, {
+          message: error.message,
+          status: status,
+          data: error.response?.data,
+          url: error.config?.url
+        });
+
+        // Se não é o último retry e é um erro que vale a pena tentar novamente
+        if (!isLastAttempt && isRetryableError) {
+          const delay = attempt * 2000; // 2s, 4s, 6s...
+          console.log(`[WhapiService] ⏳ Aguardando ${delay}ms antes de tentar novamente...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+
+        // Último retry ou erro não-retryable, lançar exceção
+        throw new Error(`Falha ao configurar webhook após ${attempt} tentativa(s): ${error.response?.data?.message || error.message}`);
+      }
+    }
+  }
+
+  /**
+   * Deletar canal do Whapi.Cloud
+   * Remove o canal completamente via Partner API
+   * Documentação: https://whapi-partner.readme.io/reference/deletechannel
+   * DELETE /channels/{ChannelID}
+   */
+  async deleteChannel(channelId: string): Promise<void> {
+    try {
+      this.logger.info(`[WhapiService] 🗑️ Deletando canal: ${channelId}`);
+
+      await axios.delete(
+        `${this.managerApiUrl}channels/${channelId}`,
+        {
+          headers: this.partnerHeaders,
+          timeout: 30000
+        }
+      );
+
+      this.logger.info(`[WhapiService] ✅ Canal ${channelId} deletado com sucesso do Whapi.Cloud`);
+    } catch (error: any) {
+      console.error(`[WhapiService] ❌ Erro ao deletar canal:`, {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        channelId
+      });
+      throw new Error(`Falha ao deletar canal: ${error.response?.data?.message || error.message}`);
     }
   }
 

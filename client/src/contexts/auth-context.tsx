@@ -7,6 +7,7 @@ interface AuthContextType {
   user: UserRole | null;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
+  setUserData: (userData: any, token: string) => void;
   isAuthenticated: boolean;
 }
 
@@ -60,6 +61,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const setUserData = (userData: any, token: string) => {
+    // Create user object with initials
+    const userWithInitials: UserRole = {
+      ...userData,
+      initials: userData.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+    };
+
+    setUser(userWithInitials);
+
+    // Store both user and token
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('user', JSON.stringify(userWithInitials));
+      localStorage.setItem('authToken', token);
+    }
+  };
+
   const logout = async () => {
     try {
       if (typeof window !== 'undefined') {
@@ -81,6 +98,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('authToken');
         // Also clear theme customization cache
         localStorage.removeItem('fiv-theme-customization');
+        // Redirect to login page
+        window.location.href = '/login';
       }
     }
   };
@@ -90,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       login,
       logout,
+      setUserData,
       isAuthenticated: !!user
     }}>
       {children}

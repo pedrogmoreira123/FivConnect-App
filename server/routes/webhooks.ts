@@ -5,7 +5,22 @@
 import { Express } from 'express';
 import { channelService } from '../services/channelService.js';
 import { IncomingMessage } from '../providers/IWhatsappProvider.js';
+import { MessageProcessor, IncomingMessage as ProcessorIncomingMessage } from '../services/message-processor.js';
+import { WhapiService } from '../whapi-service.js';
+import { storage } from '../storage.js';
+import { logger } from '../index.js';
 import crypto from 'crypto';
+
+// Criar instâncias dos serviços (singleton)
+let messageProcessor: MessageProcessor | null = null;
+
+function getMessageProcessor(): MessageProcessor {
+  if (!messageProcessor) {
+    const whapiService = new WhapiService(logger);
+    messageProcessor = new MessageProcessor(logger, whapiService, storage);
+  }
+  return messageProcessor;
+}
 
 export function setupWebhookRoutes(app: Express): void {
   console.log('🔧 Configurando rotas de webhook...');
@@ -135,18 +150,34 @@ function mapMessageType(whapiType: string): IncomingMessage['type'] {
 
 /**
  * Enfileirar mensagem recebida para processamento
+ * Agora usa o MessageProcessor para processar com chatbot/AI
  */
 async function enqueueIncomingMessage(message: IncomingMessage): Promise<void> {
   try {
-    // Por enquanto, apenas log
-    // Aqui você implementaria a lógica de fila (BullMQ)
-    console.log('📥 Enfileirando mensagem recebida:', message);
+    console.log('📥 Processando mensagem recebida com MessageProcessor...');
 
-    // TODO: Implementar enfileiramento com BullMQ
-    // await messageQueue.add('process-incoming-message', message);
+    // Converter para formato do MessageProcessor
+    const processorMessage: ProcessorIncomingMessage = {
+      provider: message.provider,
+      channelId: message.channelId,
+      from: message.from,
+      type: message.type,
+      message: message.message,
+      mediaUrl: message.mediaUrl,
+      caption: message.caption,
+      filename: message.filename,
+      timestamp: message.timestamp,
+      messageId: message.messageId,
+      quotedMessageId: message.quotedMessageId
+    };
 
+    // Processar com MessageProcessor (inclui chatbot logic)
+    const processor = getMessageProcessor();
+    await processor.processIncomingMessage(processorMessage);
+
+    console.log('✅ Mensagem processada com sucesso');
   } catch (error) {
-    console.error('❌ Erro ao enfileirar mensagem:', error);
+    console.error('❌ Erro ao processar mensagem:', error);
   }
 }
 

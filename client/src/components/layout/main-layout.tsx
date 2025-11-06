@@ -6,7 +6,23 @@ import Header from './header';
 import { useT } from '@/hooks/use-translation';
 import { useMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
-import { Menu } from 'lucide-react';
+import {
+  Menu,
+  LayoutDashboard,
+  MessageCircle,
+  ListChecks,
+  Users,
+  Bot,
+  BarChart3,
+  Settings,
+  Shield,
+  DollarSign,
+  UserCircle,
+  FileText,
+  Bell,
+  Smartphone
+} from 'lucide-react';
+import { LucideIcon } from 'lucide-react';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -29,6 +45,23 @@ const pageTitleKeys: Record<string, string> = {
   '/whatsapp-settings': 'navigation.whatsappSettings'
 };
 
+const pageIcons: Record<string, LucideIcon> = {
+  '/': LayoutDashboard,
+  '/conversations': MessageCircle,
+  '/queues': ListChecks,
+  '/users': Users,
+  '/ai-agent': Bot,
+  '/reports': BarChart3,
+  '/settings': Settings,
+  '/admin': Shield,
+  '/financeiro': DollarSign,
+  '/tickets': ListChecks,
+  '/clients': UserCircle,
+  '/enhanced-reports': FileText,
+  '/announcements': Bell,
+  '/whatsapp-settings': Smartphone
+};
+
 export default function MainLayout({ children }: MainLayoutProps) {
   const [location] = useLocation();
   const { t } = useT();
@@ -37,6 +70,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
   
   const titleKey = pageTitleKeys[location] || 'navigation.dashboard';
   const title = t(titleKey);
+  const PageIcon = pageIcons[location] || LayoutDashboard;
 
   // Close mobile menu when switching to desktop
   useEffect(() => {
@@ -75,13 +109,16 @@ export default function MainLayout({ children }: MainLayoutProps) {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg font-semibold truncate">{title}</h1>
+            <div className="flex items-center gap-2">
+              <PageIcon className="h-5 w-5 text-primary transition-transform duration-200 hover:scale-110" />
+              <h1 className="text-lg font-semibold truncate">{title}</h1>
+            </div>
             <div className="w-10" /> {/* Spacer for centering */}
           </div>
         )}
         
         {/* Desktop Header */}
-        {!isMobile && <Header title={title} />}
+        {!isMobile && <Header title={title} icon={PageIcon} />}
         
         <main className="flex-1 overflow-auto" data-testid="main-content">
           <div className="p-3 sm:p-4 md:p-6">

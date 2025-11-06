@@ -120,6 +120,16 @@ export default function DashboardPage() {
     }
   };
 
+  const translateStatus = (status: string): string => {
+    const statusMap: Record<string, string> = {
+      'waiting': 'Aguardando',
+      'in_progress': 'Em Andamento',
+      'completed': 'Finalizada',
+      'closed': 'Fechada'
+    };
+    return statusMap[status] || status;
+  };
+
   return (
     <div className="space-y-4 md:space-y-6">
       {/* KPI Cards */}
@@ -175,7 +185,7 @@ export default function DashboardPage() {
                         </p>
                       </div>
                       <Badge variant={activity.status === 'completed' ? 'default' : 'secondary'}>
-                        {activity.status}
+                        {translateStatus(activity.status)}
                       </Badge>
                     </div>
                   ))
@@ -239,20 +249,6 @@ export default function DashboardPage() {
             </h3>
             <div className="h-48 sm:h-64 md:h-auto">
               <TicketsPerAgentChart data={ticketsPerAgentData} />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Weekly Performance */}
-      <div className="grid grid-cols-1 gap-4 md:gap-6">
-        <Card>
-          <CardContent className="p-3 sm:p-4 md:p-6">
-            <h3 className="text-base sm:text-lg font-semibold text-foreground mb-3 md:mb-4">
-              {t('dashboard.weeklyPerformance')}
-            </h3>
-            <div className="h-48 sm:h-64 md:h-auto">
-              <WeeklyPerformanceChart data={chartData.weeklyPerformance} />
             </div>
           </CardContent>
         </Card>

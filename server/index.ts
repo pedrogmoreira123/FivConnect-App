@@ -16,6 +16,7 @@ import cron from 'node-cron';
 import { WhapiService } from './whapi-service';
 import { storage } from './storage';
 import { Logger } from './logger';
+import { verifyToken } from './auth';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -36,32 +37,48 @@ const io = new Server(server, {
   allowEIO3: true
 });
 
-console.log('🔧 Socket.IO configurado com CORS liberado para debug');
+console.log('🔧 Socket.IO configurado com autenticação JWT');
 
-// Middleware de autenticação para WebSocket (simplificado para debug)
+// Middleware de autenticação para WebSocket
 io.use((socket, next) => {
-  const token = socket.handshake.auth?.token;
-  
+  const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+
   console.log('🔐 WebSocket: Tentativa de conexão com token:', token ? 'SIM' : 'NÃO');
-  
-  // Para debug, permitir todas as conexões
-  socket.userId = 'debug-user';
-  socket.companyId = '59b4b086-9171-4dbf-8177-b7c6d6fd1e33'; // Company ID fixo para debug
-  
-  console.log(`✅ WebSocket: Conexão permitida - User: ${socket.userId}, Company: ${socket.companyId}`);
+
+  if (!token) {
+    console.log('❌ WebSocket: Token não fornecido');
+    return next(new Error('Token de autenticação não fornecido'));
+  }
+
+  // Verificar token usando a função de autenticação
+  const decoded = verifyToken(token as string);
+
+  if (!decoded) {
+    console.log('❌ WebSocket: Token inválido ou expirado');
+    return next(new Error('Token inválido ou expirado'));
+  }
+
+  // Definir dados do usuário no socket
+  (socket as any).userId = decoded.userId;
+  (socket as any).companyId = decoded.companyId;
+  (socket as any).username = decoded.username;
+  (socket as any).userRole = decoded.role;
+
+  console.log(`✅ WebSocket: Conexão autenticada - User: ${decoded.username}, Company: ${decoded.companyId}, Role: ${decoded.role}`);
   next();
 });
 
 // Logs de conexão WebSocket
 io.on('connection', (socket) => {
-  console.log(`🔌 Cliente WebSocket conectado: ${socket.id} (User: ${socket.userId})`);
+  const socketAny = socket as any;
+  console.log(`🔌 Cliente WebSocket conectado: ${socket.id} (User: ${socketAny.userId})`);
   console.log(`📊 Total de clientes conectados: ${io.engine.clientsCount}`);
-  console.log(`🏢 Company ID: ${socket.companyId}`);
+  console.log(`🏢 Company ID: ${socketAny.companyId}`);
   console.log(`🔗 Transport: ${socket.conn.transport.name}`);
-  
+
   // Join user to their company room
-  socket.join(`company_${socket.companyId}`);
-  console.log(`🏠 Cliente ${socket.id} entrou na sala: company_${socket.companyId}`);
+  socket.join(`company_${socketAny.companyId}`);
+  console.log(`🏠 Cliente ${socket.id} entrou na sala: company_${socketAny.companyId}`);
 
   // Rooms por conversa: join/leave para sincronização precisa por chat
   socket.on('joinConversation', (conversationId: string) => {
@@ -211,5 +228,109 @@ app.use((req, res, next) => {
     });
     
     console.log('[CRON] Polling otimizado de mensagens WhatsApp iniciado (a cada 5 segundos, pausado se WebSocket ativo)');
+
+    // Polling de status das conexões WhatsApp a cada 10 segundos (fallback para webhook)
+    cron.schedule('*/10 * * * * *', async () => {
+      try {
+        // Buscar todas as conexões que estão aguardando conexão (qr_ready)
+        const allConnections = await storage.getAllWhatsAppConnectionsGlobal();
+
+        // Filtrar conexões com status qr_ready ou disconnected que têm whapiToken
+        const pendingConnections = allConnections.filter(
+          conn => (conn.status === 'qr_ready' || conn.status === 'disconnected') && conn.whapiToken
+        );
+
+        if (pendingConnections.length > 0) {
+          console.log(`[CRON] 🔄 Verificando status de ${pendingConnections.length} conexão(ões) pendente(s)`);
+
+          for (const connection of pendingConnections) {
+            try {
+              // Verificar status real no Whapi.Cloud
+              const status = await whapiService.getConnectionStatus(connection.whapiToken!);
+
+              if (status.connected && connection.status !== 'connected') {
+                console.log(`[CRON] ✅ Conexão ${connection.id} agora está CONECTADA!`);
+
+                // Atualizar no banco
+                await storage.updateWhatsAppConnection(connection.id, {
+                  status: 'connected',
+                  phone: status.phone,
+                  name: status.name,
+                  profilePictureUrl: status.profilePictureUrl,
+                  lastSeen: status.lastSeen ? new Date(status.lastSeen) : undefined,
+                  qrcode: undefined as any
+                });
+
+                // Notificar via WebSocket se o channelId estiver disponível
+                if (connection.whapiChannelId) {
+                  // Evento connectionUpdate (mantém compatibilidade)
+                  io.to(`company_${connection.companyId}`).emit('connectionUpdate', {
+                    channelId: connection.whapiChannelId,
+                    connected: true,
+                    number: status.phone,
+                    name: status.name,
+                    profilePictureUrl: status.profilePictureUrl,
+                    lastSeen: status.lastSeen,
+                    timestamp: new Date().toISOString()
+                  });
+
+                  // Evento whatsappStatusUpdate (para atualizar dialog)
+                  io.to(`company_${connection.companyId}`).emit('whatsappStatusUpdate', {
+                    connectionId: connection.id,  // UUID do banco
+                    status: 'connected',
+                    connectionData: {
+                      phone: status.phone,
+                      name: status.name,
+                      profilePictureUrl: status.profilePictureUrl,
+                      lastSeen: status.lastSeen
+                    },
+                    timestamp: new Date().toISOString()
+                  });
+
+                  console.log(`[CRON] 📢 Notificação WebSocket enviada para empresa ${connection.companyId}`);
+                  console.log(`[CRON] 📢 Evento whatsappStatusUpdate enviado com connectionId: ${connection.id}`);
+                }
+              } else if (!status.connected && connection.status === 'connected') {
+                console.log(`[CRON] ⚠️ Conexão ${connection.id} agora está DESCONECTADA`);
+
+                // Atualizar no banco
+                await storage.updateWhatsAppConnection(connection.id, {
+                  status: 'disconnected'
+                });
+
+                // Notificar via WebSocket
+                if (connection.whapiChannelId) {
+                  // Evento connectionUpdate (mantém compatibilidade)
+                  io.to(`company_${connection.companyId}`).emit('connectionUpdate', {
+                    channelId: connection.whapiChannelId,
+                    connected: false,
+                    timestamp: new Date().toISOString()
+                  });
+
+                  // Evento whatsappStatusUpdate (para atualizar dialog)
+                  io.to(`company_${connection.companyId}`).emit('whatsappStatusUpdate', {
+                    connectionId: connection.id,
+                    status: 'disconnected',
+                    connectionData: {},
+                    timestamp: new Date().toISOString()
+                  });
+
+                  console.log(`[CRON] 📢 Evento whatsappStatusUpdate enviado (desconexão) com connectionId: ${connection.id}`);
+                }
+              }
+            } catch (connError: any) {
+              // Erro silencioso para não poluir logs
+              if (connError.message !== 'ALREADY_AUTHENTICATED') {
+                console.error(`[CRON] ⚠️ Erro ao verificar status da conexão ${connection.id}:`, connError.message);
+              }
+            }
+          }
+        }
+      } catch (error: any) {
+        console.error('[CRON] ❌ Erro no polling de status:', error);
+      }
+    });
+
+    console.log('[CRON] ✅ Polling de status de conexões WhatsApp iniciado (a cada 10 segundos)');
   });
 })();

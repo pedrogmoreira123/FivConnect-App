@@ -14,10 +14,11 @@ import {
 } from '@/components/ui/dropdown-menu';
 import ProfileModal from '@/components/modals/profile-modal';
 import SettingsModal from '@/components/modals/settings-modal';
-import { ChevronDown, User, Settings, LogOut, Bell, Calendar, User as UserIcon } from 'lucide-react';
+import { ChevronDown, User, Settings, LogOut, Bell, Calendar, User as UserIcon, LucideIcon } from 'lucide-react';
 
 interface HeaderProps {
   title: string;
+  icon?: LucideIcon;
 }
 
 interface Announcement {
@@ -33,7 +34,7 @@ interface Announcement {
   };
 }
 
-export default function Header({ title }: HeaderProps) {
+export default function Header({ title, icon: Icon }: HeaderProps) {
   const { user, logout } = useAuth();
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -77,10 +78,17 @@ export default function Header({ title }: HeaderProps) {
     <>
       <header className="bg-card/95 backdrop-blur-sm border-b border-border/50 px-6 py-4 flex items-center justify-between shadow-sm">
         <div className="flex items-center space-x-4">
-          {/* Page Title */}
-          <h1 className="text-xl font-semibold text-foreground" data-testid="text-page-title">
-            {title}
-          </h1>
+          {/* Page Title with Icon */}
+          <div className="flex items-center gap-3">
+            {Icon && (
+              <div className="p-2 bg-primary/10 rounded-lg transition-all duration-200 hover:bg-primary/20 hover:scale-110">
+                <Icon className="h-5 w-5 text-primary" />
+              </div>
+            )}
+            <h1 className="text-xl font-semibold text-foreground" data-testid="text-page-title">
+              {title}
+            </h1>
+          </div>
         </div>
         
         <div className="flex items-center space-x-4">

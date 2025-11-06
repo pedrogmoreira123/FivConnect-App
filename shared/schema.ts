@@ -37,11 +37,12 @@ export const whatsappConnections = pgTable("whatsapp_connections", {
   // Whapi.Cloud Integration Fields (NOVO)
   whapiChannelId: text("whapi_channel_id"), // ID do canal na Whapi.Cloud
   whapiToken: text("whapi_token"), // Token do cliente (será criptografado)
-  providerType: text("provider_type", { 
-    enum: ["evolution", "whapi", "baileys"] 
+  providerType: text("provider_type", {
+    enum: ["evolution", "whapi", "baileys"]
   }).notNull().default("whapi"), // Tipo de provider
   webhookUrl: text("webhook_url"), // URL do webhook configurada
-  // Environment field to separate test from production data  
+  autoAssignEnabled: boolean("auto_assign_enabled").default(false), // Atribuição automática inteligente
+  // Environment field to separate test from production data
   environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -288,6 +289,58 @@ export const aiAgentConfig = pgTable("ai_agent_config", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Multi-tenant Chatbot Configuration table
+export const chatbotConfigs = pgTable("chatbot_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(), // Removido .unique() para permitir múltiplos chatbots
+  name: varchar("name", { length: 255 }), // Nome do chatbot (ex: "Bot Atendimento")
+  whatsappConnectionId: varchar("whatsapp_connection_id").references(() => whatsappConnections.id, { onDelete: 'set null' }), // Canal vinculado
+  mode: text("mode", { enum: ["simple_bot", "ai_agent", "disabled"] }).notNull().default("disabled"),
+  isEnabled: boolean("is_enabled").default(false),
+
+  // Simple Bot Configuration
+  simpleBotConfig: json("simple_bot_config").$type<{
+    welcomeMessage?: string;
+    queueSelectionMessage?: string;
+    outsideHoursMessage?: string;
+    closingMessage?: string;
+    transferMessage?: string;
+    responseDelay?: number;
+    workingHours?: {
+      enabled: boolean;
+      timezone: string;
+      schedule: {
+        [key: string]: { start: string; end: string; enabled: boolean };
+      };
+    };
+  }>(),
+
+  // AI Agent Configuration (API keys will be encrypted)
+  aiAgentConfig: json("ai_agent_config").$type<{
+    provider?: 'gemini' | 'openai' | 'custom';
+    apiKey?: string; // Encrypted
+    systemPrompt?: string;
+    temperature?: number;
+    maxTokens?: number;
+    contextMemory?: boolean;
+  }>(),
+
+  // Trigger Rules
+  triggerRules: json("trigger_rules").$type<{
+    autoReplyEnabled?: boolean;
+    businessHoursOnly?: boolean;
+    maxMessagesBeforeTransfer?: number;
+    transferToHumanKeywords?: string[];
+    enableSmartRouting?: boolean;
+    enableSentimentAnalysis?: boolean;
+  }>(),
+
+  // Environment field to separate test from production data
+  environment: text("environment", { enum: ["development", "production"] }).notNull().default("production"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Feedback and suggestions table
 export const feedbacks = pgTable("feedbacks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -387,6 +440,8 @@ export const payments = pgTable("payments", {
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
+}).extend({
+  username: z.string().optional(), // Username agora é opcional
 });
 
 export const insertClientSchema = createInsertSchema(clients).omit({
@@ -672,8 +727,12 @@ export const companies = pgTable("companies", {
   phone: text("phone"),
   document: text("document"), // CNPJ/CPF for Brazilian companies
   logoUrl: text("logo_url"),
+  // Novos campos para sistema de convites
+  contactName: text("contact_name"), // Nome do responsável
+  contactEmail: text("contact_email"), // Email do responsável (usado no convite)
+  subscriptionPlan: text("subscription_plan", { enum: ["basic", "professional", "enterprise"] }), // Plano de assinatura
   planId: varchar("plan_id").references(() => plans.id),
-  status: text("status", { enum: ["active", "suspended", "canceled", "trial"] }).notNull().default("trial"),
+  status: text("status", { enum: ["active", "suspended", "canceled", "trial", "pending"] }).notNull().default("trial"),
   maxUsers: integer("max_users").default(1),
   maxConnections: integer("max_connections").default(1),
   maxQueues: integer("max_queues").default(3),
@@ -691,11 +750,32 @@ export const userCompanies = pgTable("user_companies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
   companyId: varchar("company_id").references(() => companies.id, { onDelete: 'cascade' }).notNull(),
-  role: text("role", { enum: ["owner", "admin", "supervisor", "agent"] }).notNull().default("agent"),
+  role: text("role", { enum: ["admin", "supervisor", "agent"] }).notNull().default("agent"),
   isActive: boolean("is_active").default(true),
-  isOwner: boolean("is_owner").default(false),
+  isOwner: boolean("is_owner").default(false), // Deprecated: mantido para compatibilidade
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// Company Invites - Sistema de convites para primeiro acesso
+export const companyInvites = pgTable("company_invites", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  email: varchar("email").notNull(),
+  token: varchar("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCompanyInviteSchema = z.object({
+  companyId: z.string(),
+  email: z.string().email(),
+  token: z.string(),
+  expiresAt: z.date(),
+});
+
+export type CompanyInvite = typeof companyInvites.$inferSelect;
+export type InsertCompanyInvite = z.infer<typeof insertCompanyInviteSchema>;
 
 // Update existing tables to support multi-tenant
 // Note: We'll add companyId to existing tables via migrations

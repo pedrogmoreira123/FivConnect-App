@@ -11,6 +11,12 @@ import { LoadingSpinner } from '../components/ui/loading-spinner';
 import { AutoAssignModal } from '@/components/modals/AutoAssignModal';
 import { AuditModal } from '@/components/modals/AuditModal';
 import { ExportModal } from '@/components/modals/ExportModal';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 // Interfaces e tipos
 interface User {
@@ -44,6 +50,12 @@ interface Message {
   sentAt: string;
   createdAt: string;
   updatedAt: string;
+  metadata?: {
+    generatedByBot?: boolean;
+    generatedByAI?: boolean;
+    botMode?: 'simple_bot' | 'ai_agent';
+    aiProvider?: string;
+  };
 }
 
 interface Contact {
@@ -91,6 +103,10 @@ interface ChatAreaProps {
   onMessageInput?: (text: string) => void;
   onImageClick?: (src: string, alt: string) => void;
   currentUser?: User | null;
+  isLoadingMore?: boolean;
+  isLoadingMessages?: boolean;
+  hasMoreMessages?: boolean;
+  loadMoreTriggerRef?: React.RefObject<HTMLDivElement>;
 }
 
 // Função para tocar som de notificação
@@ -541,16 +557,20 @@ const UnifiedList = ({ items, onSelect, selectedId, title, emptyMessage, isConta
 
 
 // Componente de Área de Chat
-const ChatArea = ({ 
-  conversation, 
-  messages, 
-  onSendMessage, 
-  onTakeConversation, 
+const ChatArea = ({
+  conversation,
+  messages,
+  onSendMessage,
+  onTakeConversation,
   onFinishConversation,
   onSendMedia,
   onMessageInput,
   onImageClick,
-  currentUser
+  currentUser,
+  isLoadingMore = false,
+  isLoadingMessages = false,
+  hasMoreMessages = false,
+  loadMoreTriggerRef
 }: ChatAreaProps) => {
   const { branding } = useThemeCustomization();
   const { quickReplies } = useQuickReplies();
@@ -1029,8 +1049,33 @@ const ChatArea = ({
       {/* Área de Mensagens - Layout WhatsApp */}
       <div ref={messagesContainerRef} className="flex-1 overflow-y-auto bg-gray-100">
         <div className="min-h-full flex flex-col justify-end p-4 space-y-2">
-          {/* Debug logs removidos para evitar erros de tipo */}
-          {messages.length === 0 ? (
+          {/* OTIMIZAÇÃO: Trigger para Lazy Loading - Colocado no TOPO */}
+          {messages.length > 0 && hasMoreMessages && (
+            <div ref={loadMoreTriggerRef} className="flex justify-center py-2">
+              {isLoadingMore && (
+                <div className="flex items-center gap-2 text-gray-500">
+                  <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm">Carregando mensagens anteriores...</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Loading state - Animação bonita */}
+          {isLoadingMessages && messages.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="flex flex-col items-center gap-4">
+                <div className="relative">
+                  <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin"></div>
+                  <MessageCircle className="h-8 w-8 text-blue-500 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-gray-700 font-medium">Carregando mensagens...</p>
+                  <p className="text-gray-500 text-sm">Aguarde um momento</p>
+                </div>
+              </div>
+            </div>
+          ) : messages.length === 0 ? (
             <div className="text-center py-8">
               <MessageCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500">Nenhuma mensagem ainda</p>
@@ -1055,13 +1100,33 @@ const ChatArea = ({
                 )}
                 
                 {/* Bolha da mensagem */}
-                <div 
+                <div
                   className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl relative ${
                       message.direction === 'outgoing'
-                    ? 'bg-green-500 text-white rounded-br-md' 
+                    ? 'bg-green-500 text-white rounded-br-md'
                     : 'bg-white text-gray-900 rounded-bl-md shadow-sm'
                 }`}
                 >
+                  {/* Bot Indicator Badge */}
+                  {message.direction === 'outgoing' && (message.metadata?.generatedByBot || message.metadata?.generatedByAI) && (
+                    <div className="absolute -top-2 -left-2 z-10">
+                      {message.metadata?.generatedByAI ? (
+                        <div className="flex items-center gap-1 bg-purple-500 text-white px-2 py-0.5 rounded-full text-xs font-medium shadow-lg">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 2a8 8 0 100 16 8 8 0 000-16zm1 11H9v-2h2v2zm0-4H9V5h2v4z"/>
+                          </svg>
+                          <span>IA</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 bg-blue-500 text-white px-2 py-0.5 rounded-full text-xs font-medium shadow-lg">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd"/>
+                          </svg>
+                          <span>Bot</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {/* Exibir mídia se existir */}
                   {(message.mediaUrl || message.messageType !== 'text') && (
                     <div className="mb-2">
@@ -1449,7 +1514,7 @@ export default function ConversationsPage() {
     }, 1000),
     [queryClient]
   );
-  const { data: waitingConversations = [] } = useQuery({
+  const { data: waitingConversations = [], isLoading: isLoadingWaiting } = useQuery({
     queryKey: ['conversations', 'waiting'],
     queryFn: async () => {
       const res = await apiClient.get('/api/whatsapp/conversations?status=waiting');
@@ -1457,7 +1522,7 @@ export default function ConversationsPage() {
     },
     staleTime: 0, // Sempre buscar dados frescos
   });
-  const { data: activeConversations = [] } = useQuery({
+  const { data: activeConversations = [], isLoading: isLoadingActive } = useQuery({
     queryKey: ['conversations', 'in_progress'],
     queryFn: async () => {
       const res = await apiClient.get('/api/whatsapp/conversations?status=in_progress');
@@ -1468,19 +1533,35 @@ export default function ConversationsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
-  const { data: messages = [], isLoading: isLoadingMessages } = useQuery({
-    queryKey: ['messages', selectedConversation?.id],
+
+  // OTIMIZAÇÃO: Estado para paginação de mensagens
+  const [messageLimit, setMessageLimit] = useState(100);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
+  const previousConversationIdRef = useRef<string | null>(null);
+
+  const { data: messages = [], isLoading: isLoadingMessages, isFetching } = useQuery({
+    queryKey: ['messages', selectedConversation?.id, messageLimit],
     queryFn: async () => {
       if (!selectedConversation?.id) return [] as Message[];
 
       try {
-        const res = await apiClient.get(`/api/whatsapp/conversations/${selectedConversation.id}/messages`);
+        console.log(`🔄 Carregando mensagens: conversa=${selectedConversation.id}, limit=${messageLimit}`);
+        // OTIMIZAÇÃO: Buscar com limite de mensagens
+        const res = await apiClient.get(`/api/whatsapp/conversations/${selectedConversation.id}/messages?limit=${messageLimit}`);
         const arr = Array.isArray(res.data) ? res.data : [];
 
-        return arr.sort((a: any, b: any) =>
+        // Verificar se há mais mensagens para carregar
+        setHasMoreMessages(arr.length >= messageLimit);
+
+        const sorted = arr.sort((a: any, b: any) =>
           new Date(a.sentAt || a.createdAt).getTime() -
           new Date(b.sentAt || b.createdAt).getTime()
         );
+
+        console.log(`✅ Mensagens carregadas: ${sorted.length} mensagens da conversa ${selectedConversation.id}`);
+        return sorted;
       } catch (error) {
         console.error('❌ Erro ao carregar mensagens:', error);
         return [];
@@ -1491,7 +1572,12 @@ export default function ConversationsPage() {
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     staleTime: Infinity,
-    cacheTime: Infinity,
+    // IMPORTANTE: Só manter dados anteriores se for a MESMA conversa (carregando mais mensagens)
+    placeholderData: (previousData, previousQuery) => {
+      const isSameConversation = previousQuery?.queryKey[1] === selectedConversation?.id;
+      console.log(`🔍 PlaceholderData check: isSameConversation=${isSameConversation}, prev=${previousQuery?.queryKey[1]}, current=${selectedConversation?.id}`);
+      return isSameConversation ? previousData : undefined;
+    },
   });
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
@@ -1499,7 +1585,7 @@ export default function ConversationsPage() {
   const { quickReplies } = useQuickReplies();
   const [unreadCount, setUnreadCount] = useState(0);
   const [imagePopup, setImagePopup] = useState<{ src: string; alt: string } | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isTyping, setIsTyping] = useState(false);
   const { user } = useAuth() as { user: User | null };
   const selectedConversationRef = useRef<string | null>(null);
   const socketRef = useRef<any>(null);
@@ -1519,6 +1605,49 @@ export default function ConversationsPage() {
   const totalPending = waitingConversations.length + totalUnread;
 
   const companyId = useMemo(() => user?.company?.id, [user]);
+
+  // OTIMIZAÇÃO: IntersectionObserver para Lazy Loading de mensagens
+  useEffect(() => {
+    const trigger = loadMoreTriggerRef.current;
+    if (!trigger || !hasMoreMessages || isLoadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isLoadingMore && hasMoreMessages) {
+          console.log('🔄 Carregando mais mensagens...');
+          setIsLoadingMore(true);
+          // Aumentar o limite para carregar mais mensagens
+          setMessageLimit(prev => prev + 50);
+          // Reset após carregar
+          setTimeout(() => setIsLoadingMore(false), 500);
+        }
+      },
+      { threshold: 0.1, rootMargin: '100px' }
+    );
+
+    observer.observe(trigger);
+    return () => observer.disconnect();
+  }, [hasMoreMessages, isLoadingMore, messageLimit]);
+
+  // Resetar paginação ao trocar de conversa
+  useEffect(() => {
+    if (selectedConversation?.id && previousConversationIdRef.current && previousConversationIdRef.current !== selectedConversation.id) {
+      console.log(`🔄 Trocando conversa: ${previousConversationIdRef.current} -> ${selectedConversation.id}`);
+
+      // Remover queries antigas da conversa anterior do cache
+      queryClient.removeQueries({
+        queryKey: ['messages', previousConversationIdRef.current],
+        exact: false
+      });
+
+      // Resetar estados de paginação
+      setMessageLimit(100);
+      setHasMoreMessages(true);
+      setIsLoadingMore(false);
+    }
+
+    previousConversationIdRef.current = selectedConversation?.id || null;
+  }, [selectedConversation?.id, queryClient]);
 
   // Atualizar título da página com contador de não lidas
   useEffect(() => {
@@ -1583,22 +1712,35 @@ export default function ConversationsPage() {
     });
 
     socket.on('newMessage', (messageData) => {
-      console.log('[WS] newMessage recebida:', { 
+      console.log('[WS] newMessage recebida:', {
         timestamp: new Date().toISOString(),
         conversationId: messageData.conversationId,
+        messageId: messageData.id,
         hasContent: !!messageData.content,
-        direction: messageData.direction
+        direction: messageData.direction,
+        currentConversation: selectedConversationRef.current
       });
-      
-      // Verificar se a mensagem pertence à conversa ATUALMENTE selecionada
+
+      // SEMPRE atualizar se for a conversa selecionada (incoming OU outgoing)
       if (selectedConversationRef.current && messageData.conversationId === selectedConversationRef.current) {
-        queryClient.setQueryData(['messages', selectedConversationRef.current], (prev: any = []) => {
-          const exists = prev.some((m: any) => m.id === messageData.id);
-          if (exists) return prev;
-          const next = [...prev, messageData];
-          return next.sort((a: any, b: any) => new Date(a.sentAt || a.createdAt).getTime() - new Date(b.sentAt || b.createdAt).getTime());
+        console.log(`✅ [WS] Atualizando mensagens da conversa atual: ${selectedConversationRef.current}`);
+
+        // Atualizar todas as queries de mensagens dessa conversa (independente do limit)
+        const queries = queryClient.getQueriesData({ queryKey: ['messages', selectedConversationRef.current] });
+        queries.forEach(([queryKey]) => {
+          queryClient.setQueryData(queryKey, (prev: any = []) => {
+            if (!Array.isArray(prev)) return prev;
+            const exists = prev.some((m: any) => m.id === messageData.id);
+            if (exists) {
+              console.log(`⚠️ [WS] Mensagem ${messageData.id} já existe no cache, ignorando duplicata`);
+              return prev;
+            }
+            const next = [...prev, messageData];
+            console.log(`➕ [WS] Mensagem ${messageData.id} adicionada ao cache (total: ${next.length})`);
+            return next.sort((a: any, b: any) => new Date(a.sentAt || a.createdAt).getTime() - new Date(b.sentAt || b.createdAt).getTime());
+          });
         });
-        
+
         // Tocar som de notificação para mensagens recebidas na conversa aberta
         if (messageData.direction === 'incoming' && !soundSettings.muteConversations) {
           console.log('🔔 Tocando som de notificação para conversa aberta');
@@ -1606,6 +1748,7 @@ export default function ConversationsPage() {
         }
       } else if (messageData.direction === 'incoming') {
         // Notificação desktop para mensagens de conversas não selecionadas
+        console.log(`📬 [WS] Mensagem incoming de outra conversa: ${messageData.conversationId}`);
         const isPageVisible = !document.hidden;
         if (!isPageVisible || !selectedConversationRef.current) {
           showDesktopNotification(
@@ -1614,13 +1757,13 @@ export default function ConversationsPage() {
             '/favicon.ico'
           );
         }
-        
+
         // Tocar som de notificação para mensagens recebidas
         if (!soundSettings.muteConversations) {
           playNotificationSound('conversation');
         }
       }
-      
+
       // Usar debouncedInvalidate para evitar múltiplas invalidações
       debouncedInvalidate();
     });
@@ -1747,7 +1890,6 @@ export default function ConversationsPage() {
 
   const loadConversations = async () => {
     try {
-      setIsLoading(true);
       // Agora as listas estão sob React Query; apenas invalida para refetch manual quando necessário
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['conversations', 'waiting'] }),
@@ -1755,8 +1897,6 @@ export default function ConversationsPage() {
       ]);
     } catch (error) {
       console.error('Erro ao carregar conversas:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -1788,27 +1928,26 @@ export default function ConversationsPage() {
     setSelectedConversation(conversation);
     selectedConversationRef.current = conversation.id;
     setSelectedContact(null);
-    
-    // Marcar conversa como lida
-    if (conversation.unreadCount && conversation.unreadCount > 0) {
-      setUnreadCount(prev => Math.max(0, prev - (conversation.unreadCount || 0)));
-      // Invalidar queries para atualizar contadores
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
-    }
-    
+
     try {
       console.log(`[Conversations] Carregando mensagens para conversa: ${conversation.id}, status: ${conversation.status}`);
-      // Usar rota de teste temporariamente
       // Com React Query, invalidar e deixar a query recarregar
       await queryClient.invalidateQueries({ queryKey: ['messages', conversation.id] });
-      
+
       // Marcar mensagens incoming como lidas
-      try {
-        await apiClient.post(`/api/whatsapp/conversations/${conversation.id}/mark-all-read`);
-        console.log(`[FRONTEND] ✅ Mensagens marcadas como lidas para conversa ${conversation.id}`);
-      } catch (markError) {
-        console.error(`[FRONTEND] Erro ao marcar mensagens como lidas:`, markError);
-        // Não falhar a seleção se houver erro na marcação
+      if (conversation.unreadCount && conversation.unreadCount > 0) {
+        try {
+          await apiClient.post(`/api/whatsapp/conversations/${conversation.id}/mark-all-read`);
+          console.log(`[FRONTEND] ✅ Mensagens marcadas como lidas para conversa ${conversation.id}`);
+
+          // IMPORTANTE: Invalidar queries DEPOIS de marcar como lidas para atualizar contadores
+          await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+
+          setUnreadCount(prev => Math.max(0, prev - (conversation.unreadCount || 0)));
+        } catch (markError) {
+          console.error(`[FRONTEND] Erro ao marcar mensagens como lidas:`, markError);
+          // Não falhar a seleção se houver erro na marcação
+        }
       }
     } catch (error) {
       console.error("Erro ao buscar mensagens:", error);
@@ -2044,7 +2183,8 @@ export default function ConversationsPage() {
   };
 
   // Mostrar loading durante carregamento inicial
-  if (isLoading) {
+  const isLoadingConversations = isLoadingWaiting || isLoadingActive;
+  if (isLoadingConversations) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <LoadingSpinner size="lg" text="Carregando conversas..." />
@@ -2061,39 +2201,26 @@ export default function ConversationsPage() {
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-bold text-gray-800">Chat</h1>
             <div className="flex gap-2">
-              {/* Sprint 3 - Auto-assign */}
-              <AutoAssignModal>
-                <button className="p-2 hover:bg-gray-100 rounded-lg" title="Auto-assign Inteligente">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                </button>
-              </AutoAssignModal>
-
-              {/* Sprint 3 - Auditoria */}
-              <AuditModal>
-                <button className="p-2 hover:bg-gray-100 rounded-lg" title="Histórico de Auditoria">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </button>
-              </AuditModal>
-
-              {/* Sprint 3 - Export */}
-              <ExportModal>
-                <button className="p-2 hover:bg-gray-100 rounded-lg" title="Exportar Dados">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </button>
-              </ExportModal>
-
-              <button className="p-2 hover:bg-gray-100 rounded-lg">
-                <MessageCircle className="h-4 w-4" />
-              </button>
-              <button className="p-2 hover:bg-gray-100 rounded-lg">
-                <UserPlus className="h-4 w-4" />
-              </button>
+              {/* Dropdown de Ações */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="p-2 hover:bg-gray-100 rounded-lg" title="Mais opções">
+                    <MoreVertical className="h-5 w-5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <ExportModal>
+                    <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                      <Download className="mr-2 h-4 w-4" />
+                      <span>Exportar Dados</span>
+                    </DropdownMenuItem>
+                  </ExportModal>
+                  <DropdownMenuItem>
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    <span>Cadastrar Contato</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -2170,6 +2297,10 @@ export default function ConversationsPage() {
         onMessageInput={handleMessageInput}
         onImageClick={(src, alt) => setImagePopup({ src, alt })}
         currentUser={user}
+        isLoadingMore={isLoadingMore}
+        isLoadingMessages={isLoadingMessages}
+        hasMoreMessages={hasMoreMessages}
+        loadMoreTriggerRef={loadMoreTriggerRef}
       />
       
       {/* Popup de Imagem */}

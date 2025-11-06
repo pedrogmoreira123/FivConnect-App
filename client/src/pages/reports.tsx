@@ -90,8 +90,17 @@ const mockActiveSessions = [
 ];
 
 export default function ReportsPage() {
-  const [dateFrom, setDateFrom] = useState<Date>(new Date()); // Hoje por padrão
-  const [dateTo, setDateTo] = useState<Date>(new Date()); // Hoje por padrão
+  // Inicializar com 30 dias por padrão
+  const getInitialDates = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const thirtyDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30, 0, 0, 0, 0);
+    return { from: thirtyDaysAgo, to: today };
+  };
+
+  const initialDates = getInitialDates();
+  const [dateFrom, setDateFrom] = useState<Date>(initialDates.from);
+  const [dateTo, setDateTo] = useState<Date>(initialDates.to);
   const [periodPreset, setPeriodPreset] = useState<'today' | '7days' | '30days' | 'custom'>('30days');
   const [activeTab, setActiveTab] = useState('overview');
 

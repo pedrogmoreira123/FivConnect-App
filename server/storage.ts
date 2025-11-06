@@ -73,7 +73,9 @@ import {
   whatsappConnections,
   companies,
   userCompanies,
-  companySettings
+  companySettings,
+  chatbotConfigs,
+  companyInvites
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
@@ -258,8 +260,10 @@ export interface IStorage {
   // WhatsApp Connection operations
   createWhatsAppConnection(connection: InsertWhatsappConnection): Promise<WhatsappConnection>;
   getWhatsAppConnection(id: string): Promise<WhatsappConnection | undefined>;
+  getWhatsAppConnectionByChannelId(channelId: string): Promise<WhatsappConnection | null>;
   getWhatsAppConnectionByPhone(phone: string): Promise<WhatsappConnection | null>;
-  getAllWhatsAppConnections(): Promise<WhatsappConnection[]>;
+  getAllWhatsAppConnections(companyId: string): Promise<WhatsappConnection[]>;
+  getAllWhatsAppConnectionsGlobal(): Promise<WhatsappConnection[]>;
   updateWhatsAppConnection(id: string, updates: Partial<InsertWhatsappConnection>): Promise<WhatsappConnection>;
   deleteWhatsAppConnection(id: string): Promise<boolean>;
 
@@ -296,6 +300,7 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  public readonly db = db; // Expor db para queries complexas (ex: dashboard-routes.ts)
   private currentEnvironment: string;
 
   constructor() {
@@ -676,11 +681,19 @@ export class DatabaseStorage implements IStorage {
     return (result.rowCount ?? 0) > 0;
   }
   
-  async getAllClients(): Promise<Client[]> {
-    // Filter by current environment
+  async getAllClients(companyId: string): Promise<Client[]> {
+    // Filter by company and current environment
     return await db.select().from(clients)
-      .where(eq(clients.environment, this.getEnvironmentFilter()))
+      .where(and(
+        eq(clients.companyId, companyId),
+        eq(clients.environment, this.getEnvironmentFilter())
+      ))
       .orderBy(desc(clients.createdAt));
+  }
+
+  // Alias for better naming convention
+  async getClientsByCompany(companyId: string): Promise<Client[]> {
+    return this.getAllClients(companyId);
   }
   
   // Announcement operations
@@ -742,18 +755,35 @@ export class DatabaseStorage implements IStorage {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async getConversationsByStatus(status: string): Promise<Conversation[]> {
-    return await db.select().from(conversations).where(eq(conversations.status, status as any));
-  }
-
-  async getConversationsByAgent(agentId: string): Promise<Conversation[]> {
-    return await db.select().from(conversations).where(eq(conversations.assignedAgentId, agentId));
-  }
-
-  async getAllConversations(): Promise<Conversation[]> {
-    // Filter by current environment
+  async getConversationsByStatus(status: string, companyId: string): Promise<Conversation[]> {
     return await db.select().from(conversations)
-      .where(eq(conversations.environment, this.getEnvironmentFilter()));
+      .where(and(
+        eq(conversations.status, status as any),
+        eq(conversations.companyId, companyId),
+        eq(conversations.environment, this.getEnvironmentFilter())
+      ))
+      .orderBy(desc(conversations.updatedAt));
+  }
+
+  async getConversationsByAgent(agentId: string, companyId: string): Promise<Conversation[]> {
+    return await db.select().from(conversations)
+      .where(and(
+        eq(conversations.assignedAgentId, agentId),
+        eq(conversations.companyId, companyId),
+        eq(conversations.environment, this.getEnvironmentFilter())
+      ))
+      .orderBy(desc(conversations.updatedAt));
+  }
+
+  async getAllConversations(companyId: string): Promise<Conversation[]> {
+    // DEPRECATED: Use getConversationsByCompany() instead
+    // Filter by company and current environment
+    return await db.select().from(conversations)
+      .where(and(
+        eq(conversations.companyId, companyId),
+        eq(conversations.environment, this.getEnvironmentFilter())
+      ))
+      .orderBy(desc(conversations.updatedAt));
   }
 
   async getConversationsByCompany(companyId: string): Promise<Conversation[]> {
@@ -797,17 +827,32 @@ export class DatabaseStorage implements IStorage {
     return message;
   }
 
-  async getMessagesByConversation(conversationId: string, startedAt?: Date): Promise<Message[]> {
+  async getMessagesByConversation(conversationId: string, startedAt?: Date, limit?: number, offset?: number): Promise<Message[]> {
     const conditions = [eq(messages.conversationId, conversationId)];
-    
+
     // Se startedAt foi fornecido, filtrar mensagens apenas após essa data
     if (startedAt) {
       conditions.push(gte(messages.sentAt, startedAt));
     }
-    
-    return await db.select().from(messages)
+
+    // OTIMIZAÇÃO: Buscar mensagens em ordem decrescente (mais recentes primeiro)
+    // e aplicar limit/offset para paginação
+    let query = db.select().from(messages)
       .where(and(...conditions))
-      .orderBy(asc(messages.sentAt)); // Ordem ascendente (mais antiga primeiro)
+      .orderBy(desc(messages.sentAt)); // Ordem descendente (mais recente primeiro) para melhor performance
+
+    // Aplicar paginação se fornecida
+    if (limit !== undefined) {
+      query = query.limit(limit);
+    }
+    if (offset !== undefined && offset > 0) {
+      query = query.offset(offset);
+    }
+
+    const result = await query;
+
+    // Reverter array para retornar em ordem ascendente (compatibilidade com frontend)
+    return result.reverse();
   }
 
   async getAllTickets(): Promise<Ticket[]> {
@@ -1611,17 +1656,18 @@ export class DatabaseStorage implements IStorage {
 
 
   // WhatsApp-related methods
-  async getConversationByPhone(phone: string, tenantId?: string): Promise<Conversation | null> {
+  async getConversationByPhone(phone: string, companyId: string): Promise<Conversation | null> {
     try {
-      let query = db.select()
+      const [conversation] = await db.select()
         .from(conversations)
-        .where(eq(conversations.contactPhone, phone));
-      
-      if (tenantId) {
-        query = query.where(eq(conversations.tenantId, tenantId));
-      }
-      
-      const [conversation] = await query.limit(1);
+        .where(and(
+          eq(conversations.contactPhone, phone),
+          eq(conversations.companyId, companyId),
+          eq(conversations.environment, this.getEnvironmentFilter())
+        ))
+        .orderBy(desc(conversations.updatedAt))
+        .limit(1);
+
       return conversation || null;
     } catch (error) {
       console.error('❌ Error getting conversation by phone:', error);
@@ -1798,6 +1844,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
+   * Obter conexão WhatsApp por channelId do Whapi.Cloud
+   */
+  async getWhatsAppConnectionByChannelId(channelId: string): Promise<WhatsappConnection | null> {
+    try {
+      const [connection] = await db.select()
+        .from(whatsappConnections)
+        .where(and(
+          eq(whatsappConnections.whapiChannelId, channelId),
+          eq(whatsappConnections.environment, this.getCurrentEnvironment())
+        ))
+        .limit(1);
+
+      return connection || null;
+    } catch (error) {
+      console.error('❌ Error getting WhatsApp connection by channelId:', error);
+      return null;
+    }
+  }
+
+  /**
    * Obter conexões WhatsApp por empresa
    */
   async getWhatsAppConnectionsByCompany(companyId: string): Promise<WhatsappConnection[]> {
@@ -1875,20 +1941,24 @@ export class DatabaseStorage implements IStorage {
   /**
    * Obter conversas por número de telefone
    */
-  async getConversationsByPhone(phone: string): Promise<any[]> {
+  async getConversationsByPhone(phone: string, companyId: string): Promise<Conversation[]> {
     try {
       // Normalizar telefone
       const normalizedPhone = phone.replace(/\D/g, '');
-      
+
       const conversations = await db.select()
         .from(conversations)
-        .where(or(
-          eq(conversations.contactPhone, normalizedPhone),
-          eq(conversations.contactPhone, `+${normalizedPhone}`),
-          eq(conversations.contactPhone, `+55${normalizedPhone}`)
+        .where(and(
+          or(
+            eq(conversations.contactPhone, normalizedPhone),
+            eq(conversations.contactPhone, `+${normalizedPhone}`),
+            eq(conversations.contactPhone, `+55${normalizedPhone}`)
+          ),
+          eq(conversations.companyId, companyId),
+          eq(conversations.environment, this.getEnvironmentFilter())
         ))
         .orderBy(desc(conversations.updatedAt));
-      
+
       return conversations;
     } catch (error) {
       console.error('❌ Error getting conversations by phone:', error);
@@ -2025,18 +2095,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
-   * Obter todas as conexões WhatsApp
+   * Obter todas as conexões WhatsApp de uma empresa específica
    */
-  async getAllWhatsAppConnections(): Promise<WhatsappConnection[]> {
+  async getAllWhatsAppConnections(companyId: string): Promise<WhatsappConnection[]> {
     try {
       const connections = await db.select()
         .from(whatsappConnections)
-        .where(eq(whatsappConnections.environment, this.getCurrentEnvironment()))
+        .where(and(
+          eq(whatsappConnections.companyId, companyId),
+          eq(whatsappConnections.environment, this.getCurrentEnvironment())
+        ))
         .orderBy(desc(whatsappConnections.createdAt));
-      
+
       return connections;
     } catch (error) {
       console.error('❌ Error getting all WhatsApp connections:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obter TODAS as conexões WhatsApp (sem filtro de empresa)
+   * Usado principalmente para webhooks onde ainda não sabemos a empresa
+   */
+  async getAllWhatsAppConnectionsGlobal(): Promise<WhatsappConnection[]> {
+    try {
+      const connections = await db.select()
+        .from(whatsappConnections)
+        .where(
+          eq(whatsappConnections.environment, this.getCurrentEnvironment())
+        )
+        .orderBy(desc(whatsappConnections.createdAt));
+
+      return connections;
+    } catch (error) {
+      console.error('❌ Error getting all WhatsApp connections (global):', error);
       return [];
     }
   }
@@ -2094,6 +2187,358 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error('❌ Error updating WhatsApp connection by instanceName:', error);
       return undefined;
+    }
+  }
+
+  // ===== CHATBOT CONFIGURATION METHODS =====
+
+  /**
+   * Buscar configuração do chatbot por companyId
+   */
+  async getChatbotConfig(companyId: string): Promise<any | null> {
+    try {
+      const [config] = await db.select()
+        .from(chatbotConfigs)
+        .where(and(
+          eq(chatbotConfigs.companyId, companyId),
+          eq(chatbotConfigs.environment, this.getCurrentEnvironment())
+        ))
+        .limit(1);
+
+      return config || null;
+    } catch (error) {
+      console.error('❌ Error getting chatbot config:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Criar configuração do chatbot
+   */
+  async createChatbotConfig(data: {
+    companyId: string;
+    name?: string;
+    whatsappConnectionId?: string | null;
+    mode?: 'simple_bot' | 'ai_agent' | 'disabled';
+    isEnabled?: boolean;
+    simpleBotConfig?: any;
+    aiAgentConfig?: any;
+    triggerRules?: any;
+  }): Promise<any> {
+    try {
+      const [config] = await db.insert(chatbotConfigs)
+        .values({
+          companyId: data.companyId,
+          name: data.name || 'Chatbot Sem Nome',
+          whatsappConnectionId: data.whatsappConnectionId || null,
+          mode: data.mode || 'disabled',
+          isEnabled: data.isEnabled || false,
+          simpleBotConfig: data.simpleBotConfig || null,
+          aiAgentConfig: data.aiAgentConfig || null,
+          triggerRules: data.triggerRules || null,
+          environment: this.getCurrentEnvironment(),
+          createdAt: new Date(),
+          updatedAt: new Date()
+        })
+        .returning();
+
+      console.log('✅ Chatbot config created:', config.id);
+      return config;
+    } catch (error) {
+      console.error('❌ Error creating chatbot config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Atualizar configuração do chatbot
+   */
+  async updateChatbotConfig(companyId: string, updates: {
+    mode?: 'simple_bot' | 'ai_agent' | 'disabled';
+    isEnabled?: boolean;
+    simpleBotConfig?: any;
+    aiAgentConfig?: any;
+    triggerRules?: any;
+  }): Promise<any> {
+    try {
+      // Verificar se já existe configuração
+      const existing = await this.getChatbotConfig(companyId);
+
+      if (!existing) {
+        // Criar nova configuração
+        return await this.createChatbotConfig({
+          companyId,
+          ...updates
+        });
+      }
+
+      // Atualizar existente
+      const [config] = await db.update(chatbotConfigs)
+        .set({
+          ...updates,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(chatbotConfigs.companyId, companyId),
+          eq(chatbotConfigs.environment, this.getCurrentEnvironment())
+        ))
+        .returning();
+
+      console.log('✅ Chatbot config updated:', config.id);
+      return config;
+    } catch (error) {
+      console.error('❌ Error updating chatbot config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Deletar configuração do chatbot (por companyId - deleta todos)
+   * @deprecated Use deleteChatbotConfigById para deletar chatbot específico
+   */
+  async deleteChatbotConfig(companyId: string): Promise<boolean> {
+    try {
+      await db.delete(chatbotConfigs)
+        .where(and(
+          eq(chatbotConfigs.companyId, companyId),
+          eq(chatbotConfigs.environment, this.getCurrentEnvironment())
+        ));
+
+      console.log('✅ Chatbot config deleted for company:', companyId);
+      return true;
+    } catch (error) {
+      console.error('❌ Error deleting chatbot config:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Listar todas as configurações de chatbot de uma empresa
+   */
+  async getAllChatbotConfigs(companyId: string): Promise<any[]> {
+    try {
+      const configs = await db.select()
+        .from(chatbotConfigs)
+        .where(and(
+          eq(chatbotConfigs.companyId, companyId),
+          eq(chatbotConfigs.environment, this.getCurrentEnvironment())
+        ))
+        .orderBy(chatbotConfigs.createdAt);
+
+      return configs;
+    } catch (error) {
+      console.error('❌ Error getting all chatbot configs:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Buscar configuração de chatbot por ID
+   */
+  async getChatbotConfigById(id: string): Promise<any | null> {
+    try {
+      const [config] = await db.select()
+        .from(chatbotConfigs)
+        .where(and(
+          eq(chatbotConfigs.id, id),
+          eq(chatbotConfigs.environment, this.getCurrentEnvironment())
+        ))
+        .limit(1);
+
+      return config || null;
+    } catch (error) {
+      console.error('❌ Error getting chatbot config by ID:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Deletar configuração de chatbot por ID (específico)
+   */
+  async deleteChatbotConfigById(id: string): Promise<boolean> {
+    try {
+      await db.delete(chatbotConfigs)
+        .where(and(
+          eq(chatbotConfigs.id, id),
+          eq(chatbotConfigs.environment, this.getCurrentEnvironment())
+        ));
+
+      console.log('✅ Chatbot config deleted:', id);
+      return true;
+    } catch (error) {
+      console.error('❌ Error deleting chatbot config by ID:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Atualizar configuração de chatbot por ID
+   */
+  async updateChatbotConfigById(id: string, updates: {
+    name?: string;
+    whatsappConnectionId?: string | null;
+    mode?: 'simple_bot' | 'ai_agent' | 'disabled';
+    isEnabled?: boolean;
+    simpleBotConfig?: any;
+    aiAgentConfig?: any;
+    triggerRules?: any;
+  }): Promise<any> {
+    try {
+      const [config] = await db.update(chatbotConfigs)
+        .set({
+          ...updates,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(chatbotConfigs.id, id),
+          eq(chatbotConfigs.environment, this.getCurrentEnvironment())
+        ))
+        .returning();
+
+      console.log('✅ Chatbot config updated by ID:', id);
+      return config;
+    } catch (error) {
+      console.error('❌ Error updating chatbot config by ID:', error);
+      throw error;
+    }
+  }
+
+  // ===== COMPANY INVITES METHODS =====
+
+  /**
+   * Criar convite para empresa
+   */
+  async createCompanyInvite(data: {
+    companyId: string;
+    email: string;
+    token: string;
+    expiresAt: Date;
+  }): Promise<any> {
+    try {
+      const [invite] = await db.insert(companyInvites)
+        .values({
+          companyId: data.companyId,
+          email: data.email,
+          token: data.token,
+          expiresAt: data.expiresAt,
+          createdAt: new Date()
+        })
+        .returning();
+
+      console.log('✅ Company invite created:', invite.id);
+      return invite;
+    } catch (error) {
+      console.error('❌ Error creating company invite:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Buscar convite por token
+   */
+  async getCompanyInviteByToken(token: string): Promise<any | null> {
+    try {
+      const [invite] = await db.select()
+        .from(companyInvites)
+        .where(eq(companyInvites.token, token))
+        .limit(1);
+
+      return invite || null;
+    } catch (error) {
+      console.error('❌ Error getting company invite by token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Marcar convite como usado
+   */
+  async markInviteAsUsed(token: string): Promise<void> {
+    try {
+      await db.update(companyInvites)
+        .set({ usedAt: new Date() })
+        .where(eq(companyInvites.token, token));
+
+      console.log('✅ Invite marked as used:', token);
+    } catch (error) {
+      console.error('❌ Error marking invite as used:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Deletar convites expirados
+   */
+  async deleteExpiredInvites(): Promise<number> {
+    try {
+      const deleted = await db.delete(companyInvites)
+        .where(and(
+          sql`${companyInvites.expiresAt} < NOW()`,
+          sql`${companyInvites.usedAt} IS NULL`
+        ))
+        .returning();
+
+      console.log(`✅ Deleted ${deleted.length} expired invites`);
+      return deleted.length;
+    } catch (error) {
+      console.error('❌ Error deleting expired invites:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Buscar convites pendentes de uma empresa
+   */
+  async getPendingInvitesByCompany(companyId: string): Promise<any[]> {
+    try {
+      const invites = await db.select()
+        .from(companyInvites)
+        .where(and(
+          eq(companyInvites.companyId, companyId),
+          sql`${companyInvites.usedAt} IS NULL`,
+          sql`${companyInvites.expiresAt} > NOW()`
+        ))
+        .orderBy(desc(companyInvites.createdAt));
+
+      return invites;
+    } catch (error) {
+      console.error('❌ Error getting pending invites:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Buscar empresa por ID
+   */
+  async getCompanyById(id: string): Promise<any | null> {
+    try {
+      const [company] = await db.select()
+        .from(companies)
+        .where(eq(companies.id, id))
+        .limit(1);
+
+      return company || null;
+    } catch (error) {
+      console.error('❌ Error getting company by ID:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Atualizar empresa
+   */
+  async updateCompany(id: string, updates: any): Promise<any> {
+    try {
+      const [company] = await db.update(companies)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(companies.id, id))
+        .returning();
+
+      console.log('✅ Company updated:', id);
+      return company;
+    } catch (error) {
+      console.error('❌ Error updating company:', error);
+      throw error;
     }
   }
 

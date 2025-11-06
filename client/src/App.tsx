@@ -18,6 +18,7 @@ import "./lib/i18n"; // Initialize i18n
 
 // Lazy load pages for better performance
 const LoginPage = lazy(() => import("@/pages/login"));
+const PrimeiroAcessoPage = lazy(() => import("@/pages/primeiro-acesso"));
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const ConversationsPage = lazy(() => import("@/pages/conversations"));
 const TicketsPage = lazy(() => import("@/pages/tickets"));
@@ -91,6 +92,7 @@ function Router() {
     <Suspense fallback={<PageLoader />}>
       <Switch>
         <Route path="/login" component={LoginPage} />
+        <Route path="/primeiro-acesso" component={PrimeiroAcessoPage} />
         <Route path="/">
           <ProtectedRoute>
             <DashboardPage />

@@ -16,10 +16,10 @@ export function useFeedbackNotifications() {
     queryKey: ["/api/feedbacks"],
     queryFn: async () => {
       if (!shouldCheckNotifications) return [];
-      
+
       const response = await fetch("/api/feedbacks", {
         headers: {
-          "Authorization": `Bearer ${localStorage.getItem("auth_token")}`
+          "Authorization": `Bearer ${localStorage.getItem("authToken")}`
         }
       });
       if (!response.ok) return [];
